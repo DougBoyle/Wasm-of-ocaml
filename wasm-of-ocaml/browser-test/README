@@ -6,6 +6,19 @@ To compile C to wasm:
 
 (3.) Produce text version as `wasm2wat <file>.wasm > <file>.wat`
 
+ALTERNATIVES:
+
+Produces slightly smaller files due to having fewer exports (may need Emscripten syntax to force exporting a method, but not an issue so far)
+emcc -O3 -s WASM=1 -s SIDE_MODULE=1 f.c -o f.wasm
+
+Produce wasm with full html and js backend (smallest possible wasm file, but names lost and expects a `main` entry point):
+emcc -O3 f.c -s WASM=1 -o f.html
+`python -m http.server` then going to localhost:8000/f.html will then show a console window and run the resulting webassembly, good for checking.
+Can handle standard C libraries so can call printf from main to check output. Potentially useful for linking with own wasm files to test.
+
+
+-----------------------------------------------------------------------------------
+
 To run wasm file in browser:
 
 1. Update browser-test/wasmRun.js to load correct file (line 11) and call correct exported function (line 17)
@@ -22,3 +35,6 @@ To run wasm file in browser:
 
 Likely want to install Node.js and use that for web server rather than python http.server.
 Will allow accessing file system and running commands to automate process.
+
+Now just do `node wasmRun.js` and it outputs the console log values.
+See app.js for an example of how to create a long-lived server object and connect through browser.

@@ -1,0 +1,37 @@
+To run code produced by Js_of_ocaml:
+
+1. add `open Js_of_ocaml` to top of ML file
+
+2. add `let () = Js.Unsafe.global##.myFunction := Js.wrap_callback myFunction` to end of file
+
+More generally: 
+let _ =
+  Js.export "myMathLib"
+    (object%js
+       method add x y = x +. y
+       method abs x = abs_float x
+       val zero = 0.
+     end)
+
+then allows methods to be accessed from js console as myMathLib.add etc.
+
+Can also be used to allow running from node js, see https://ocsigen.org/js_of_ocaml/3.1.0/manual/rev-bindings.
+e.g.
+
+let _ =
+  Js.export_all
+    (object%js
+       method add x y = x +. y
+       method abs x = abs_float x
+       val zero = 0.
+     end)
+
+can then call by doing `var math = require("./math.js"); math.add(2, 3)`.
+Don't have to worry about currying e.g. can define function at top then just put `method myfun = myfun` in body of object.
+
+3. Compile to bytecode using `ocamlfind ocamlc -g -o myfile.byte -linkpkg -package js_of_ocaml,js_of_ocaml-ppx myfile.ml` 
+(See https://medium.com/@vietlq/playing-with-js-of-ocaml-f3e99f9afb1f)
+
+4. Convert to js with `js_of_ocaml myfile.byte`
+
+5. To access within browser, need a html file which loads that js file (or just run it from node instead)
