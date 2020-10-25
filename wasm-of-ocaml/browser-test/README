@@ -1,0 +1,19 @@
+To compile C to wasm:
+
+1. Create C program, for consistency use `main` as entry point (can change args but will get a warning)
+
+2. Compile as `clang --target=wasm32 -O3 -nostdlib -Wl,--no-entry -Wl,--export-all -o <file>.wasm <file>.c`
+
+(3.) Produce text version as `wasm2wat <file>.wasm > <file>.wat`
+
+To run wasm file in browser:
+
+1. Update browser-test/wasmRun.js to load correct file (line 11) and call correct exported function (line 17)
+
+2. Start http server from wasm-of-ocaml directory: In windows command prompt at that directory, type `python -m http.server`
+
+3. Open browser and go to `localhost:8000`
+
+4. Select or navigate to browser-test directory to load the index.html file.
+
+5. Press F12 to open developer console and see output, refresh to run again.
