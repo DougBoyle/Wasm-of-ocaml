@@ -17,3 +17,8 @@ To run wasm file in browser:
 4. Select or navigate to browser-test directory to load the index.html file.
 
 5. Press F12 to open developer console and see output, refresh to run again.
+
+--------------------------
+
+Likely want to install Node.js and use that for web server rather than python http.server.
+Will allow accessing file system and running commands to automate process.
