@@ -38,3 +38,6 @@ Will allow accessing file system and running commands to automate process.
 
 Now just do `node wasmRun.js` and it outputs the console log values.
 See app.js for an example of how to create a long-lived server object and connect through browser.
+
+
+*** Only the browser-test directory has a 'node_modules' folder, so any js file requiring loading such modules must be placed in that folder.

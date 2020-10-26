@@ -1,0 +1,1129 @@
+((cmi_name file)
+ (cmi_sign
+  ((TSigType ((stamp 1466) (name FileDescriptor))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataVariant
+       (((cd_id ((stamp 1076) (name FileDescriptor)))
+         (cd_args
+          (TConstrTuple
+           (((desc (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+             (level 100000000) (id -2)))))
+         (cd_res ()) (cd_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1075) (name FileDescriptor))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigValue ((stamp 1467) (name stdin))
+    ((val_type
+      ((desc
+        (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) () TMemNil))
+       (level 100000000) (id -3)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1079) (name stdin))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1468) (name stdout))
+    ((val_type
+      ((desc
+        (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) () TMemNil))
+       (level 100000000) (id -4)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1080) (name stdout))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1469) (name stderr))
+    ((val_type
+      ((desc
+        (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) () TMemNil))
+       (level 100000000) (id -5)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1081) (name stderr))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1470) (name pwdfd))
+    ((val_type
+      ((desc
+        (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) () TMemNil))
+       (level 100000000) (id -6)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1082) (name pwdfd))))
+     (val_loc dummy_loc)))
+   (TSigType ((stamp 1471) (name LookupFlag))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataVariant
+       (((cd_id ((stamp 1084) (name SymlinkFollow)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1083) (name LookupFlag))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1472) (name OpenFlag))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataVariant
+       (((cd_id ((stamp 1088) (name Create))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1089) (name Directory))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1090) (name Exclusive))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1091) (name Truncate))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1087) (name OpenFlag))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1473) (name Rights))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataVariant
+       (((cd_id ((stamp 1101) (name FdDatasync))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1102) (name FdRead))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1103) (name FdSeek))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1104) (name FdSetFlags))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1105) (name FdSync))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1106) (name FdTell))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1107) (name FdWrite))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1108) (name FdAdvise))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1109) (name FdAllocate))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1110) (name PathCreateDirectory)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1111) (name PathCreateFile)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1112) (name PathLinkSource)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1113) (name PathLinkTarget)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1114) (name PathOpen))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1115) (name FdReaddir))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1116) (name PathReadlink)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1117) (name PathRenameSource)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1118) (name PathRenameTarget)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1119) (name PathFilestats)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1120) (name PathSetSize))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1121) (name PathSetTimes)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1122) (name FdFilestats))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1123) (name FdSetSize))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1124) (name FdSetTimes))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1125) (name PathSymlink))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1126) (name PathRemoveDirectory)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1127) (name PathUnlinkFile)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1128) (name PollFdReadwrite)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1129) (name SockShutdown)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1100) (name Rights))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1474) (name FdFlag))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataVariant
+       (((cd_id ((stamp 1189) (name Append))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1190) (name Dsync))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1191) (name Nonblock))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1192) (name Rsync))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1193) (name Sync))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1188) (name FdFlag))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1475) (name Filetype))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataVariant
+       (((cd_id ((stamp 1205) (name Unknown))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1206) (name BlockDevice))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1207) (name CharacterDevice)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1208) (name Directory))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1209) (name RegularFile))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1210) (name SocketDatagram)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1211) (name SocketStream)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1212) (name SymbolicLink)))
+         (cd_args TConstrSingleton) (cd_res ()) (cd_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1204) (name Filetype))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1476) (name Whence))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataVariant
+       (((cd_id ((stamp 1230) (name Set))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1231) (name Current))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc))
+        ((cd_id ((stamp 1232) (name End))) (cd_args TConstrSingleton)
+         (cd_res ()) (cd_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1229) (name Whence))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1477) (name Stats))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataRecord
+       (((rf_name ((stamp 0) (name filetype) (flags 1)))
+         (rf_type
+          ((desc
+            (TTyConstr (PIdent ((stamp 1475) (name Filetype))) () TMemNil))
+           (level 100000000) (id -7)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name flags) (flags 1)))
+         (rf_type
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1474) (name FdFlag))) () TMemNil))
+               (level 100000000) (id -9)))
+             TMemNil))
+           (level 100000000) (id -8)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name rights) (flags 1)))
+         (rf_type
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1473) (name Rights))) () TMemNil))
+               (level 100000000) (id -11)))
+             TMemNil))
+           (level 100000000) (id -10)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name rightsInheriting) (flags 1)))
+         (rf_type
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1473) (name Rights))) () TMemNil))
+               (level 100000000) (id -13)))
+             TMemNil))
+           (level 100000000) (id -12)))
+         (rf_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1239) (name Stats)))) (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1478) (name Filestats))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataRecord
+       (((rf_name ((stamp 0) (name device) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -14)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name inode) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -15)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name filetype) (flags 1)))
+         (rf_type
+          ((desc
+            (TTyConstr (PIdent ((stamp 1475) (name Filetype))) () TMemNil))
+           (level 100000000) (id -16)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name linkcount) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -17)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name size) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -18)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name accessed) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -19)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name modified) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -20)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name changed) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -21)))
+         (rf_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1240) (name Filestats))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigType ((stamp 1479) (name DirectoryEntry))
+    ((type_params ()) (type_arity 0)
+     (type_kind
+      (TDataRecord
+       (((rf_name ((stamp 0) (name inode) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -22)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name filetype) (flags 1)))
+         (rf_type
+          ((desc
+            (TTyConstr (PIdent ((stamp 1475) (name Filetype))) () TMemNil))
+           (level 100000000) (id -23)))
+         (rf_loc dummy_loc))
+        ((rf_name ((stamp 0) (name path) (flags 1)))
+         (rf_type
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -24)))
+         (rf_loc dummy_loc)))))
+     (type_manifest ()) (type_newtype_level ()) (type_loc dummy_loc)
+     (type_path (PIdent ((stamp 1241) (name DirectoryEntry))))
+     (type_immediate false))
+    TRecFirst)
+   (TSigValue ((stamp 1480) (name filetypeFromNumber))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+           (level 100000000) (id -27)))
+         ((desc
+           (TTyConstr (PIdent ((stamp 1475) (name Filetype))) () TMemNil))
+          (level 100000000) (id -26))
+         TComOk))
+       (level 100000000) (id -25)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1242) (name filetypeFromNumber))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1481) (name pathOpen))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -30))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -32)))
+             TMemNil))
+           (level 100000000) (id -31))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -33))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1472) (name OpenFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -35)))
+             TMemNil))
+           (level 100000000) (id -34))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1473) (name Rights))) () TMemNil))
+               (level 100000000) (id -37)))
+             TMemNil))
+           (level 100000000) (id -36))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1473) (name Rights))) () TMemNil))
+               (level 100000000) (id -39)))
+             TMemNil))
+           (level 100000000) (id -38))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1474) (name FdFlag))) () TMemNil))
+               (level 100000000) (id -41)))
+             TMemNil))
+           (level 100000000) (id -40)))
+         ((desc
+           (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+            TMemNil))
+          (level 100000000) (id -29))
+         TComOk))
+       (level 100000000) (id -28)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1245) (name pathOpen))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1482) (name fdRead))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -46))
+          ((desc (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+           (level 100000000) (id -47)))
+         ((desc
+           (TTyTuple
+            (((desc
+               (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+              (level 100000000) (id -44))
+             ((desc
+               (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+              (level 100000000) (id -45)))))
+          (level 100000000) (id -43))
+         TComOk))
+       (level 100000000) (id -42)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1247) (name fdRead))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1483) (name fdPread))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -52))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -53))
+          ((desc (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+           (level 100000000) (id -54)))
+         ((desc
+           (TTyTuple
+            (((desc
+               (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+              (level 100000000) (id -50))
+             ((desc
+               (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+              (level 100000000) (id -51)))))
+          (level 100000000) (id -49))
+         TComOk))
+       (level 100000000) (id -48)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1249) (name fdPread))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1484) (name fdWrite))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -57))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -58)))
+         ((desc (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+          (level 100000000) (id -56))
+         TComOk))
+       (level 100000000) (id -55)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1251) (name fdWrite))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1485) (name fdPwrite))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -61))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -62))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -63)))
+         ((desc (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+          (level 100000000) (id -60))
+         TComOk))
+       (level 100000000) (id -59)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1253) (name fdPwrite))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1486) (name fdAllocate))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -66))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -67))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -68)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -65))
+         TComOk))
+       (level 100000000) (id -64)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1255) (name fdAllocate))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1487) (name fdClose))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -71)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -70))
+         TComOk))
+       (level 100000000) (id -69)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1257) (name fdClose))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1488) (name fdDatasync))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -74)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -73))
+         TComOk))
+       (level 100000000) (id -72)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1259) (name fdDatasync))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1489) (name fdSync))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -77)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -76))
+         TComOk))
+       (level 100000000) (id -75)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1261) (name fdSync))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1490) (name fdStats))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -80)))
+         ((desc (TTyConstr (PIdent ((stamp 1477) (name Stats))) () TMemNil))
+          (level 100000000) (id -79))
+         TComOk))
+       (level 100000000) (id -78)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1264) (name fdStats))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1491) (name fdSetFlags))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -83))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1474) (name FdFlag))) () TMemNil))
+               (level 100000000) (id -85)))
+             TMemNil))
+           (level 100000000) (id -84)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -82))
+         TComOk))
+       (level 100000000) (id -81)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1322) (name fdSetFlags))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1492) (name fdSetRights))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -88))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1473) (name Rights))) () TMemNil))
+               (level 100000000) (id -90)))
+             TMemNil))
+           (level 100000000) (id -89))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1473) (name Rights))) () TMemNil))
+               (level 100000000) (id -92)))
+             TMemNil))
+           (level 100000000) (id -91)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -87))
+         TComOk))
+       (level 100000000) (id -86)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1324) (name fdSetRights))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1493) (name fdFilestats))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -95)))
+         ((desc
+           (TTyConstr (PIdent ((stamp 1478) (name Filestats))) () TMemNil))
+          (level 100000000) (id -94))
+         TComOk))
+       (level 100000000) (id -93)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1327) (name fdFilestats))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1494) (name fdSetSize))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -98))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -99)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -97))
+         TComOk))
+       (level 100000000) (id -96)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1339) (name fdSetSize))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1495) (name fdSetAccessTime))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -102))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -103)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -101))
+         TComOk))
+       (level 100000000) (id -100)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1341) (name fdSetAccessTime))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1496) (name fdSetAccessTimeNow))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -106)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -105))
+         TComOk))
+       (level 100000000) (id -104)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1343) (name fdSetAccessTimeNow))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1497) (name fdSetModifiedTime))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -109))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -110)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -108))
+         TComOk))
+       (level 100000000) (id -107)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1345) (name fdSetModifiedTime))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1498) (name fdSetModifiedTimeNow))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -113)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -112))
+         TComOk))
+       (level 100000000) (id -111)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1347) (name fdSetModifiedTimeNow))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1499) (name fdReaddirRaw))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -120)))
+         ((desc
+           (TTyConstr (PIdent ((stamp 8) (name Array)))
+            (((desc
+               (TTyTuple
+                (((desc
+                   (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+                  (level 100000000) (id -117))
+                 ((desc
+                   (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+                  (level 100000000) (id -118))
+                 ((desc
+                   (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+                  (level 100000000) (id -119)))))
+              (level 100000000) (id -116)))
+            TMemNil))
+          (level 100000000) (id -115))
+         TComOk))
+       (level 100000000) (id -114)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1349) (name fdReaddirRaw))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1500) (name fdReaddir))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -124)))
+         ((desc
+           (TTyConstr (PIdent ((stamp 8) (name Array)))
+            (((desc
+               (TTyConstr (PIdent ((stamp 1479) (name DirectoryEntry))) ()
+                TMemNil))
+              (level 100000000) (id -123)))
+            TMemNil))
+          (level 100000000) (id -122))
+         TComOk))
+       (level 100000000) (id -121)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1350) (name fdReaddir))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1501) (name fdRenumber))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -127))
+          ((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -128)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -126))
+         TComOk))
+       (level 100000000) (id -125)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1373) (name fdRenumber))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1502) (name fdSeek))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -131))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -132))
+          ((desc
+            (TTyConstr (PIdent ((stamp 1476) (name Whence))) () TMemNil))
+           (level 100000000) (id -133)))
+         ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+          (level 100000000) (id -130))
+         TComOk))
+       (level 100000000) (id -129)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1375) (name fdSeek))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1503) (name fdTell))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -136)))
+         ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+          (level 100000000) (id -135))
+         TComOk))
+       (level 100000000) (id -134)))
+     (val_kind TValReg) (val_fullpath (PIdent ((stamp 1377) (name fdTell))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1504) (name pathCreateDirectory))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -139))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -140)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -138))
+         TComOk))
+       (level 100000000) (id -137)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1379) (name pathCreateDirectory))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1505) (name pathFilestatsRaw))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -151))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -153)))
+             TMemNil))
+           (level 100000000) (id -152))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -154)))
+         ((desc
+           (TTyTuple
+            (((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+              (level 100000000) (id -143))
+             ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+              (level 100000000) (id -144))
+             ((desc
+               (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+              (level 100000000) (id -145))
+             ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+              (level 100000000) (id -146))
+             ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+              (level 100000000) (id -147))
+             ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+              (level 100000000) (id -148))
+             ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+              (level 100000000) (id -149))
+             ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+              (level 100000000) (id -150)))))
+          (level 100000000) (id -142))
+         TComOk))
+       (level 100000000) (id -141)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1381) (name pathFilestatsRaw))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1506) (name pathFilestats))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -157))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -159)))
+             TMemNil))
+           (level 100000000) (id -158))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -160)))
+         ((desc
+           (TTyConstr (PIdent ((stamp 1478) (name Filestats))) () TMemNil))
+          (level 100000000) (id -156))
+         TComOk))
+       (level 100000000) (id -155)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1382) (name pathFilestats))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1507) (name pathSetAccessTime))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -163))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -165)))
+             TMemNil))
+           (level 100000000) (id -164))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -166))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -167)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -162))
+         TComOk))
+       (level 100000000) (id -161)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1396) (name pathSetAccessTime))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1508) (name pathSetAccessTimeNow))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -170))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -172)))
+             TMemNil))
+           (level 100000000) (id -171))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -173)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -169))
+         TComOk))
+       (level 100000000) (id -168)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1398) (name pathSetAccessTimeNow))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1509) (name pathSetModifiedTime))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -176))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -178)))
+             TMemNil))
+           (level 100000000) (id -177))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -179))
+          ((desc (TTyConstr (PIdent ((stamp 3) (name Int64))) () TMemNil))
+           (level 100000000) (id -180)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -175))
+         TComOk))
+       (level 100000000) (id -174)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1400) (name pathSetModifiedTime))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1510) (name pathSetModifiedTimeNow))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -183))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -185)))
+             TMemNil))
+           (level 100000000) (id -184))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -186)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -182))
+         TComOk))
+       (level 100000000) (id -181)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1402) (name pathSetModifiedTimeNow))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1511) (name pathLink))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -189))
+          ((desc
+            (TTyConstr
+             (PExternal (PIdent ((stamp 1015) (name pervasives))) List -1)
+             (((desc
+                (TTyConstr (PIdent ((stamp 1471) (name LookupFlag))) ()
+                 TMemNil))
+               (level 100000000) (id -191)))
+             TMemNil))
+           (level 100000000) (id -190))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -192))
+          ((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -193))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -194)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -188))
+         TComOk))
+       (level 100000000) (id -187)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1404) (name pathLink))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1512) (name pathSymlink))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -197))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -198))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -199)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -196))
+         TComOk))
+       (level 100000000) (id -195)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1406) (name pathSymlink))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1513) (name pathUnlink))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -202))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -203)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -201))
+         TComOk))
+       (level 100000000) (id -200)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1408) (name pathUnlink))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1514) (name pathReadlink))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -208))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -209))
+          ((desc (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+           (level 100000000) (id -210)))
+         ((desc
+           (TTyTuple
+            (((desc
+               (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+              (level 100000000) (id -206))
+             ((desc
+               (TTyConstr (PIdent ((stamp 1) (name Number))) () TMemNil))
+              (level 100000000) (id -207)))))
+          (level 100000000) (id -205))
+         TComOk))
+       (level 100000000) (id -204)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1410) (name pathReadlink))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1515) (name pathRemoveDirectory))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -213))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -214)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -212))
+         TComOk))
+       (level 100000000) (id -211)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1412) (name pathRemoveDirectory))))
+     (val_loc dummy_loc)))
+   (TSigValue ((stamp 1516) (name pathRename))
+    ((val_type
+      ((desc
+        (TTyArrow
+         (((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -217))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -218))
+          ((desc
+            (TTyConstr (PIdent ((stamp 1466) (name FileDescriptor))) ()
+             TMemNil))
+           (level 100000000) (id -219))
+          ((desc (TTyConstr (PIdent ((stamp 5) (name String))) () TMemNil))
+           (level 100000000) (id -220)))
+         ((desc (TTyConstr (PIdent ((stamp 6) (name Void))) () TMemNil))
+          (level 100000000) (id -216))
+         TComOk))
+       (level 100000000) (id -215)))
+     (val_kind TValReg)
+     (val_fullpath (PIdent ((stamp 1414) (name pathRename))))
+     (val_loc dummy_loc)))))
+ (cmi_crcs <opaque>) (cmi_flags ()))

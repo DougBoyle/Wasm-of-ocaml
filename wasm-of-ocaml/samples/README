@@ -35,3 +35,15 @@ Don't have to worry about currying e.g. can define function at top then just put
 4. Convert to js with `js_of_ocaml myfile.byte`
 
 5. To access within browser, need a html file which loads that js file (or just run it from node instead)
+
+-----------------------------------------
+
+Running grain (experimental):
+
+1. Compile wasm
+
+2. Go to grain subfolder and do `node wasmRunGrain.js`, set filename in js file as needed.
+
+** In future would be nice to look at how runtime/dist/grain-runtime.js works to see if there is a way of calling into functions,
+rather than just relying on running through code and getting input/ouptut. Accessing the exported function from wasm doesn't seem helpful,
+calling either gives an error or returns a fixed value.
