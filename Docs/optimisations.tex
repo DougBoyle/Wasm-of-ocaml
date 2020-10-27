@@ -11,5 +11,29 @@
 \usepackage{bm}
 
 \begin{document}
+%\setlength{\parindent}{0pt}
+
 List of optimisations with details about them and how they will be priorities:
+
+\begin{enumerate}
+\item \textbf{Peephole optimisations (wasm): } Compiling to a stack language so end up with lots of push/pop and get/set pairs. Will likely also  be able to optimise the returning of functions i.e. removing sets that are never got again (leaking into live variable analysis). A couple passes of looking for specific sequences and patterns and replacing them with the correct optimisation on a case-by-case basis.
+
+\item \textbf{Eta reduction (IR): } Principle of function extensionality that two functions are the same if they behave the same on all inputs. Can rewrite \verb|f x y = ... y| as just \verb|f x = ...| assuming \verb|y| does not occur anywhere else. Assuming argument applications happen one at a time (expect they will due to each one returning a new closure), call sites don't need to be modified, since \verb|(f x y) = (f x) y|. Again, looking for a simple pattern and replacing it so shouldn't be difficult. Potentially reduces the number of closures being built. See haskell compiler optimisation list for more information.
+
+\item \textbf{Constant proagation/folding (IR/wasm): } Could probably apply at either level, but definitely at wasm level as then the interaction of multiple instructions can be seen. Some cases are easy e.g. \verb|push a; push b; add|, whereas other may require more complex checks to do with variables being loaded/stored e.g. \verb|get l; push a; add; store l|. Need to decide how far to apply constant propagation, as it effectively removes all local variables at some point. Likely want to stick to things being used in close proximity, which also makes validity easier to guarentee. Again, hopefully fairly easy to implement a basic form of, then some scope to extend. 
+
+\item \textbf{Common Subexpression Elimination (AVAIL): } Opposite of constant propagation, introduce a new local variable for a calculation so that it can be reused in multiple places. Will need to research how to detect cases where this can be applied and is worth doing.
+
+\item \textbf{Dead Code Elimination (LVA): }See which parts of code can be reached/which assignments could actually be used. If unreachable or no possible effect, can delete this. Likely applicable to IR level.
+
+\item \textbf{Control Flow Analysis: } Constraint solving to determine superset of possible values that a variable can hold. This then aids peephole optimisations and dead code elimination as we can be more certain about whether something can happy or not, hence be more aggressive in cutting down program.
+
+\end{enumerate}
+
+Use of Live Variable Analysis and Available Expression Analysis are significantly more complex than the earlier operations, since they require translating the list of instructions to a graph where nodes have edges indicating possible control flow paths. Datastructure for this and correctly traversing it will likely take substantial time so probably don't implement them first, but a basic implementation and small optimisations because of it (e.g. removing clearly useless assignments) would be interesting and probably doable. CSE also requires heuristics for when to apply it.
+
+Control Flow Analysis is yet another step of complexity higher, requiring a constraint solving program to work out the superset of values an expression can hold. This requires a lot of work to capture all the different types of value that can occur and to correctly deal with loops/recursion. A basic approach may end up being too pesimistic to be useful.
+
+Both of these approaches likely benefit from knowing whether a variable is a value or a pointer, as both are just integers in wasm. May be able to annotate when initially generating code or with some simple analysis steps (e.g. tracking return value of \verb|alloc| function, knowing that will be used as a reference only). Otherwise, possibility of a variable being a reference will require much stronger analysis to determine if assumptions can actually be made about it or not.
+
 \end{document}
