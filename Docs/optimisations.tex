@@ -28,6 +28,7 @@ List of optimisations with details about them and how they will be priorities:
 
 \item \textbf{Control Flow Analysis: } Constraint solving to determine superset of possible values that a variable can hold. This then aids peephole optimisations and dead code elimination as we can be more certain about whether something can happy or not, hence be more aggressive in cutting down program.
 
+\item \textbf{Function inlining: } Replaces calls to small non-recursive functions with the body of the function. If the function is not a top-level function, it can then be deleted if all instances are removed. Repeated inlining can significantly increase code size so need some heuristic for when this is worthwhile.
 \end{enumerate}
 
 Use of Live Variable Analysis and Available Expression Analysis are significantly more complex than the earlier operations, since they require translating the list of instructions to a graph where nodes have edges indicating possible control flow paths. Datastructure for this and correctly traversing it will likely take substantial time so probably don't implement them first, but a basic implementation and small optimisations because of it (e.g. removing clearly useless assignments) would be interesting and probably doable. CSE also requires heuristics for when to apply it.
