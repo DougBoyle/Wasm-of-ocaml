@@ -7,12 +7,13 @@ let _ = Clflags.dont_write_files := true
 let main () =
   let filename = !input in
   let output_prefix = Compenv.output_prefix filename in
-  let (tree, coercions) = Compile.typed_implementation Format.err_formatter filename output_prefix in 
-  Printtyped.implementation_with_coercion Format.std_formatter (tree, coercions)
+  try
+    let (tree, coercions) = Compile.typed_implementation Format.err_formatter filename output_prefix in
+    Printtyped.implementation_with_coercion Format.std_formatter (tree, coercions)
+  with x -> Location.report_exception Format.err_formatter x
 
 let _ = Arg.parse []
     (fun f -> if (!input) = "" then input := f else raise (Arg.Bad "Only one file allowed"))
     "Usage: main.byte [<file>]"
 
 let _ = main ()
-
