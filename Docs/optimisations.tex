@@ -22,6 +22,8 @@ List of optimisations with details about them and how they will be priorities:
 
 \item \textbf{Constant proagation/folding (IR/wasm): } Could probably apply at either level, but definitely at wasm level as then the interaction of multiple instructions can be seen. Some cases are easy e.g. \verb|push a; push b; add|, whereas other may require more complex checks to do with variables being loaded/stored e.g. \verb|get l; push a; add; store l|. Need to decide how far to apply constant propagation, as it effectively removes all local variables at some point. Likely want to stick to things being used in close proximity, which also makes validity easier to guarentee. Again, hopefully fairly easy to implement a basic form of, then some scope to extend. 
 
+Can also do `copy propagation' to avoid unnecessary stores to one location, moves to another, then loading from there. Assuming not overwritten (e.g. if local temporary has been generated for a specific purpose), can just use the value loaded from the original location.
+
 \item \textbf{Common Subexpression Elimination (AVAIL): } Opposite of constant propagation, introduce a new local variable for a calculation so that it can be reused in multiple places. Will need to research how to detect cases where this can be applied and is worth doing.
 
 \item \textbf{Dead Code Elimination (LVA): }See which parts of code can be reached/which assignments could actually be used. If unreachable or no possible effect, can delete this. Likely applicable to IR level.
@@ -29,6 +31,10 @@ List of optimisations with details about them and how they will be priorities:
 \item \textbf{Control Flow Analysis: } Constraint solving to determine superset of possible values that a variable can hold. This then aids peephole optimisations and dead code elimination as we can be more certain about whether something can happy or not, hence be more aggressive in cutting down program.
 
 \item \textbf{Function inlining: } Replaces calls to small non-recursive functions with the body of the function. If the function is not a top-level function, it can then be deleted if all instances are removed. Repeated inlining can significantly increase code size so need some heuristic for when this is worthwhile.
+
+\item \textbf{Parital redundancy elimination: } A form of `code motion' more general than CSE (total redundancy elimination) which does less obvious changes like replacing same expression at start and end of loop with one just at end and one before entry to loop. More general so much more complex to implement, probably not realistic. 
+
+\item \textbf{Static Single Assignment: }Often want to rewrite code (source-to-source transformation) so that each variable (temporary/location) is only used once as a destination. This creates more variables but avoids having to preserve a variable across regions it isn't used for. Register colouring can then more optimally pack this into potentially fewer registers than to begin with. Only useful alongside that LVA analysis/assignment. Note register colouring on its own wouldn't work as it would need to give a variable a consistent location so the same value is always accessed, hence can only do register allocation when all usages are given distinct variable names initially, then allow allocation pass to pack this down into the minimum number needed.
 \end{enumerate}
 
 Use of Live Variable Analysis and Available Expression Analysis are significantly more complex than the earlier operations, since they require translating the list of instructions to a graph where nodes have edges indicating possible control flow paths. Datastructure for this and correctly traversing it will likely take substantial time so probably don't implement them first, but a basic implementation and small optimisations because of it (e.g. removing clearly useless assignments) would be interesting and probably doable. CSE also requires heuristics for when to apply it.
@@ -37,4 +43,52 @@ Control Flow Analysis is yet another step of complexity higher, requiring a cons
 
 Both of these approaches likely benefit from knowing whether a variable is a value or a pointer, as both are just integers in wasm. May be able to annotate when initially generating code or with some simple analysis steps (e.g. tracking return value of \verb|alloc| function, knowing that will be used as a reference only). Otherwise, possibility of a variable being a reference will require much stronger analysis to determine if assumptions can actually be made about it or not.
 
+\subsection*{Types of graph/analysis passes}
+
+\begin{enumerate}
+\item \textbf{Flowgraph: } Nodes are instructions with predecessor and successor links. Typically based around a lower level 3-instruction address format but same applies. Start of function has no predecessor, end has no successor. Usual ALU operations (and function calls, loads, etc.) have one successor and conditional instructions have two (fall through vs taken). \\
+Indirect branches slightly more complex, need to include all possible branch targets as successors which leads to significantly conservative estimate, issue if function pointers are passed around a lot before use. 
+
+Basic block: Sequence of linear instructions with each node having 1 successor/predecessor except ends. Speed up computation as can store most information per-block rather than calculating and storing per-instruction (may recompute within block when actually modifying code).
+
+Often use a different temporary everywhere one is needed initially, then collapse later. Such a basic block is in `normal form'.
+
+Unreachable code elimination follows simply from this by just marking each top level entry point as reachable then propagating. Any unmarked code at end can be removed.
+
+\item \textbf{Call-graph: } Node for each procedure and edge wherever one procedure calls another. Again have an issue where function calls are indirect as may have to treat as calling any procedure visible from there (or passed to there as another function's result).
+
+Allows unreachable-procedure elimination, same as code but for whole procedures. Depending on how we want compiler to work, could have to assume this is all top-level functions. 
+
+\item \textbf{Live variables: } Annotation added to a flowgraph by backwards analysis. $x$ live at node $n$ if execution starting at $n$ can have result affected by changing $x$ (of course can only approximate in graph due to if statements e.g. `if t = true then update x; if t = false then update x; x', $x$ not live before this as it gets updated on either path, but may not be able to tell).
+
+At node $n$: $live(n) = \bigcup_{s \in succ(n)} live(s) \setminus def(n) \cup ref(n)$ i.e. variables live at next node, minus ones defined at this node, union ones referenced at this node. Odd in that it works backwards from the end of programs. Can do in blocks to speed up analysis, only check per-instruction when actually making changes.
+
+Indirect variables and assignments cause issues, have to be pessimistic and assume could be any variable used (and no variable assigned to), called ambiguous definitions/references.
+
+Used for register colouring i.e. Can reuse local variable locations of the correct type for multiple variables which don't overlap in when they are `live'.
+
+\item \textbf{Availble expressions: }Similar to LVA but relies on expressions (right side of 3 instruction address, may be difficult for stack based IR). $e$ available at node $n$ if every path leading to $n$ evaluates $e$ and no variable in $e$ has been modified (i.e. recomputing would be identical). Note that paths may have different instructions generating $e$ so need to be careful about working out if invalidated or not, need every one to still be valid else reusing result could occasionally be wrong. 
+
+$avail(n) = \bigcap_{p \in pred(n)} \left(avail(p) \setminus kill(p) \cup gen(p) \right)$ is set of expressions e.g. $y + z$. $gen$ is ones computed at the node (unless assigned to a variable used), $kill$ is variable(s) updated. $avail(n) = \{\}$ if no predecessors. Again have to deal with possible indirect variables. 
+
+Actual use for CSE then makes sure each generating instruction (first on each path) assigns value to same location then copies to wherever actually needed. Note, if value is large and has to be put into memory etc., then may be more expensive than actually worth compared to just recomputing twice and minimising memory accesses. Depends how many times it is used and how much work there is to manipulate it. 
+
+Actually an inefficiency on its own usually, need copy propagation or considering larger blocks as expressions to significantly simplify programs. 
+
+\item \textbf{Control flow analysis: } Constraint system to assign a set of possible values to each part of a program. Lecture notes only give example in terms of lambda calculus, gets notably more complex/less useful when recursion and lots of different operations added. Also need to ensure that constraint solution technique implemented both isn't too conservative and is actually valid. Almost certainly doesn't work well with very small stack instructions or mutable references. Also note that all calls to a procedure can be treated as the same, so get a faster but more conservative solution, or can create a new instance each time, which gives a more precise answer but more expensive to recompute call body.
+
+Likely too complex to implement.
+\end{enumerate}
+
+
+\subsection*{Decision points: }
+Possibility of indirect calls makes analysis much harder unless scope of target can be narrowed down slightly. \\
+
+Amount of information in each instruction. 3-address instructions specify where to get value from, what to do, and where to put result all at once so can do analysis mostly looking at individual instrucitons. This doesn't work in stack format since same operation takes multiple instructions. Hence probably want to work at a slightly higher level then break down into get, operate, store sequences at back-end.\\
+
+Most complex optimisations based on an imperative, mutable language. Want to be at a low enough level to allow joining together registers (local locations) which don't overlap, but realistically not gonig to see many cases where variables overwritten during functional code (although this is a good thing for stuff like CSE).\\
+
+Very complex/open methods like constraint based CFA probably too much to implement. Can achieve a very naive equivalent by sticking to constant propagation/folding and recognising a few trivial cases to check when loops will happen or not. \\
+
+What should be considered the entry points? All top level declarations? Or \textbf{use an mli file to indicate which should be exported} and limit how wide the starting point is. Would require working out how to interpret mli files. Possible extension if graph methods implemented.
 \end{document}
