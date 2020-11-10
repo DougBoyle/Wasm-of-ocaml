@@ -47,8 +47,8 @@ type imm_expr_desc =
 type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
 type partialFlag = Partial | Total
-
 type recFlag = Recursive | Nonrecursive
+type dirFlag = Upto | Downfrom
 
 type compound_expr_desc =
   | CImm of imm_expr
@@ -58,13 +58,26 @@ type compound_expr_desc =
   | CField of imm_expr * int32
   | CMakeBlock of int32 * imm_expr list (* Tuples, References, Datatypes (constant/block). Mutable flag needed or not? *)
   | CGetTag of imm_expr
+  (* if(i, e_1, e_2) evals e_1 if i=0 else e_2 *)
   | CIf of imm_expr * linast_expr * linast_expr
   | CWhile of imm_expr * linast_expr
-  | CSwitch of imm_expr * (int * linast_expr) list * partialFlag (* Includes both constant and block versions *)
+  (* for i = e1 direction e2 do linast_expr - variable will be modified by local get/set *)
+  | CFor of Ident.t * imm_expr * imm_expr * dirFlag * linast_expr
+  (* No stringswitch for now - Wasm doesn't have strings so may not implement any string manipulation until later *)
+  (* Will match both constant and block tags. Guards are encoded as part of the enclosed expression *)
+  | CSwitch of imm_expr * (int * linast_expr) list * partialFlag
+  (* Evaluate body, escape to second expression if constant pattern/guard expression fails. *)
+  | CMatchTry of int32 * linast_expr * linast_expr
+  (* Guard expression or constant pattern failed, escape to trying other patterns. int32 allows identifying one of
+     several nested CMatchTry expressions, can optimise in future to jump past some ruled out cases e.g:
+     A(5, _) when e -> ...  Fail on testing 5 can jump to 3rd case, fail on testing e jumps to 2nd case
+     A(5, _) -> ...
+     ...  *)
+  | CMatchFail of int32
   | CApp of imm_expr * imm_expr list
   (* AppBuiltin left out, is part of binop equal, makeblock, etc. These call runtime when translated, not at this level *)
   | CFunction of Ident.t list * linast_expr (* Recursion done at higher level *)
-  (* TODO: Leave out until I know if I can support strings in wasm or not | CString of string *)
+  (* TODO: Leave out until I know if I can support strings in wasm or not: | CString of string *)
 
 and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
