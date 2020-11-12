@@ -47,9 +47,9 @@ type imm_expr_desc =
 type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
 type partialFlag = Partial | Total
-type recFlag = Recursive | Nonrecursive
+type recFlag = Asttypes.rec_flag = Nonrecursive | Recursive
 type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be renamed *)
-type dirFlag = Upto | Downfrom
+type dirFlag = Asttypes.direction_flag = Upto | Downto
 
 type compound_expr_desc =
   | CImm of imm_expr
@@ -86,7 +86,7 @@ and linast_expr_desc =
   (* global rules may get more challenging if using mli file or considering redeclarations of variables *)
   | LLet of recFlag * globalFlag * (Ident.t * compound_expr) list * linast_expr
   | LSeq of compound_expr * linast_expr
-  | LCompound of compound_expr (* Squence of 'let's is ended by a block of all exported identifiers *)
+  | LCompound of compound_expr
 
 and linast_expr = {desc : linast_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
