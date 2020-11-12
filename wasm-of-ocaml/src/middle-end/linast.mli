@@ -48,6 +48,7 @@ type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotation
 
 type partialFlag = Partial | Total
 type recFlag = Recursive | Nonrecursive
+type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be renamed *)
 type dirFlag = Upto | Downfrom
 
 type compound_expr_desc =
@@ -82,8 +83,8 @@ type compound_expr_desc =
 and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
 and linast_expr_desc =
-  (* TODO: What is global-flag being used for in Grain anf tree? - telling which symbols to export maybe? *)
-  | LLet of recFlag * (Ident.t * compound_expr) list * linast_expr
+  (* global rules may get more challenging if using mli file or considering redeclarations of variables *)
+  | LLet of recFlag * globalFlag * (Ident.t * compound_expr) list * linast_expr
   | LSeq of compound_expr * linast_expr
   | LCompound of compound_expr (* Squence of 'let's is ended by a block of all exported identifiers *)
 
@@ -91,5 +92,8 @@ and linast_expr = {desc : linast_expr_desc; loc : Location.t; env : Env.t; annot
 
 
 (* Both grain and Lambda have a single tree at top, not a list anymore *)
-(* How to close off sequence of let expressions? Lambda puts an object containing all toplevel elements at end, don't
-   know what grain does - what is the benefit of this, to identify which things should be exported? *)
+(* How to close off sequence of let expressions?
+  Lambda puts an object containing all toplevel elements at end.
+  Grain puts `Const false` at end (i.e. filler value) -
+    translated from TExpNull in case program ends with declaration
+*)
