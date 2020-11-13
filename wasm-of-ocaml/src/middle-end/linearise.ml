@@ -16,10 +16,17 @@ type linast_setup =
   | BLetRec of (Ident.t * compound_expr) list
   | BLetExport of rec_flag * (Ident.t * compound_expr) list
 
+let translate_ident path = function
+  | Val_prim p -> Primitives.translate_prim path p
+  (* May need to handle some identifiers which point directly to runtime functions e.g. Stdlib!.min
+     Could also just 'hack' these into the file as usual idents but would be inefficient and probably slower. *)
+  | _ -> (match path with Path.Pident id -> (id, []) | _ -> raise NotImplemented)
+
+
 (* Keep refering to translCore to catch special cases of labelled args, primitives, etc. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
-  |  Texp_ident (path, idLoc, valDesc) -> (* TODO: Be able to handle primitives etc. *)
+  |  Texp_ident (path, idLoc, valDesc) -> translate_ident path valDesc
 
   | Texp_constant c -> (Imm.const c, [])
 

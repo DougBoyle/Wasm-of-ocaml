@@ -2,6 +2,8 @@
 (* To be extended with any annotations needed during optimisation analysis e.g. live variables etc. *)
 type annotation
 
+(* TODO: Also need max_int and min_int constants. And 32/64 bit ints or no? i.e. 0l and 0L operators etc. *)
+
 (* Deprecated stdlib operators removed *)
 type binop =
   (* comparison *)
@@ -12,8 +14,8 @@ type binop =
   | LTE
   | GTE
   | Compare
-  | Min
-  | Max
+  | Min (* missing *)
+  | Max (* missing *)
   | Eq_phys
   | Neq_phys
   (* boolean *)
@@ -26,7 +28,7 @@ type binop =
   | Div
   | Mod
   (* list *)
-  | Append
+  | Append (* missing *)
 
 type unop =
   (* boolean *)
@@ -36,7 +38,7 @@ type unop =
   | UnAdd (* Identity - part of OCaml due to principle of least suprise, just the identity op *)
   | Succ
   | Pred
-  | Abs
+  | Abs (* missing *)
 
 (* TODO: Also need constants for max_int and min_int *)
 
