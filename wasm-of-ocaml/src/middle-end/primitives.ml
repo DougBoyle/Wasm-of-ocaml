@@ -32,15 +32,41 @@ let prim_table = create_hashtable 21 [
     "%modint", Binary (Mod);
 ]
 
-let translate_prim path primDesc =
-    let prim = lookup_primitive_and_mark_used (to_location loc) p env path in
-    let has_constant_constructor = false in
+(* TODO: Refactor all of this *)
+let bindBinary opId operator =
+    let id1, id2 = Ident.create_local "prim", Ident.create_local "prim" in
+    Linearise.BLet(opId,
+      CFunction([id1; id2], LCompound(CBinary(operator, ImmIdent id1, ImmIdent id2))))
+
+let bindUnary opId operator =
+    let id = Ident.create_local "prim" in
+    Linearise.BLet(opId,
+      CFunction([id], LCompound(CUnary(operator, ImmIdent id))))
+
+(* Creates a function performing that operation, adds it to the list of bindings + primitves mapped,
+   and returns the Ident to use. *)
+let bindOp name =
+  let opId = Ident.create_local name in
+  let binding = match Hashtbl.find prim_table name with
+    | Unary unop -> bindUnary opId unop
+    | Binary binop -> bindBinary opId binop
+  in
+  primBinds := binding :: (!primBinds);
+  primIds := (name, opId) :: (!primIds);
+  opId
+
+let translate_prim primDesc =
+    match List.assoc_opt primDesc.prim_name (!primIds) with
+    | Some id -> id
+    | None -> bindOp primDesc.prim_name
+ (*    let prim = lookup_primitive_and_mark_used (to_location loc) p env path in *)
+  (*  let has_constant_constructor = false in
     let prim =
       match specialize_primitive env ty ~has_constant_constructor prim with
       | None -> prim
       | Some prim -> prim
-    in
-    let rec make_params n =
+    in *)
+   (* let rec make_params n =
       if n <= 0 then []
       else (Ident.create_local "prim", Pgenval) :: make_params (n-1)
     in
@@ -55,4 +81,4 @@ let translate_prim path primDesc =
                    return = Pgenval;
                    attr = default_stub_attribute;
                    loc;
-                   body; }
+                   body; } *)
