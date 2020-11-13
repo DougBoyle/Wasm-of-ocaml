@@ -1,5 +1,6 @@
 open Typedtree
 open Linast
+open CompileMatch
 
 exception NotImplemented
 exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not accept these elements *)
@@ -16,16 +17,22 @@ type linast_setup =
   | BLetExport of rec_flag * (Ident.t * compound_expr) list
 
 (* Keep refering to translCore to catch special cases of labelled args, primitives, etc. *)
-let rec translate_imm {exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} =
+let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
   |  Texp_ident (path, idLoc, valDesc) -> (* TODO: Be able to handle primitives etc. *)
 
-  | Texp_constant c -> Imm.const c
-        (** 1, 'a', "true", 1.0, 1l, 1L, 1n *)
-  | Texp_let of rec_flag * value_binding list * expression
-        (** let P1 = E1 and ... and Pn = EN in E       (flag = Nonrecursive)
-            let rec P1 = E1 and ... and Pn = EN in E   (flag = Recursive)
-         *)
+  | Texp_constant c -> (Imm.const c, [])
+
+  | Texp_let(Nonerecursive, [], e) -> translate_imm e
+  | TExpLet(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
+      let (exp, exp_setup) = translate_compound vb_expr in
+      let bindList = getBindings vb_pat exp in
+      let bind_setup = List.map (fun (id, e) -> BLet(id, e)) bindList in
+      let (rest, rest_setup) = translate_imm ({e with exp_desc=TExpLet(Nonrecursive, rest, body)}) in
+      (rest, exp_setup @ bind_setup @ body_setup)
+
+  | Texp_let(Recursive, bindingList, e) -> (* TODO: Implement the recursive version *)
+
   | Texp_function of { arg_label : arg_label; param : Ident.t;
       cases : value case list; partial : partial; }
         (** [Pexp_fun] and [Pexp_function] both translate to [Texp_function].
