@@ -5,7 +5,6 @@ open CompileMatch
 open LineariseHelp
 open LinastUtils
 
-
 (* May end up needing different functions for translating to linast vs compound vs imm expr *)
 (* Can encode quite nicely as a value of required type accompanied with a set of needed linast bindings (to do left-to-right) *)
 
@@ -69,6 +68,21 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     let (record, setup) = translate_imm e in
     (Imm.id id, setup @ [BLet(id, Compound.field record (Int32.of_int labelDesc.lbl_pos))])
 
+  | Texp_setfield (e, identLoc, labelDesc, v) ->
+    let id = Ident.create_local "setfield" in
+    let (record, record_setup) = translate_imm e in
+    let (value, value_setup) = translate_imm v in
+    (Imm.id id, record_setup @ value_setup @ [BLet(id, Compound.setfield record (Int32.of_int labelDesc.lbl_pos) value)])
+
+  | Texp_ifthenelse (e1, e2, e3opt) ->
+    let (e3_lin, e3_setup) = (match e3opt with Some e -> translate_linast e
+      (* TODO: Use a single global unit, or treat as int not block *)
+      | None -> let unitId = Ident.create_local "unit" in
+                (LinastExpr.compound (Compound.imm (Imm.id unitId)), [BLet(unitId, Compound.makeblock 0l [])])) in
+    let (e1_imm, e1_setup) = translate_imm e1 in
+    let (e2_lin, e2_setup) = translate_linast e2 in
+    let id = Ident.create_local "ifthenelse" in
+    (Imm.id id, e1_setup @ e2_setup @ e3_setup @ [BLet(id, Compound.mkif e1_imm e2_lin e3_lin)])
 
 (*
 
@@ -128,9 +142,6 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
               { fields = [| l1, Kept t1; l2 Override P2 |]; representation;
                 extended_expression = Some E0 }
         *)
-  | Texp_field of expression * Longident.t loc * Types.label_description
-  | Texp_setfield of
-      expression * Longident.t loc * Types.label_description * expression
   | Texp_array of expression list
   | Texp_ifthenelse of expression * expression * expression option
   | Texp_sequence of expression * expression
@@ -154,6 +165,8 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
   | _ -> raise NotSupported
 
 and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) = raise NotImplemented
+
+and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) = raise NotImplemented
 
 let translate_binding {vb_pat; vb_expr; vb_attributes; vb_loc} = raise NotImplemented
 

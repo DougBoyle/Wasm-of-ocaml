@@ -60,7 +60,9 @@ type compound_expr_desc =
   | CField of imm_expr * int32
   | CMakeBlock of int32 * imm_expr list (* Tuples, References, Datatypes (constant/block). Mutable flag needed or not? *)
   | CGetTag of imm_expr
-  (* if(i, e_1, e_2) evals e_1 if i=0 else e_2 *)
+  (* if(i, e_1, e_2) evals e_1 if i=0 else e_2 in Wasm *)
+  (* In OCaml, true/false are constant blocks 1/0 respectively, mapped to 2/0 by my program, so need to be careful when
+     translating down to Wasm later. *)
   | CIf of imm_expr * linast_expr * linast_expr
   | CWhile of imm_expr * linast_expr
   (* for i = e1 direction e2 do linast_expr - variable will be modified by local get/set *)
