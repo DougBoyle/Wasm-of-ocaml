@@ -31,6 +31,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
 
   | Texp_constant c -> (Imm.const c, [])
 
+  (* Can probably rewrite as a fold *)
   | Texp_let(Nonrecursive, [], e) -> translate_imm e
   | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
       let (exp, exp_setup) = translate_compound vb_expr in
@@ -38,6 +39,20 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
       let bind_setup = List.map (fun (id, e) -> BLet(id, e)) bindList in
       let (rest, rest_setup) = translate_imm ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
       (rest, exp_setup @ bind_setup @ rest_setup)
+
+  | Texp_let(Recursive, binds, body) ->
+      let (binds, binds_setup) = List.split (List.map (fun {vb_pat; vb_expr} -> (vb_pat, translate_compound vb_expr)) binds) in
+      let (required_binds, required_binds_setup) = List.split binds_setup in
+      let names = List.map (function
+          | {pat_desc=Tpat_var(id, _)} -> id
+          | _ -> raise NotSupported (* LHS of let rec must be a function identifier *)) binds in
+      let (body, body_setup) = translate_compound body in
+      let bodyIdent = Ident.create_local "letrec" in
+      (Imm.id bodyIdent, (List.concat required_binds_setup)
+                             @ [BLetRec (List.combine names required_binds)]
+                             @ body_setup
+                             @ [BLet(bodyIdent, body)])
+
 
   | Texp_tuple l ->
     let id = Ident.create_local "tuple" in
@@ -48,8 +63,14 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     let id = Ident.create_local "block" in
     let (args, setup) = List.split (List.map translate_imm l) in
     (Imm.id id, (List.concat setup) @ [BLet(id, Compound.makeblock (unify_constructor_tag desc.cstr_tag) args)])
+
+  | Texp_field (e, identLoc, labelDesc) ->
+    let id = Ident.create_local "field" in
+    let (record, setup) = translate_imm e in
+    (Imm.id id, setup @ [BLet(id, Compound.field record (Int32.of_int labelDesc.lbl_pos))])
+
+
 (*
-  | Texp_let(Recursive, bindingList, e) -> (* TODO: Implement the recursive version *)
 
   | Texp_function of { arg_label : arg_label; param : Ident.t;
       cases : value case list; partial : partial; }
@@ -89,12 +110,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
                               (exception P4, E3)], _)]
          *)
 
-  | Texp_construct of
-      Longident.t loc * Types.constructor_description * expression list
-        (** C                []
-            C E              [E]
-            C (E1, ..., En)  [E1;...;En]
-         *)
+
   | Texp_variant of label * expression option
   | Texp_record of {
       fields : ( Types.label_description * record_label_definition ) array;
