@@ -1,3 +1,4 @@
+open Asttypes
 
 (* To be extended with any annotations needed during optimisation analysis e.g. live variables etc. *)
 type annotation
@@ -49,9 +50,7 @@ type imm_expr_desc =
 type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
 type partialFlag = Partial | Total
-type recFlag = Asttypes.rec_flag = Nonrecursive | Recursive
 type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be renamed *)
-type dirFlag = Asttypes.direction_flag = Upto | Downto
 
 type compound_expr_desc =
   | CImm of imm_expr
@@ -65,7 +64,7 @@ type compound_expr_desc =
   | CIf of imm_expr * linast_expr * linast_expr
   | CWhile of imm_expr * linast_expr
   (* for i = e1 direction e2 do linast_expr - variable will be modified by local get/set *)
-  | CFor of Ident.t * imm_expr * imm_expr * dirFlag * linast_expr
+  | CFor of Ident.t * imm_expr * imm_expr * direction_flag * linast_expr
   (* No stringswitch for now - Wasm doesn't have strings so may not implement any string manipulation until later *)
   (* Will match both constant and block tags. Guards are encoded as part of the enclosed expression *)
   | CSwitch of imm_expr * (int * linast_expr) list * partialFlag
@@ -86,7 +85,7 @@ and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; a
 
 and linast_expr_desc =
   (* global rules may get more challenging if using mli file or considering redeclarations of variables *)
-  | LLet of recFlag * globalFlag * (Ident.t * compound_expr) list * linast_expr
+  | LLet of rec_flag * globalFlag * (Ident.t * compound_expr) list * linast_expr
   | LSeq of compound_expr * linast_expr
   | LCompound of compound_expr
 

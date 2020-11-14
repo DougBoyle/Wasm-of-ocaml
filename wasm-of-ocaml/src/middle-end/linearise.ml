@@ -1,25 +1,16 @@
 open Typedtree
 open Linast
+open Types
 open CompileMatch
+open LineariseHelp
+open LinastUtils
 
-exception NotImplemented
-exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not accept these elements *)
 
 (* May end up needing different functions for translating to linast vs compound vs imm expr *)
 (* Can encode quite nicely as a value of required type accompanied with a set of needed linast bindings *)
 
 (* A list equivalent to a Linast: Collect a sequence of the bindings needed as we translate things
    then merge them into a Linast tree at the end. *)
-type linast_setup =
-  | BEffect of compound_expr
-  | BLet of Ident.t * compound_expr
-  | BLetRec of (Ident.t * compound_expr) list
-  | BLetExport of rec_flag * (Ident.t * compound_expr) list
-
-(* Primative name -> Ident *)
-let primIds = ref []
-(* List of Binds to include in program *)
-let primBinds = ref []
 
 let translate_ident path = function
   | Val_prim p -> Primitives.translate_prim p
@@ -31,18 +22,18 @@ let translate_ident path = function
 (* Keep refering to translCore to catch special cases of labelled args, primitives, etc. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
-  |  Texp_ident (path, idLoc, valDesc) -> (ImmIdent (translate_ident path valDesc), [])
+  |  Texp_ident (path, idLoc, valDesc) -> (Imm.id (translate_ident path valDesc.val_kind), [])
 
   | Texp_constant c -> (Imm.const c, [])
 
-  | Texp_let(Nonerecursive, [], e) -> translate_imm e
-  | TExpLet(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
+  | Texp_let(Nonrecursive, [], e) -> translate_imm e
+  | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
       let (exp, exp_setup) = translate_compound vb_expr in
       let bindList = getBindings vb_pat exp in
       let bind_setup = List.map (fun (id, e) -> BLet(id, e)) bindList in
-      let (rest, rest_setup) = translate_imm ({e with exp_desc=TExpLet(Nonrecursive, rest, body)}) in
-      (rest, exp_setup @ bind_setup @ body_setup)
-
+      let (rest, rest_setup) = translate_imm ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
+      (rest, exp_setup @ bind_setup @ rest_setup)
+(*
   | Texp_let(Recursive, bindingList, e) -> (* TODO: Implement the recursive version *)
 
   | Texp_function of { arg_label : arg_label; param : Ident.t;
@@ -129,8 +120,10 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     }
   | Texp_unreachable
   | Texp_extension_constructor of Longident.t loc * Path.t
+  *)
   | _ -> raise NotSupported
 
+and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) = raise NotImplemented
 
 let translate_binding {vb_pat; vb_expr; vb_attributes; vb_loc} = raise NotImplemented
 

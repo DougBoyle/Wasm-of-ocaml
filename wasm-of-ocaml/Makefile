@@ -3,3 +3,5 @@ all:
 	ocamlbuild -pkg unix -Is $(dirs) main.byte
 ir:
 	ocamlbuild -pkg unix -Is $(dirs)/middle-end linast.cmi
+linear:
+	ocamlbuild -pkg unix -Is $(dirs)/middle-end linearise.byte

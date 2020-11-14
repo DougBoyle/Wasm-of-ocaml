@@ -1,11 +1,14 @@
 open Linast
+open LineariseHelp
+open LinastUtils
+
 (* More challenging going to the Grain format - Grain uses datatypes of operations whereas Lambda
    uses a set of Prims with Lists of Lambda args, much more flexible and can pattern match it all *)
 
 (* Can just make more specialised, simply case split for unary vs binary operators *)
 type arity = Unary of unop | Binary of binop
 
-let prim_table = create_hashtable 21 [
+let prim_table = Misc.create_hashtable 21 [
     "%equal", Binary(Eq);
     "%notequal", Binary(Neq);
     "%lessequal", Binary(LTE);
@@ -35,13 +38,14 @@ let prim_table = create_hashtable 21 [
 (* TODO: Refactor all of this *)
 let bindBinary opId operator =
     let id1, id2 = Ident.create_local "prim", Ident.create_local "prim" in
-    Linearise.BLet(opId,
-      CFunction([id1; id2], LCompound(CBinary(operator, ImmIdent id1, ImmIdent id2))))
+    BLet(opId, Compound.mkfun [id1; id2] (LinastExpr.compound (Compound.binary operator (Imm.id id1) (Imm.id id2))))
+  (*    CFunction([id1; id2], LCompound(CBinary(operator, ImmIdent id1, ImmIdent id2))) *)
 
 let bindUnary opId operator =
     let id = Ident.create_local "prim" in
-    Linearise.BLet(opId,
-      CFunction([id], LCompound(CUnary(operator, ImmIdent id))))
+    BLet(opId, Compound.mkfun [id] (LinastExpr.compound (Compound.unary operator (Imm.id id))))
+  (*  BLet(opId,
+      CFunction([id], LCompound(CUnary(operator, ImmIdent id)))) *)
 
 (* Creates a function performing that operation, adds it to the list of bindings + primitves mapped,
    and returns the Ident to use. *)
@@ -55,7 +59,7 @@ let bindOp name =
   primIds := (name, opId) :: (!primIds);
   opId
 
-let translate_prim primDesc =
+let translate_prim (primDesc : Primitive.description) =
     match List.assoc_opt primDesc.prim_name (!primIds) with
     | Some id -> id
     | None -> bindOp primDesc.prim_name
