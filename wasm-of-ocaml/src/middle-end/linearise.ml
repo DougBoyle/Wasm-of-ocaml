@@ -7,10 +7,15 @@ open LinastUtils
 
 
 (* May end up needing different functions for translating to linast vs compound vs imm expr *)
-(* Can encode quite nicely as a value of required type accompanied with a set of needed linast bindings *)
+(* Can encode quite nicely as a value of required type accompanied with a set of needed linast bindings (to do left-to-right) *)
 
 (* A list equivalent to a Linast: Collect a sequence of the bindings needed as we translate things
    then merge them into a Linast tree at the end. *)
+
+let unify_constructor_tag = function
+  | Cstr_constant i -> Int32.shift_left (Int32.of_int i) 1
+  | Cstr_block i -> Int32.logor (Int32.shift_left (Int32.of_int i) 1) 1l
+  | _ -> raise NotSupported
 
 let translate_ident path = function
   | Val_prim p -> Primitives.translate_prim p
@@ -33,6 +38,16 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
       let bind_setup = List.map (fun (id, e) -> BLet(id, e)) bindList in
       let (rest, rest_setup) = translate_imm ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
       (rest, exp_setup @ bind_setup @ rest_setup)
+
+  | Texp_tuple l ->
+    let id = Ident.create_local "tuple" in
+    let (args, setup) = List.split (List.map translate_imm l) in
+    (Imm.id id, (List.concat setup) @ [BLet(id, Compound.makeblock 0l args)])
+
+  | Texp_construct (identLoc, desc, l) ->
+    let id = Ident.create_local "block" in
+    let (args, setup) = List.split (List.map translate_imm l) in
+    (Imm.id id, (List.concat setup) @ [BLet(id, Compound.makeblock (unify_constructor_tag desc.cstr_tag) args)])
 (*
   | Texp_let(Recursive, bindingList, e) -> (* TODO: Implement the recursive version *)
 
@@ -73,8 +88,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
             [Texp_match (E0, [(P1, E1); (P2 | exception P3, E2);
                               (exception P4, E3)], _)]
          *)
-  | Texp_tuple of expression list
-        (** (E1, ..., EN) *)
+
   | Texp_construct of
       Longident.t loc * Types.constructor_description * expression list
         (** C                []
