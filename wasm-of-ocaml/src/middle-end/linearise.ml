@@ -63,6 +63,26 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     let (args, setup) = List.split (List.map translate_imm l) in
     (Imm.id id, (List.concat setup) @ [BLet(id, Compound.makeblock (unify_constructor_tag desc.cstr_tag) args)])
 
+ (* Made easier by fact that Typedtree always puts fields in order, regardless of order in program.
+    Hence no need to do sorting or check label descriptions *)
+ (* TODO: Having to convert arrays to lists suggests I should represent things slightly differently here *)
+  | Texp_record {fields; extended_expression} ->
+    let id = Ident.create_local "record" in
+    (match extended_expression with
+    (* Not built off of anything so each field must be Overridden *)
+    | None -> let (args, setup) =
+        List.split (List.map (function (_, Overridden(_, e)) -> translate_imm e | _ -> raise NotSupported) (Array.to_list fields))
+      in (Imm.id id, (List.concat setup) @ [BLet(id, Compound.makeblock 0l args)])
+    | Some e -> let extract_field original i = (function
+         | (_, Overridden(_, e)) -> translate_imm e
+         | (_, Kept _) -> let fieldId = Ident.create_local "field" in
+           (Imm.id fieldId, [BLet(id, Compound.field original (Int32.of_int i))]))
+       in let (original, original_setup) = translate_imm e in
+       let (args, setup) = List.split (List.mapi (extract_field original) (Array.to_list fields))
+       in (Imm.id id, original_setup @ (List.concat setup) @ [BLet(id, Compound.makeblock 0l args)])
+
+    )
+
   | Texp_field (e, identLoc, labelDesc) ->
     let id = Ident.create_local "field" in
     let (record, setup) = translate_imm e in
