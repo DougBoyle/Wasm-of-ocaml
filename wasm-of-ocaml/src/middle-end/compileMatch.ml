@@ -103,3 +103,8 @@ let rec getBindings fail (pat : pattern) expr = match pat.pat_desc with
   | Tpat_array pl -> raise NotImplemented
   | Tpat_variant (_, _, _) -> raise NotImplemented
   | _ -> raise NotSupported
+
+(* Texp_function is computation case list,
+   Texp_match is value case list. Likely want some central 'compile' function and two interface functions that call into it.
+   Also need to handle merging curried texp_functions into one. *)
+let rec translate_match (e, cases, partial) = raise NotImplemented

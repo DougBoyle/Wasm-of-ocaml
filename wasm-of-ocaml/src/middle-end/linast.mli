@@ -78,7 +78,7 @@ type compound_expr_desc =
   | CFor of Ident.t * imm_expr * imm_expr * direction_flag * linast_expr
   (* No stringswitch for now - Wasm doesn't have strings so may not implement any string manipulation until later *)
   (* Will match both constant and block tags. Guards are encoded as part of the enclosed expression *)
-  | CSwitch of imm_expr * (int * linast_expr) list * partialFlag
+  | CSwitch of imm_expr * (int * linast_expr) list * (imm_expr option)
   (* Evaluate body, escape to second expression if constant pattern/guard expression fails. *)
   (* int32 marker may or may not be needed, either to track nesting depth (need extra 'depth' arg in many functions)
      or just to uniquely identify where to fail to in ImmMatchFail. Giving multiple jump options can speed up matches. *)

@@ -1,3 +1,5 @@
+wasm-of-ocaml/src/middle-end/ocamltransl.ml
+
 *.annot
 *.cmo
 *.cma
