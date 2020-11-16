@@ -1,10 +1,16 @@
 open Linast
+open Types
 
 let defaultLoc = Location.none
 let defaultEnv = Env.empty
 
 exception NotImplemented
 exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not accept these elements *)
+
+let unify_constructor_tag = function
+  | Cstr_constant i -> Int32.shift_left (Int32.of_int i) 1
+  | Cstr_block i -> Int32.logor (Int32.shift_left (Int32.of_int i) 1) 1l
+  | _ -> raise NotSupported
 
 type linast_setup =
   | BEffect of compound_expr
@@ -46,7 +52,8 @@ module Compound = struct
   let mkwhile imm e = mk (CWhile (imm, e))
   let mkfor id start stop dir e = mk (CFor (id, start, stop, dir, e))
   let mkswitch imm cases partial = mk (CSwitch (imm, cases, partial))
-  let matchtry i e1 e2 = mk (CMatchTry (i, e1, e2))
+(*  let matchtry i e1 e2 = mk (CMatchTry (i, e1, e2)) *)
+  let matchtry e1 e2 = mk (CMatchTry (e1, e2))
   let app imm args = mk (CApp (imm, args))
   let mkfun params e = mk (CFunction (params, e))
 end

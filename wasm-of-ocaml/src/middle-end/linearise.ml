@@ -10,11 +10,6 @@ open LinastUtils
 (* A list equivalent to a Linast: Collect a sequence of the bindings needed as we translate things
    then merge them into a Linast tree at the end. *)
 
-let unify_constructor_tag = function
-  | Cstr_constant i -> Int32.shift_left (Int32.of_int i) 1
-  | Cstr_block i -> Int32.logor (Int32.shift_left (Int32.of_int i) 1) 1l
-  | _ -> raise NotSupported
-
 let translate_ident path = function
   | Val_prim p -> Primitives.translate_prim p
   (* May need to handle some identifiers which point directly to runtime functions e.g. Stdlib!.min
