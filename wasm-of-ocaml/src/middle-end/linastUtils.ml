@@ -3,6 +3,20 @@ open Linast
 let defaultLoc = Location.none
 let defaultEnv = Env.empty
 
+exception NotImplemented
+exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not accept these elements *)
+
+type linast_setup =
+  | BEffect of compound_expr
+  | BLet of Ident.t * compound_expr
+  | BLetRec of (Ident.t * compound_expr) list
+  | BLetExport of Asttypes.rec_flag * (Ident.t * compound_expr) list
+
+(* Primative name -> Ident *)
+let primIds : (string * Ident.t) list ref = ref []
+(* List of Binds to include in program *)
+let primBinds : linast_setup list ref = ref []
+
 (* Don't worry about passing around locations/environments for now, just a hastle *)
 module Imm = struct
   let mk d : imm_expr =
@@ -12,6 +26,7 @@ module Imm = struct
        annotations=ref []}
   let id id = mk (ImmIdent id)
   let const const = mk (ImmConst const)
+  let fail i = mk (ImmMatchFail i)
 end
 
 module Compound = struct
@@ -32,7 +47,6 @@ module Compound = struct
   let mkfor id start stop dir e = mk (CFor (id, start, stop, dir, e))
   let mkswitch imm cases partial = mk (CSwitch (imm, cases, partial))
   let matchtry i e1 e2 = mk (CMatchTry (i, e1, e2))
-  let fail i = mk (CMatchFail i)
   let app imm args = mk (CApp (imm, args))
   let mkfun params e = mk (CFunction (params, e))
 end

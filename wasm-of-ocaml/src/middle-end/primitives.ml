@@ -1,5 +1,4 @@
 open Linast
-open LineariseHelp
 open LinastUtils
 
 (* More challenging going to the Grain format - Grain uses datatypes of operations whereas Lambda
@@ -20,8 +19,10 @@ let prim_table = Misc.create_hashtable 21 [
     "%eq", Binary (Eq_phys);
     "%noteq", Binary (Neq_phys);
 
+ (*  NEED TO HANDLE SPECIALLY
     "%sequand", Binary (AND);
     "%sequor", Binary (OR);
+  *)
     "%boolnot", Unary (Not);
 
     "%identity", Unary (UnAdd);
@@ -59,6 +60,7 @@ let bindOp name =
   primIds := (name, opId) :: (!primIds);
   opId
 
+(* TODO: Handle AND/OR Specially (compiles to an ifthenelse block, shouldn't actually be in Linast?? *)
 let translate_prim (primDesc : Primitive.description) =
     match List.assoc_opt primDesc.prim_name (!primIds) with
     | Some id -> id

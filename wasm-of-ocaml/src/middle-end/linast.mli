@@ -20,8 +20,10 @@ type binop =
   | Eq_phys
   | Neq_phys
   (* boolean *)
+ (* TODO: Handle these two specially i.e. if-then-else blocks, don't always evaluate both args
   | AND
   | OR
+ *)
   (* integer *)
   | Add
   | Sub
@@ -46,6 +48,13 @@ type unop =
 type imm_expr_desc =
   | ImmIdent of Ident.t
   | ImmConst of Asttypes.constant
+  (* Guard expression or constant pattern failed, escape to trying other patterns. int32 allows identifying one of
+   several nested CMatchTry expressions, can optimise in future to jump past some ruled out cases e.g:
+   A(5, _) when e -> ...  Fail on testing 5 can jump to 3rd case, fail on testing e jumps to 2nd case
+   A(5, _) -> ...
+   ...  *)
+  (* CMatchFail -1l => actual pattern match failure, trap *)
+  | ImmMatchFail of int32
 
 type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
@@ -72,12 +81,6 @@ type compound_expr_desc =
   | CSwitch of imm_expr * (int * linast_expr) list * partialFlag
   (* Evaluate body, escape to second expression if constant pattern/guard expression fails. *)
   | CMatchTry of int32 * linast_expr * linast_expr
-  (* Guard expression or constant pattern failed, escape to trying other patterns. int32 allows identifying one of
-     several nested CMatchTry expressions, can optimise in future to jump past some ruled out cases e.g:
-     A(5, _) when e -> ...  Fail on testing 5 can jump to 3rd case, fail on testing e jumps to 2nd case
-     A(5, _) -> ...
-     ...  *)
-  | CMatchFail of int32
   | CApp of imm_expr * imm_expr list
   (* AppBuiltin left out, is part of binop equal, makeblock, etc. These call runtime when translated, not at this level *)
   | CFunction of Ident.t list * linast_expr (* Recursion done at higher level *)
