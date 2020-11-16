@@ -17,6 +17,9 @@ type linast_setup =
   | BLet of Ident.t * compound_expr
   | BLetRec of (Ident.t * compound_expr) list
   | BLetExport of Asttypes.rec_flag * (Ident.t * compound_expr) list
+  (* Cases where binding can fail on first pattern, in which case binding retried on second. Same as CMatchTry *)
+  (* Only case of recursion in making bindings *)
+  | BTry of int32 * (linast_setup list) * (linast_setup list)
 
 (* Primative name -> Ident *)
 let primIds : (string * Ident.t) list ref = ref []
@@ -52,8 +55,8 @@ module Compound = struct
   let mkwhile imm e = mk (CWhile (imm, e))
   let mkfor id start stop dir e = mk (CFor (id, start, stop, dir, e))
   let mkswitch imm cases partial = mk (CSwitch (imm, cases, partial))
-(*  let matchtry i e1 e2 = mk (CMatchTry (i, e1, e2)) *)
-  let matchtry e1 e2 = mk (CMatchTry (e1, e2))
+  let matchtry i e1 e2 = mk (CMatchTry (i, e1, e2))
+ (* let matchtry e1 e2 = mk (CMatchTry (e1, e2)) *)
   let app imm args = mk (CApp (imm, args))
   let mkfun params e = mk (CFunction (params, e))
 end

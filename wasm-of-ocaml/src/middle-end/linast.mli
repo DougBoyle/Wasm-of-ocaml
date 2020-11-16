@@ -82,7 +82,7 @@ type compound_expr_desc =
   (* Evaluate body, escape to second expression if constant pattern/guard expression fails. *)
   (* int32 marker may or may not be needed, either to track nesting depth (need extra 'depth' arg in many functions)
      or just to uniquely identify where to fail to in ImmMatchFail. Giving multiple jump options can speed up matches. *)
-  | CMatchTry of (* int32 * *) linast_expr * linast_expr
+  | CMatchTry of int32 * linast_expr * linast_expr
   | CApp of imm_expr * imm_expr list
   (* AppBuiltin left out, is part of binop equal, makeblock, etc. These call runtime when translated, not at this level *)
   | CFunction of Ident.t list * linast_expr (* Recursion done at higher level *)

@@ -31,7 +31,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
   | Texp_let(Nonrecursive, [], e) -> translate_imm e
   | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
       let (exp, exp_setup) = translate_compound vb_expr in
-      let bindList = getBindings vb_pat exp in
+      let bindList = getBindings fail_trap vb_pat exp in
       let (rest, rest_setup) = translate_imm ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
       (rest, exp_setup @ bindList @ rest_setup)
 
