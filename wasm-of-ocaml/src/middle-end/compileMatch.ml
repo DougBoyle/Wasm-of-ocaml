@@ -18,7 +18,6 @@ let next_fail_count () =
 
 (* pattern -> comp_expr -> BLet list *)
 (* value of expression needed in case that it first needs binding to something e.g. TPat_var or alias *)
-(* TODO: Must be able to indicate when match has failed e.g. let 5 = x in ...  Need to use fail -1 *)
 (* For 'let pattern = expr ...' statements *)
 (* Inefficient in some places when expr = Compound.Imm (Imm.id x) - creates another identifier bound to the same thing.
    Should be able to remove this when doing common subexpression elimination/dead assignment elimination. *)
@@ -104,7 +103,25 @@ let rec getBindings fail (pat : pattern) expr = match pat.pat_desc with
   | Tpat_variant (_, _, _) -> raise NotImplemented
   | _ -> raise NotSupported
 
-(* Texp_function is computation case list,
-   Texp_match is value case list. Likely want some central 'compile' function and two interface functions that call into it.
+(* Texp_function is value case list,
+   Texp_match is computation case list. Likely want some central 'compile' function and two interface functions.
    Also need to handle merging curried texp_functions into one. *)
 let rec translate_match (e, cases, partial) = raise NotImplemented
+
+(* Just do most naive approach initially, optimise/do grouping once I have something that works at least.
+   Can decide based on time available/how bad the initial output is. *)
+
+(* Takes a (pattern * compound) list and Compound to match and outputs a compound (+ setup) which does the match + evaluation*)
+(* Ocaml doesn't have ML's general `let f [] [] = a | (x::xs) _ = b | ...` syntax, only 1 expr/pattern to check naively *)
+(* TODO: Check for exhaustiveness where possible *)
+(* TODO: Use Switch whenever multiple constructor patterns found (partial -> result of the matching) *)
+(* TODO: Split head off of each pattern rather than working down linearly one-at-a-time *)
+(* Is there every actually any `setup` to do for pattern matching? All part of the binds return by getBinds *)
+let rec compile_match fail expr = function
+  | [] -> Compound.imm (Imm.fail fail) (* All cases exhausted *)
+  | (pat, e)::rest -> let rest = compile_match fail expr rest in
+    let new_fail = next_fail_count () in
+    let binds = getBindings new_fail pat expr in
+    Compound.matchtry new_fail (binds_to_anf binds e) (LinastExpr.compound rest)
+
+(* TODO: Check BTry(i, binds1, binds2) works well with passing around setups for other expressions *)
