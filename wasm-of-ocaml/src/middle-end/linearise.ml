@@ -123,33 +123,24 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
   (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
   | Texp_function { arg_label; param; cases; partial; } -> raise NotImplemented
 
-
   (* Fully applied primitive *)
-  | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p}); exp_type = prim_type } as funct, oargs)
+  | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p}); exp_type = prim_type }, oargs)
       when List.length oargs >= p.prim_arity && List.for_all (fun (_, arg) -> arg <> None) oargs ->
-      raise NotImplemented
-     (*   let argl, extra_args = take p.prim_arity oargs in
+        let argl, extra_args = take p.prim_arity oargs in
         let arg_exps =
-           List.map (function _, Some x -> x | _ -> assert false) argl (* Remove option due to guard above *)
+           List.map (function _, Some x -> x | _ -> assert false) argl
         in
-        let (args, arg_setup) = List.split (List.map translate_imm arg_exps) in
-        let prim_exp = if extra_args = [] then Some e else None in  (* ------ *)
-        let lam =
-          Translprim.transl_primitive_application
-            (of_location ~scopes e.exp_loc) p e.exp_env prim_type path
-            prim_exp args arg_exps
+        let (args, arg_setups) = List.split (List.map translate_imm arg_exps) in
+        let op = Primitives.translate_prim_app p args
         in
-        if extra_args = [] then lam (* ------ *)
-        else (* Lots of optimisation options that can be removed *)
-         (* let e = { e with exp_desc = Texp_apply(funct, oargs) } in  --- No attributes removed so unchanged *)
-         (* Just what would be called in usual case except lam = transl_exp funct *)
-         (* event_after just returns last argument unless debug mode enabled *)
-          transl_apply ~scopes ~should_be_tailcall:false ~inlined:Default_inline ~specialised:Default_specialise
-            lam extra_args (of_location ~scopes e.exp_loc)
-*)
+        let id = Ident.create_local "opapply" in
+        if extra_args = [] then (Imm.id id, (List.concat arg_setups) @ [BLet(id, op)])
+        else let (app, setup) = transl_apply op extra_args in
+        (Imm.id id, (List.concat arg_setups) @ setup @ [BLet(id, app)])
 
   | Texp_apply (f, args) -> let id = Ident.create_local "apply" in
-    let (app, setup) = transl_apply f args in (Imm.id id, (BLet(id, app))::setup)
+    let (f_compound, fsetup) = translate_compound f in
+    let (app, setup) = transl_apply f_compound args in (Imm.id id, fsetup @ setup @ [BLet(id, app)])
 
   | Texp_match (e, cases, partial) -> raise NotImplemented
 
@@ -161,6 +152,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
 (* Can't see why optional arguments matter? Just due to pre-evaluating supplied ones? *)
 (* TODO: Not fully handling optional/labelled args, differs from how OCaml compiler handles transl_apply *)
 (* Returns a compound expr *)
+(* f already compiled to compound *)
 and transl_apply f args =
   let rec getSetupAndImms = function
     | [] -> ([], [])
@@ -168,7 +160,7 @@ and transl_apply f args =
     | (_, Some e) :: rest -> let (im, s) = translate_imm e in
       let (args, setup) = getSetupAndImms rest in ((Some im) :: args, s @ setup)
   in let (args, argsetup) = getSetupAndImms args in
-  let (f, fsetup) = translate_compound f in
+(*  let (f, fsetup) = translate_compound f in *)
 
   let flattenApp (f : compound_expr) args = match f.desc with
     | CApp(f', args') -> ({f with desc=CApp(f', args' @ args)}, [])
@@ -184,8 +176,8 @@ and transl_apply f args =
   in let (ab, ap) = getAbstractionsAndApplications args in
   let (newF, newSetup) = flattenApp f ap in
 
-  match ab with [] -> (newF, fsetup @ argsetup @ newSetup) (* The usual obvious case *)
-    | _ -> (Compound.mkfun ab (LinastExpr.compound newF), fsetup @ argsetup @ newSetup)
+  match ab with [] -> (newF, argsetup @ newSetup) (* The usual obvious case *)
+    | _ -> (Compound.mkfun ab (LinastExpr.compound newF), argsetup @ newSetup)
   (* TODO: Check all setup expressions carried through to final return value *)
 
 
