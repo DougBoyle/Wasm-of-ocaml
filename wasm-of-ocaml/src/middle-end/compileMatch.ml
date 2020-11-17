@@ -115,7 +115,6 @@ let include_guard fail expr = function
 (* Texp_function is value case list,
    Texp_match is computation case list. Likely want some central 'compile' function and two interface functions.
    Also need to handle merging curried texp_functions into one. *)
-let rec translate_match (e, cases, partial) = raise NotImplemented
 
 (* Just do most naive approach initially, optimise/do grouping once I have something that works at least.
    Can decide based on time available/how bad the initial output is. *)

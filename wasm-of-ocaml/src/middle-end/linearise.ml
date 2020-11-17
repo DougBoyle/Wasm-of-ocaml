@@ -39,7 +39,8 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
       (rest, exp_setup @ bindList @ rest_setup)
 
   | Texp_let(Recursive, binds, body) ->
-      let (binds, binds_setup) = List.split (List.map (fun {vb_pat; vb_expr} -> (vb_pat, translate_compound vb_expr)) binds) in
+      let (binds, binds_setup) =
+        List.split (List.map (fun {vb_pat; vb_expr} -> (vb_pat, translate_compound vb_expr)) binds) in
       let (required_binds, required_binds_setup) = List.split binds_setup in
       let names = List.map (function
           | {pat_desc=Tpat_var(id, _)} -> id
@@ -134,10 +135,8 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
            (Imm.id id, setup @ [BLet(id, {comp with desc=CFunction(param::args, body)})])
          | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
        )
-   | _ -> let cases = List.map
-      (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard))
-      cases in
-    let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) cases in
+   | _ ->
+    let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
     (Imm.id id, setup @ [BLet(id, Compound.mkfun [param] (LinastExpr.compound comp))])
    )
 
@@ -160,8 +159,14 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     let (f_compound, fsetup) = translate_compound f in
     let (app, setup) = transl_apply f_compound args in (Imm.id id, fsetup @ setup @ [BLet(id, app)])
 
-  | Texp_match (e, cases, partial) -> raise NotImplemented
-
+  | Texp_match (e, cases, partial) ->
+   let result_id = Ident.create_local "match" in
+   let cases = List.map (fun case -> match split_pattern case.c_lhs with
+      | (Some p, None) -> {case with c_lhs=p}
+      | _ -> raise NotSupported (* No exception patterns allowed *)) cases in
+   let (arg, arg_setup) = translate_imm e in
+   let (body, setup) = compile_match partial fail_trap (Compound.imm arg) (transl_cases cases) in
+   (Imm.id result_id, arg_setup @ setup @ [BLet(result_id, body)])
 
   | Texp_letop {let_; ands; param; body; partial} -> raise NotImplemented
   | _ -> raise NotSupported
@@ -200,6 +205,9 @@ and transl_apply f args =
 
 
 and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) = raise NotImplemented
+
+and transl_cases cases =
+   List.map (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard)) cases
 
 and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) = raise NotImplemented
 
