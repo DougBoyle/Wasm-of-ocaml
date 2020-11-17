@@ -103,6 +103,15 @@ let rec getBindings fail (pat : pattern) expr = match pat.pat_desc with
   | Tpat_variant (_, _, _) -> raise NotImplemented
   | _ -> raise NotSupported
 
+let include_guard fail expr = function
+  | None -> (expr, [])
+  | Some (comp, setup) ->
+    let id = Ident.create_local "guard" in
+    let id_imm = Imm.id id in
+    (Compound.mkif (id_imm) (LinastExpr.compound comp) (LinastExpr.compound (Compound.imm (Imm.fail fail))),
+     setup @ [BLet(id, comp)]) (* May as well just pass it in as an immediate? *)
+
+
 (* Texp_function is value case list,
    Texp_match is computation case list. Likely want some central 'compile' function and two interface functions.
    Also need to handle merging curried texp_functions into one. *)
@@ -117,11 +126,18 @@ let rec translate_match (e, cases, partial) = raise NotImplemented
 (* TODO: Use Switch whenever multiple constructor patterns found (partial -> result of the matching) *)
 (* TODO: Split head off of each pattern rather than working down linearly one-at-a-time *)
 (* Is there every actually any `setup` to do for pattern matching? All part of the binds return by getBinds *)
-let rec compile_match fail expr = function
-  | [] -> Compound.imm (Imm.fail fail) (* All cases exhausted *)
-  | (pat, e)::rest -> let rest = compile_match fail expr rest in
+(* THIS SHOULD POSSIBLY RETURN A LINAST_EXPR INSTEAD OF A COMPOUND - MAKES MIDDLE CASE EASIER TOO *)
+let rec compile_match partial fail expr = function
+  | [] -> (Compound.imm (Imm.fail fail), []) (* All cases exhausted *)
+  | [(pat, (e, setup), guard)] when (match partial with Total -> true | _ -> false) ->
+    let binds = getBindings fail pat expr in
+    let (e', guard_setup) = include_guard fail e guard in
+    (e', binds @ guard_setup @ setup) (* Total so no matchtry, hence need to return the setup separately *)
+  | (pat, (e, setup), guard)::rest -> let (rest, rest_setup) = compile_match partial fail expr rest in
     let new_fail = next_fail_count () in
     let binds = getBindings new_fail pat expr in
-    Compound.matchtry new_fail (binds_to_anf binds e) (LinastExpr.compound rest)
+    let (e', guard_setup) = include_guard new_fail e guard in
+    (Compound.matchtry new_fail (binds_to_anf (binds @ guard_setup @ setup) e') (binds_to_anf rest_setup rest), [])
 
 (* TODO: Check BTry(i, binds1, binds2) works well with passing around setups for other expressions *)
+

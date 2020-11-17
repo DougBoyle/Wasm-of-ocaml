@@ -121,7 +121,25 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     (Imm.id id, start_setup @ finish_setup @ expr_setup @ [BLet (id, Compound.mkfor param start finish dir expr)])
 
   (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
-  | Texp_function { arg_label; param; cases; partial; } -> raise NotImplemented
+  | Texp_function { param; cases; partial; } ->
+    let id = Ident.create_local "function" in
+    (match cases with [{c_lhs=pat; c_guard=None;
+     c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
+     partial = partial'; }; exp_env; exp_type} as exp}]
+     (* Pattern always matches and never binds anything *)
+     (* Find the function for the inner body and attach param on front *)
+     when Parmatch.inactive ~partial pat ->
+       (match translate_compound exp with
+         | ({desc=CFunction(args, body);_} as comp, setup) ->
+           (Imm.id id, setup @ [BLet(id, {comp with desc=CFunction(param::args, body)})])
+         | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
+       )
+   | _ -> let cases = List.map
+      (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard))
+      cases in
+    let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) cases in
+    (Imm.id id, setup @ [BLet(id, Compound.mkfun [param] (LinastExpr.compound comp))])
+   )
 
   (* Fully applied primitive *)
   | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p}); exp_type = prim_type }, oargs)
