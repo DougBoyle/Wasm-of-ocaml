@@ -46,10 +46,9 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
         | {pat_desc=Tpat_var(id, _)} -> id
         | _ -> raise NotSupported (* LHS of let rec must be a function identifier *)) binds in
     let (body, body_setup) = translate_imm body in
-    let bodyIdent = Ident.create_local "letrec" in
     (body, (List.concat required_binds_setup)
-                           @ [BLetRec (List.combine names required_binds)]
-                           @ body_setup)
+           @ [BLetRec (List.combine names required_binds)]
+           @ body_setup)
 
   | Texp_sequence (e1, e2) ->
     let (effect, effect_setup) = translate_compound e1 in
@@ -162,12 +161,12 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     (Compound.setfield record (Int32.of_int labelDesc.lbl_pos) value, record_setup @ value_setup)
 
   | Texp_ifthenelse (e1, e2, e3opt) ->
-    let (e3_lin, e3_setup) = (match e3opt with Some e -> translate_linast e
+    let e3_lin = (match e3opt with Some e -> translate_linast e
       (* TODO: Use a single global unit, or treat as int not block *)
-      | None -> (LinastExpr.compound (Compound.makeblock 0l []), [])) in
+      | None -> LinastExpr.compound (Compound.makeblock 0l [])) in
     let (e1_imm, e1_setup) = translate_imm e1 in
-    let (e2_lin, e2_setup) = translate_linast e2 in
-    (Compound.mkif e1_imm e2_lin e3_lin, e1_setup @ e2_setup @ e3_setup)
+    let e2_lin = translate_linast e2 in
+    (Compound.mkif e1_imm e2_lin e3_lin, e1_setup)
 
   | Texp_sequence (e1, e2) ->
     let (effect, effect_setup) = translate_compound e1 in
@@ -176,14 +175,14 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
 
   | Texp_while (e1, e2) ->
       let (test, test_setup) = translate_imm e1 in
-      let (loop, loop_setup) = translate_linast e2 in
-      (Compound.mkwhile test loop, test_setup @ loop_setup)
+      let loop = translate_linast e2 in
+      (Compound.mkwhile test loop, test_setup)
   (* Translcore in OCaml doesn't use the second pattern arg, just annotation information *)
   | Texp_for (param, _, start, finish, dir, e) ->
     let (start, start_setup) = translate_imm start in
     let (finish, finish_setup) = translate_imm finish in
-    let (expr, expr_setup) = translate_linast e in
-    (Compound.mkfor param start finish dir expr, start_setup @ finish_setup @ expr_setup)
+    let expr = translate_linast e in
+    (Compound.mkfor param start finish dir expr, start_setup @ finish_setup)
 
   (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
   | Texp_function { param; cases; partial; } ->
@@ -234,9 +233,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
 and transl_cases cases =
    List.map (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard)) cases
 
-and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) = raise NotImplemented
-
-let translate_binding {vb_pat; vb_expr; vb_attributes; vb_loc} = raise NotImplemented
+and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
+  let (compound, setup) = translate_compound e in binds_to_anf setup compound
 
 let translate_structure_item {str_desc; str_loc; str_env} =
   match str_desc with
