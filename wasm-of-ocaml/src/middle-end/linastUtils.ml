@@ -64,54 +64,17 @@ type linast_setup =
   | BLet of Ident.t * compound_expr
   | BLetRec of (Ident.t * compound_expr) list
 (*  | BLetExport of Asttypes.rec_flag * (Ident.t * compound_expr) list  -- Shouldn't be needed  *)
-  (* Cases where binding can fail on first pattern, in which case binding retried on second. Same as CMatchTry *)
-  (* Only case of recursion in making bindings *)
-  (* Useful where we want to bind stuff, then run same thing after in either case
-     e.g. A(x) | B(x) -> e  should be Seq(Try(A case, B case); e)*)
-  | BTry of int32 * (linast_setup list) * (linast_setup list)
 
+let get_global_flag exported id = if List.exists (fun x -> x = id) exported then Global else Local
 
-let rec binds_to_anf binds body =
+let rec binds_to_anf ?(exported=[]) binds body =
   List.fold_right (fun bind body ->
      match bind with
      | BEffect comp -> LinastExpr.seq comp body
-     | BLet(id, comp) -> LinastExpr.mklet Nonrecursive [(id, Local, comp)] body
-     | BLetRec lets -> LinastExpr.mklet Recursive (List.map (fun (id, e) -> (id, Local, e)) lets) body
-     (* TODO: Seems messy, should be a way to make neater. Have a look at the trees produced *)
-     (* Still doesn't achieve as intended - should just get rid of this and call binds_to_anf to put
-        trees in compound, rather than having BTry *)
-     | BTry (i, binds1, binds2) ->
-       LinastExpr.seq
-        (Compound.matchtry i
-         (binds_to_anf binds1 (LinastExpr.compound (Compound.makeblock 0l []))) (* Have to put dummy unit at end of tree *)
-         (binds_to_anf binds2 (LinastExpr.compound (Compound.makeblock 0l [])))
-        )
-        body
-     (* TODO: May want to only allow compiling this if at top level *)
-   (*  | BLetExport(flag, lets) -> LinastExpr.mklet flag Global lets body *) )
-    binds body
-
-let get_global_flag globals id = if List.exists (fun x -> x = id) globals then Global else Local
-
-let rec binds_to_anf_globals globals binds body =
-  List.fold_right (fun bind body ->
-     match bind with
-     | BEffect comp -> LinastExpr.seq comp body
-     | BLet(id, comp) -> LinastExpr.mklet Nonrecursive [(id, get_global_flag globals id, comp)] body
-     | BLetRec lets -> LinastExpr.mklet Recursive (List.map (fun (id, e) -> (id, get_global_flag globals id, e)) lets) body
-     (* TODO: Seems messy, should be a way to make neater. Have a look at the trees produced *)
-     (* Still doesn't achieve as intended - should just get rid of this and call binds_to_anf to put
-        trees in compound, rather than having BTry *)
-     | BTry (i, binds1, binds2) ->
-       LinastExpr.seq
-        (Compound.matchtry i
-         (binds_to_anf_globals globals binds1 (LinastExpr.compound (Compound.makeblock 0l []))) (* Have to put dummy unit at end of tree *)
-         (binds_to_anf_globals globals binds2 (LinastExpr.compound (Compound.makeblock 0l [])))
-        )
-        body
-     (* TODO: May want to only allow compiling this if at top level *)
-   (*  | BLetExport(flag, lets) -> LinastExpr.mklet flag Global lets body *) )
-    binds body
+     | BLet(id, comp) -> LinastExpr.mklet Nonrecursive [(id, get_global_flag exported id, comp)] body
+     | BLetRec lets -> LinastExpr.mklet Recursive (List.map (fun (id, e) -> (id, get_global_flag exported id, e)) lets) body
+   (*  | BLetExport(flag, lets) -> LinastExpr.mklet flag Global lets body *)
+   ) binds body
 
 (* Primative name -> Ident *)
 let primIds : (string * Ident.t) list ref = ref []

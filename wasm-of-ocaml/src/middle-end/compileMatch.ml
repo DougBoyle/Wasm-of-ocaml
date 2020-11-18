@@ -91,11 +91,15 @@ let rec getBindings fail (pat : pattern) expr = match pat.pat_desc with
   (* Is putting expr into an ident necessary? Avoids evaluating a compound twice, but many wasted bindings if nested ORs *)
   | Tpat_or (p1, p2, _) ->
     let id = Ident.create_local "or" in
-    let expr = Compound.imm (Imm.id id) in
+    let expr' = Compound.imm (Imm.id id) in
     let new_fail = next_fail_count () in
-    let first_binds = getBindings new_fail p1 expr in
-    let second_binds = getBindings fail p2 expr in
-    [BLet(id, expr); BTry (new_fail, first_binds, second_binds)]
+    let first_binds = getBindings new_fail p1 expr' in
+    let second_binds = getBindings fail p2 expr' in
+    (* TODO: Annoying that we have to put a dummy 'unit' at the end of each case. May need an extra term to avoid this *)
+    let compound = Compound.matchtry new_fail
+      (binds_to_anf first_binds (LinastExpr.compound (Compound.makeblock 0l []))) (* Have to put dummy unit at end of tree *)
+      (binds_to_anf second_binds (LinastExpr.compound (Compound.makeblock 0l [])))
+    in [BLet(id, expr); BEffect compound]
 
 
   (* Don't expect to need to match Tpat_value or Tpat_lazy -- GADT, they aren't value patterns *)
@@ -142,5 +146,4 @@ let rec compile_match partial fail expr = function
       (binds_to_anf rest_setup (LinastExpr.compound rest)),
     [])
 
-(* TODO: Check BTry(i, binds1, binds2) works well with passing around setups for other expressions *)
 
