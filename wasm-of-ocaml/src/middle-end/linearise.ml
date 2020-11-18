@@ -109,7 +109,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     (Imm.id id, effect_setup @ [BEffect effect] @ result_setup @ [BLet(id, result)])
 
   | Texp_while (e1, e2) ->
-      let id = Ident.create_local "seq" in
+      let id = Ident.create_local "while" in
       let (test, test_setup) = translate_imm e1 in
       let (loop, loop_setup) = translate_linast e2 in
       (Imm.id id, test_setup @ loop_setup @ [BLet(id, Compound.mkwhile test loop)])
@@ -204,7 +204,137 @@ and transl_apply f args =
   (* TODO: Check all setup expressions carried through to final return value *)
 
 
-and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) = raise NotImplemented
+and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
+  match exp_desc with
+  |  Texp_ident (path, idLoc, valDesc) -> (Compound.imm (Imm.id (translate_ident path valDesc.val_kind)), [])
+
+  | Texp_constant c -> (Compound.imm (Imm.const c), [])
+
+  (* Can probably rewrite as a fold *)
+  | Texp_let(Nonrecursive, [], e) -> translate_compound e
+  | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
+      let (exp, exp_setup) = translate_compound vb_expr in
+      let bindList = getBindings fail_trap vb_pat exp in
+      let (rest, rest_setup) = translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
+      (rest, exp_setup @ bindList @ rest_setup)
+
+  | Texp_let(Recursive, binds, body) ->
+      let (binds, binds_setup) =
+        List.split (List.map (fun {vb_pat; vb_expr} -> (vb_pat, translate_compound vb_expr)) binds) in
+      let (required_binds, required_binds_setup) = List.split binds_setup in
+      let names = List.map (function
+          | {pat_desc=Tpat_var(id, _)} -> id
+          | _ -> raise NotSupported (* LHS of let rec must be a function identifier *)) binds in
+      let (body, body_setup) = translate_compound body in
+      (body, (List.concat required_binds_setup)
+               @ (BLetRec (List.combine names required_binds)) :: body_setup)
+
+  (* TODO: Refactor translate_imm to just call these *)
+  | Texp_tuple l ->
+    let (args, setup) = List.split (List.map translate_imm l) in
+    (Compound.makeblock 0l args, List.concat setup)
+
+  | Texp_construct (identLoc, desc, l) ->
+    let (args, setup) = List.split (List.map translate_imm l) in
+    (Compound.makeblock (unify_constructor_tag desc.cstr_tag) args, List.concat setup)
+
+ (* Made easier by fact that Typedtree always puts fields in order, regardless of order in program.
+    Hence no need to do sorting or check label descriptions *)
+ (* TODO: Having to convert arrays to lists suggests I should represent things slightly differently here *)
+  | Texp_record {fields; extended_expression} ->
+    let id = Ident.create_local "record" in
+    (match extended_expression with
+    (* Not built off of anything so each field must be Overridden *)
+    | None -> let (args, setup) =
+        List.split (List.map (function (_, Overridden(_, e)) -> translate_imm e | _ -> raise NotSupported) (Array.to_list fields))
+      in (Compound.makeblock 0l args, List.concat setup)
+    | Some e -> let extract_field original i = (function
+         | (_, Overridden(_, e)) -> translate_imm e
+         | (_, Kept _) -> let fieldId = Ident.create_local "field" in
+           (Imm.id fieldId, [BLet(id, Compound.field original (Int32.of_int i))]))
+       in let (original, original_setup) = translate_imm e in
+       let (args, setup) = List.split (List.mapi (extract_field original) (Array.to_list fields))
+       in (Compound.makeblock 0l args, original_setup @ (List.concat setup))
+    )
+
+  | Texp_field (e, identLoc, labelDesc) ->
+    let (record, setup) = translate_imm e in
+    (Compound.field record (Int32.of_int labelDesc.lbl_pos), setup)
+
+  | Texp_setfield (e, identLoc, labelDesc, v) ->
+    let (record, record_setup) = translate_imm e in
+    let (value, value_setup) = translate_imm v in
+    (Compound.setfield record (Int32.of_int labelDesc.lbl_pos) value, record_setup @ value_setup)
+
+  | Texp_ifthenelse (e1, e2, e3opt) ->
+    let (e3_lin, e3_setup) = (match e3opt with Some e -> translate_linast e
+      (* TODO: Use a single global unit, or treat as int not block *)
+      | None -> (LinastExpr.compound (Compound.makeblock 0l []), [])) in
+    let (e1_imm, e1_setup) = translate_imm e1 in
+    let (e2_lin, e2_setup) = translate_linast e2 in
+    (Compound.mkif e1_imm e2_lin e3_lin, e1_setup @ e2_setup @ e3_setup)
+
+  | Texp_sequence (e1, e2) ->
+    let (effect, effect_setup) = translate_compound e1 in
+    let (result, result_setup) = translate_compound e2 in
+    (result, effect_setup @ (BEffect effect)::result_setup)
+
+  | Texp_while (e1, e2) ->
+      let (test, test_setup) = translate_imm e1 in
+      let (loop, loop_setup) = translate_linast e2 in
+      (Compound.mkwhile test loop, test_setup @ loop_setup)
+  (* Translcore in OCaml doesn't use the second pattern arg, just annotation information *)
+  | Texp_for (param, _, start, finish, dir, e) ->
+    let (start, start_setup) = translate_imm start in
+    let (finish, finish_setup) = translate_imm finish in
+    let (expr, expr_setup) = translate_linast e in
+    (Compound.mkfor param start finish dir expr, start_setup @ finish_setup @ expr_setup)
+
+  (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
+  | Texp_function { param; cases; partial; } ->
+    (match cases with [{c_lhs=pat; c_guard=None;
+     c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
+     partial = partial'; }; exp_env; exp_type} as exp}]
+     (* Pattern always matches and never binds anything *)
+     (* Find the function for the inner body and attach param on front *)
+     when Parmatch.inactive ~partial pat ->
+       (match translate_compound exp with
+         | ({desc=CFunction(args, body);_} as comp, setup) ->
+           ({comp with desc=CFunction(param::args, body)}, setup)
+         | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
+       )
+   | _ ->
+    let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
+    (Compound.mkfun [param] (LinastExpr.compound comp), setup)
+   )
+
+  (* Fully applied primitive *)
+  | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p}); exp_type = prim_type }, oargs)
+      when List.length oargs >= p.prim_arity && List.for_all (fun (_, arg) -> arg <> None) oargs ->
+        let argl, extra_args = take p.prim_arity oargs in
+        let arg_exps =
+           List.map (function _, Some x -> x | _ -> assert false) argl
+        in
+        let (args, arg_setups) = List.split (List.map translate_imm arg_exps) in
+        let op = Primitives.translate_prim_app p args
+        in if extra_args = [] then (op, List.concat arg_setups)
+        else let (app, setup) = transl_apply op extra_args in
+        (app, (List.concat arg_setups) @ setup)
+
+  | Texp_apply (f, args) ->
+    let (f_compound, fsetup) = translate_compound f in
+    let (app, setup) = transl_apply f_compound args in (app, fsetup @ setup)
+
+  | Texp_match (e, cases, partial) ->
+   let cases = List.map (fun case -> match split_pattern case.c_lhs with
+      | (Some p, None) -> {case with c_lhs=p}
+      | _ -> raise NotSupported (* No exception patterns allowed *)) cases in
+   let (arg, arg_setup) = translate_imm e in
+   let (body, setup) = compile_match partial fail_trap (Compound.imm arg) (transl_cases cases) in
+   (body, arg_setup @ setup)
+
+  | Texp_letop {let_; ands; param; body; partial} -> raise NotImplemented
+  | _ -> raise NotSupported
 
 and transl_cases cases =
    List.map (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard)) cases
