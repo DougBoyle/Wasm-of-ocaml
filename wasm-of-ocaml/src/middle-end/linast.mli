@@ -95,7 +95,8 @@ and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; a
 
 and linast_expr_desc =
   (* global rules may get more challenging if using mli file or considering redeclarations of variables *)
-  | LLet of rec_flag * globalFlag * (Ident.t * compound_expr) list * linast_expr
+  (* moved global flag - can have some parts of a set of mutually recursive functions being visible without all visible *)
+  | LLet of rec_flag * (Ident.t * globalFlag * compound_expr) list * linast_expr
   | LSeq of compound_expr * linast_expr
   | LCompound of compound_expr
 

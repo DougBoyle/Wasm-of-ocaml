@@ -19,6 +19,11 @@ let translate_ident path = function
      Could also just 'hack' these into the file as usual idents but would be inefficient and probably slower. *)
   | _ -> (match path with Path.Pident id -> id | _ -> raise NotImplemented)
 
+
+let get_id_from_pattern = function
+    | {pat_desc=Tpat_var(id, _)} -> id
+    | _ -> raise NotSupported
+
 (* TODO: Texp_extension_constructor, Texp_array and Texp_variant all left out initially, may implement later once working.
          Also going to leave Texp_letop for now - can implement programmatically but again, very niche use so don't do in MVP. *)
 (* Keep refering to translCore to catch special cases of labelled args, primitives, etc. *)
@@ -97,7 +102,6 @@ and transl_apply f args =
     | _ -> (Compound.mkfun ab (LinastExpr.compound newF), argsetup @ newSetup)
   (* TODO: Check all setup expressions carried through to final return value *)
 
-
 and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
   |  Texp_ident (path, idLoc, valDesc) -> (Compound.imm (Imm.id (translate_ident path valDesc.val_kind)), [])
@@ -113,6 +117,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
       (rest, exp_setup @ bindList @ rest_setup)
 
   | Texp_let(Recursive, binds, body) ->
+      (* TODO: Why isn't it an issue that the setup of one expression may call one of the other recursive functions, hence
+               that setup surely can't come before the recursive function? *)
       let (binds, binds_setup) =
         List.split (List.map (fun {vb_pat; vb_expr} -> (vb_pat, translate_compound vb_expr)) binds) in
       let (required_binds, required_binds_setup) = List.split binds_setup in
@@ -234,14 +240,48 @@ and transl_cases cases =
    List.map (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard)) cases
 
 and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
-  let (compound, setup) = translate_compound e in binds_to_anf setup compound
+  let (compound, setup) = translate_compound e in binds_to_anf setup (LinastExpr.compound compound)
 
-let translate_structure_item {str_desc; str_loc; str_env} =
-  match str_desc with
-  | Tstr_eval (e, _) -> raise NotImplemented
-  | Tstr_value (Nonrecursive, bindList) -> raise NotImplemented
-  | Tstr_value (Recursive, bindList) -> raise NotImplemented
-  | Tstr_type _ | Tstr_typext _ | Tstr_attribute _ -> raise NotImplemented (* Should be ignored *)
-  | _ -> raise NotSupported
+let rec get_idents = function
+  | [] -> []
+  | item::rest -> (
+    match item.str_desc with
+      | Tstr_value (_, binds) -> List.rev_append (let_bound_idents binds) (get_idents rest)
+      | _ -> get_idents rest
+      (* TODO: Check no more cases to consider *)
+  )
 
-let rec translate_structure {str_items; str_type; str_final_env} = raise NotImplemented
+let rec getExports (tree, coercion) =
+  let idents = get_idents tree in
+  match coercion with
+    | Tcoerce_none -> idents
+    | Tcoerce_structure (poslist, _) ->
+      (* Subcomponents should always be Tcoerce_none. No module so single layer *)
+      List.map (fun (i, _) -> List.nth idents i) poslist
+    | _ -> raise NotSupported
+
+let rec translate_structure globals = function
+ |  [] -> LinastExpr.compound (Compound.makeblock 0l [])
+ | item::items -> (match item.str_desc with
+   | Tstr_eval (e, _) -> let (compound, setup) = translate_compound e in
+     binds_to_anf setup (LinastExpr.seq compound (translate_structure globals items))
+   | Tstr_value (Recursive, bind_list) ->
+    let binds, setups = List.fold_right (fun {vb_pat; vb_expr;} (binds, setups) ->
+      let id = get_id_from_pattern vb_pat in
+      let (compound, setup) = translate_compound vb_expr in
+      ((id, (if (List.exists (fun x -> x = id) globals) then Global else Local), compound)::binds, setup@setups)
+    ) bind_list ([], [])
+    in binds_to_anf setups (LinastExpr.mklet Recursive binds (translate_structure globals items))
+   | Tstr_value (Nonrecursive, []) -> translate_structure globals items
+   (* TODO: Should have 'pre-anf' (see Grain) to simplify what can appear in this type of let binding *)
+   | Tstr_value (Nonrecursive, {vb_pat;vb_expr;}::bind_list) ->
+     let (compound, compound_setup) = translate_compound vb_expr in
+     let binds = getBindings fail_trap vb_pat compound in
+     binds_to_anf_globals globals (compound_setup @ binds) (translate_structure globals items)
+   | _ -> translate_structure globals items (* TODO: Should check which ones should/shouldn't be included *)
+  )
+
+
+let translate_structure_with_coercions (structure, coercions) =
+ binds_to_anf (!primBinds) (translate_structure (getExports (structure.str_items, coercions)) structure.str_items)
+ (* Add on primitive definitions *)

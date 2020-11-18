@@ -9,7 +9,9 @@ let main () =
   let output_prefix = Compenv.output_prefix filename in
   try
     let (tree, coercions) = Compile.typed_implementation Format.err_formatter filename output_prefix in
-    Printtyped.implementation_with_coercion Format.std_formatter (tree, coercions)
+    Printtyped.implementation_with_coercion Format.std_formatter (tree, coercions);
+    let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
+    Printf.printf "Success!\n"
   with x -> Location.report_exception Format.err_formatter x
 
 let _ = Arg.parse []

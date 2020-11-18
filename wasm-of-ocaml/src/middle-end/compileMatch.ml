@@ -136,7 +136,11 @@ let rec compile_match partial fail expr = function
     let new_fail = next_fail_count () in
     let binds = getBindings new_fail pat expr in
     let (e', guard_setup) = include_guard new_fail e guard in
-    (Compound.matchtry new_fail (binds_to_anf (binds @ guard_setup @ setup) e') (binds_to_anf rest_setup rest), [])
+    (Compound.matchtry
+      new_fail
+      (binds_to_anf (binds @ guard_setup @ setup) (LinastExpr.compound e'))
+      (binds_to_anf rest_setup (LinastExpr.compound rest)),
+    [])
 
 (* TODO: Check BTry(i, binds1, binds2) works well with passing around setups for other expressions *)
 
