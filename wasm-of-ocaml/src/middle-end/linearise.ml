@@ -215,11 +215,10 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
         let arg_exps =
            List.map (function _, Some x -> x | _ -> assert false) argl
         in
-        let (args, arg_setups) = List.split (List.map translate_imm arg_exps) in
-        let op = Primitives.translate_prim_app p args
-        in if extra_args = [] then (op, List.concat arg_setups)
+        let (op, arg_setups) = translate_prim_app p arg_exps
+        in if extra_args = [] then (op, arg_setups)
         else let (app, setup) = transl_apply op extra_args in
-        (app, (List.concat arg_setups) @ setup)
+        (app, arg_setups @ setup)
 
   | Texp_apply (f, args) ->
     let (f_compound, fsetup) = translate_compound f in
@@ -241,6 +240,20 @@ and transl_cases cases =
 
 and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   let (compound, setup) = translate_compound e in binds_to_anf setup (LinastExpr.compound compound)
+
+ (* AND/OR handled specially as they don't evaluate their second argument in some cases *)
+and translate_prim_app (primDesc : Primitive.description) args =
+      match (Hashtbl.find Primitives.prim_table primDesc.prim_name, args) with
+        | Unary unop, [arg] -> let (imm, setup) = translate_imm arg in
+          (Compound.unary unop imm, setup)
+        | Binary AND, [arg1; arg2] -> let (imm1, setup) = translate_imm arg1 in
+          (Compound.mkif imm1 (translate_linast arg2) (LinastExpr.compound (Compound.imm imm1)), setup)
+        | Binary OR, [arg1; arg2] -> let (imm1, setup) = translate_imm arg1 in
+          (Compound.mkif imm1 (LinastExpr.compound (Compound.imm imm1)) (translate_linast arg2), setup)
+        | Binary binop, [arg1; arg2] -> let (imm1, setup1) = translate_imm arg1 in
+          let (imm2, setup2) = translate_imm arg2 in
+          (Compound.binary binop imm1 imm2, setup1 @ setup2)
+        | _ -> assert false (* Should never be possible to get an arity mismatch here *)
 
 let rec get_idents = function
   | [] -> []

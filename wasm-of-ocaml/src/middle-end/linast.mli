@@ -20,10 +20,8 @@ type binop =
   | Eq_phys
   | Neq_phys
   (* boolean *)
- (* TODO: Handle these two specially i.e. if-then-else blocks, don't always evaluate both args
   | AND
   | OR
- *)
   (* integer *)
   | Add
   | Sub
