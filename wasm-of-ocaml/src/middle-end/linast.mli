@@ -79,7 +79,7 @@ type compound_expr_desc =
   (* TODO: Should switch take a construct, or take an int/getTag and perform more general switch tests *)
   (* Extending to integers helpful, but doesn't help when later want floats too. OCaml still falls back to ifthenelse for
      arbitrary integers, only uses switch if all small. *)
-  | CSwitch of imm_expr * (int * linast_expr) list * (imm_expr option)
+  | CSwitch of imm_expr * (int * linast_expr) list * (linast_expr option)
   (* Evaluate body, escape to second expression if constant pattern/guard expression fails. *)
   (* int32 marker may or may not be needed, either to track nesting depth (need extra 'depth' arg in many functions)
      or just to uniquely identify where to fail to in ImmMatchFail. Giving multiple jump options can speed up matches. *)

@@ -205,7 +205,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
        )
    | _ ->
     let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
-    (Compound.mkfun [param] (LinastExpr.compound comp), setup)
+    (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound comp)), [])
    )
 
   (* Fully applied primitive *)

@@ -11,7 +11,13 @@ let main () =
     let (tree, coercions) = Compile.typed_implementation Format.err_formatter filename output_prefix in
     Printtyped.implementation_with_coercion Format.std_formatter (tree, coercions);
     let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
-    Printf.printf "Success!\n"
+
+    (* For comparison *)
+    let lambdaProgram = Translmod.transl_implementation filename (tree, coercions) in
+
+    Pplinast.print_ast Format.std_formatter ir; Format.print_newline();
+    Printf.printf "\nLambda:\n";
+    Printlambda.program Format.std_formatter lambdaProgram; Format.print_newline();
   with x -> Location.report_exception Format.err_formatter x
 
 let _ = Arg.parse []
