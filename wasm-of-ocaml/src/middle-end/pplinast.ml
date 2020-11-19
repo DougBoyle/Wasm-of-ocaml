@@ -100,16 +100,12 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
         end in
       fprintf ppf "(switch %a %a)" print_imm imm print_switch (cases, partial)
     | CMatchTry (i, e1, e2) -> fprintf ppf "(try (%lil) %a with %a)" i print_ast e1 print_ast e2
-    | CApp (imm, args) -> let print_args ppf args =
-                                  List.iter (fun imm -> fprintf ppf " %a" print_imm imm) args in
-                                fprintf ppf "(apply@ %a%a)" print_imm imm print_args args
+    | CApp (imm, args) ->
+      let print_args ppf args = List.iter (fprintf ppf " %a" print_imm) args in
+      fprintf ppf "(apply@ %a%a)" print_imm imm print_args args
     | CFunction (args, body) ->
- let pr_params ppf params =
-            List.iter (fun param ->
-                fprintf ppf "@ %a" Ident.print param) params
-in
-      fprintf ppf "@[<2>(function%a@ %a)@]" pr_params args
-             print_ast body
+     let pr_params ppf params = List.iter (fprintf ppf "@ %a" Ident.print) params in
+     fprintf ppf "@[<2>(function%a@ %a)@]" pr_params args print_ast body
 
 and print_ast ppf e = match e.desc with
   | LCompound c -> print_compound ppf c
