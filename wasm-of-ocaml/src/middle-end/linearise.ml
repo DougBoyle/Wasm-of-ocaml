@@ -296,7 +296,7 @@ let rec translate_structure exported = function
       let (compound, setup) = translate_compound vb_expr in
       ((id, (if (List.exists (fun x -> x = id) exported) then Global else Local), compound)::binds, setup@setups)
     ) bind_list ([], [])
-    in binds_to_anf setups (LinastExpr.mklet Recursive binds (translate_structure exported items))
+    in binds_to_anf setups (LinastExpr.mkletrec binds (translate_structure exported items))
    | Tstr_value (Nonrecursive, []) -> translate_structure exported items
    (* TODO: Should have 'pre-anf' (see Grain) to simplify what can appear in this type of let binding *)
    | Tstr_value (Nonrecursive, {vb_pat;vb_expr;}::bind_list) ->

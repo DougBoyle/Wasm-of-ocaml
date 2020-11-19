@@ -78,8 +78,8 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
     | CField (imm, i) -> fprintf ppf "%a.(%lil)" print_imm imm i
     | CMakeBlock (i, imms) ->
       let print_imms ppf args =
-        List.iter (fun imm -> fprintf ppf "@ %a" print_imm imm) args in
-      fprintf ppf "[%li: %a]" i print_imms imms
+        List.iter (fun e -> fprintf ppf "@ %a" print_imm e) args in
+      fprintf ppf "@[<2>(makeblock %li%a)@]" i print_imms imms
     | CGetTag imm -> fprintf ppf "tag %a" print_imm imm
     | CIf (imm, ast1, ast2) -> fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" print_imm imm print_ast ast1 print_ast ast2
     | CWhile (imm, ast) -> fprintf ppf "@[<2>(while@ %a@ %a)@]" print_imm imm print_ast ast
@@ -88,17 +88,25 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
            Ident.print id print_imm start
            (match dir with Upto -> "to" | Downto -> "downto")
            print_imm finish print_ast ast
+    | CSwitch(imm, cases, default) ->
+          let switch ppf cases =
+            let spc = ref false in
+            List.iter
+              (fun (n, e) ->
+                if !spc then fprintf ppf "@ " else spc := true;
+                fprintf ppf "@[<hv 1>case tag %li:@ %a@]" n print_ast e)
+              cases ;
+            begin match default with
+            | None  -> ()
+            | Some e ->
+                if !spc then fprintf ppf "@ " else spc := true;
+                fprintf ppf "@[<hv 1>default:@ %a@]" print_ast e
+            end in
+          fprintf ppf
+           "@[<1>(%s %a@ @[<v 0>%a@])@]"
+           (match default with None -> "switch*" | _ -> "switch")
+           print_imm imm switch cases
 
-    | CSwitch (imm, cases, partial) ->
-      let print_switch ppf (cases,partial) =
-        List.iter
-         (fun (n, e) ->
-           fprintf ppf "case %li: %a" n print_ast e) cases;
-        begin match partial with
-        | None  -> ()
-        | Some e -> fprintf ppf "default: %a" print_ast e
-        end in
-      fprintf ppf "(switch %a %a)" print_imm imm print_switch (cases, partial)
     | CMatchTry (i, e1, e2) -> fprintf ppf "(try (%lil) %a with %a)" i print_ast e1 print_ast e2
     | CApp (imm, args) ->
       let print_args ppf args = List.iter (fprintf ppf " %a" print_imm) args in
@@ -110,21 +118,24 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
 and print_ast ppf e = match e.desc with
   | LCompound c -> print_compound ppf c
   | LSeq (c, e) -> fprintf ppf "%a; %a" print_compound c print_ast e
-  | LLet(rec_flag, id_arg_list, body) ->
-    let print_bind ppf (id, global, c) =
-      fprintf ppf "@[<2>(%s%a@ %a)@]" (match global with Global -> "exported " | Local -> "") Ident.print id print_compound c in
-        let bindings ppf id_arg_list =
-          let spc = ref false in
-          List.iter
-            (fun b ->
-              if !spc then fprintf ppf "@ " else spc := true;
-              print_bind ppf b)
-            id_arg_list in
-        fprintf ppf
-          "@[<2>(let%s@ @[<hv 1>%a@]@ in@ %a)@]" (match rec_flag with Recursive -> "rec " | _ -> "") bindings id_arg_list print_ast body
-(*  | LLet (rec_flag, binds, body) ->
-    let print_bind ppf (id, global, c) = fprintf ppf "%s%a = %a, " (match global with Global -> "exported " | Local -> " ") Ident.print id print_compound c
-    in fprintf ppf "let%s" (match rec_flag with Recursive -> "rec " | _ -> "") ;
-    List.iter (fun bind -> print_bind ppf bind) binds;
-    fprintf ppf " in %a" print_ast body *)
+  | LLet(id, export, e, body) ->
+      let rec letbody e = match e.desc with
+        | LLet(id, export, e, body) ->
+            fprintf ppf "@ @[<2>%s%a =@ %a@]"
+              (match export with Global -> "export " | Local -> "") Ident.print id print_compound e;
+            letbody body
+        | _ -> e in
+      fprintf ppf "@[<2>(let@ @[<hv 1>(@[<2>%s%a =@ %a@]"
+        (match export with Global -> "export " | Local -> "") Ident.print id print_compound e;
+      let expr = letbody body in
+      fprintf ppf ")@]@ %a)@]" print_ast expr
+  | LLetRec (id_arg_list, body) ->
+   let bindings ppf id_arg_list =
+    let spc = ref false in
+    List.iter
+      (fun (id, export, e) ->
+        if !spc then fprintf ppf "@ " else spc := true;
+        fprintf ppf "@[<2>%s%a@ %a@]" (match export with Global -> "export " | Local -> "") Ident.print id print_compound e)
+      id_arg_list in
+   fprintf ppf  "@[<2>(letrec@ (@[<hv 1>%a@])@ %a)@]" bindings id_arg_list print_ast body
 

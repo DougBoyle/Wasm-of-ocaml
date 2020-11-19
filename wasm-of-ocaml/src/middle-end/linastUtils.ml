@@ -48,7 +48,8 @@ module LinastExpr = struct
        loc=defaultLoc;
        env=defaultEnv;
        annotations=ref []}
-  let mklet rec_flag binds body = mk (LLet (rec_flag, binds, body))
+  let mklet id export e body = mk (LLet (id, export, e, body))
+  let mkletrec binds body = mk (LLetRec (binds, body))
   let seq e1 e2 = mk (LSeq (e1, e2))
   let compound e = mk (LCompound e)
 end
@@ -71,8 +72,8 @@ let rec binds_to_anf ?(exported=[]) binds body =
   List.fold_right (fun bind body ->
      match bind with
      | BEffect comp -> LinastExpr.seq comp body
-     | BLet(id, comp) -> LinastExpr.mklet Nonrecursive [(id, get_global_flag exported id, comp)] body
-     | BLetRec lets -> LinastExpr.mklet Recursive (List.map (fun (id, e) -> (id, get_global_flag exported id, e)) lets) body
+     | BLet(id, comp) -> LinastExpr.mklet id (get_global_flag exported id) comp body
+     | BLetRec lets -> LinastExpr.mkletrec (List.map (fun (id, e) -> (id, get_global_flag exported id, e)) lets) body
    (*  | BLetExport(flag, lets) -> LinastExpr.mklet flag Global lets body *)
    ) binds body
 

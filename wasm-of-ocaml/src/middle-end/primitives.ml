@@ -30,10 +30,10 @@ let prim_table = Misc.create_hashtable 21 [
     "%modint", Binary (Mod);
 ]
 
-let make_if_fun args setup cond compound1 compound2 =
+let make_if_fun args setupid setupval cond compound1 compound2 =
   Compound.mkfun args
    (
-   LinastExpr.mklet Nonrecursive [setup]
+   LinastExpr.mklet setupid Local setupval
     (LinastExpr.compound
      (Compound.mkif
       cond
@@ -52,17 +52,17 @@ let other_prims = Misc.create_hashtable 4 [
   "abs", (let id = Ident.create_local "param" in
     let test_id = Ident.create_local "test" in
     let test = Compound.binary GTE (Imm.id id) (Imm.const (Const_int 0)) in
-    make_if_fun [id] (test_id, Local, test) (Imm.id test_id) (Compound.imm (Imm.id id)) (Compound.unary UnNeg (Imm.id id)));
+    make_if_fun [id] test_id test (Imm.id test_id) (Compound.imm (Imm.id id)) (Compound.unary UnNeg (Imm.id id)));
   "min", (let id1 = Ident.create_local "param1" in
     let id2 = Ident.create_local "param2" in
     let test_id = Ident.create_local "test" in
     let test = Compound.binary LTE (Imm.id id1) (Imm.id id2) in
-    make_if_fun [id1; id2] (test_id, Local, test) (Imm.id test_id) (Compound.imm (Imm.id id1)) (Compound.imm (Imm.id id2)));
+    make_if_fun [id1; id2] test_id test (Imm.id test_id) (Compound.imm (Imm.id id1)) (Compound.imm (Imm.id id2)));
   "max", (let id1 = Ident.create_local "param1" in
     let id2 = Ident.create_local "param2" in
     let test_id = Ident.create_local "test" in
     let test = Compound.binary GTE (Imm.id id1) (Imm.id id2) in
-    make_if_fun [id1; id2] (test_id, Local, test) (Imm.id test_id) (Compound.imm (Imm.id id1)) (Compound.imm (Imm.id id2)));
+    make_if_fun [id1; id2] test_id test (Imm.id test_id) (Compound.imm (Imm.id id1)) (Compound.imm (Imm.id id2)));
   "@", (let l1, l2, tag, hd, tl, app = Ident.create_local "l1", Ident.create_local "l2", Ident.create_local "tag",
         Ident.create_local "hd", Ident.create_local "tl", Ident.create_local "app" in
     let l1id, l2id, tagid, hdid, tlid, appid = Imm.id l1, Imm.id l2, Imm.id tag, Imm.id hd, Imm.id tl, Imm.id app in
