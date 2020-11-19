@@ -93,7 +93,7 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
       let print_switch ppf (cases,partial) =
         List.iter
          (fun (n, e) ->
-           fprintf ppf "case %n: %a" n print_ast e) cases;
+           fprintf ppf "case %li: %a" n print_ast e) cases;
         begin match partial with
         | None  -> ()
         | Some e -> fprintf ppf "default: %a" print_ast e

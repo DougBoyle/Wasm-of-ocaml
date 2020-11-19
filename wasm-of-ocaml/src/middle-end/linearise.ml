@@ -13,12 +13,23 @@ open LinastUtils
 let rec take n l = if n = 0 then ([], l) else
   match l with [] -> assert false (* Should never happen *) | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
 
+
 let translate_ident path = function
   | Val_prim p -> Primitives.translate_prim p
   (* May need to handle some identifiers which point directly to runtime functions e.g. Stdlib!.min
      Could also just 'hack' these into the file as usual idents but would be inefficient and probably slower. *)
-  | _ -> (match path with Path.Pident id -> id | _ -> raise NotImplemented)
+  | _ -> (match path with
+    | Path.Pident id -> id
+    | Path.Pdot(Path.Pident (Ident.Global "Stdlib"), s) -> Primitives.translate_other_prim s
+    | _ -> raise NotImplemented)
 
+(*
+let translate_ident = function
+  | Path.Pident id -> id
+  (* All primitives are identified in this way. Checking val_kind = Val_prim p doesn't catch all cases *)
+  | Path.Pdot(Path.Pident (Ident.Global "Stdlib"), s) -> Primitives.translate_prim s
+  | _ -> raise NotSupported
+  *)
 
 let get_id_from_pattern = function
     | {pat_desc=Tpat_var(id, _)} -> id
@@ -209,6 +220,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
    )
 
   (* Fully applied primitive *)
+  (* TODO: Change to correctly detect primitives *)
   | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p}); exp_type = prim_type }, oargs)
       when List.length oargs >= p.prim_arity && List.for_all (fun (_, arg) -> arg <> None) oargs ->
         let argl, extra_args = take p.prim_arity oargs in
