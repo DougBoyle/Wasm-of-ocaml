@@ -203,7 +203,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
 
   (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
   | Texp_function { param; cases; partial; } ->
-    (match cases with [{c_lhs=pat; c_guard=None;
+    translate_function param cases partial
+  (*  (match cases with [{c_lhs=pat; c_guard=None;
      c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
      partial = partial'; }; exp_env; exp_type} as exp}]
      (* Pattern always matches and never binds anything *)
@@ -217,7 +218,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
    | _ ->
     let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
     (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound comp)), [])
-   )
+   ) *)
 
   (* Fully applied primitive *)
   (* TODO: Change to correctly detect primitives *)
@@ -244,7 +245,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
    let (body, setup) = compile_match partial fail_trap (Compound.imm arg) (transl_cases cases) in
    (body, arg_setup @ setup)
 
-  | Texp_letop {let_; ands; param; body; partial} -> raise NotImplemented
+  | Texp_letop {let_; ands; param; body; partial} -> translate_letop let_ ands param body partial
   | _ -> raise NotSupported
 
 and transl_cases cases =
@@ -276,6 +277,64 @@ and translate_prim_app (primDesc : Primitive.description) args =
           (Compound.binary binop imm1 imm2, setup1 @ setup2)
         | _ -> assert false (* Should never be possible to get an arity mismatch here *)
       )
+
+and translate_function param cases partial =
+   (match cases with [{c_lhs=pat; c_guard=None;
+    c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
+    partial = partial'; }; exp_env; exp_type} as exp}]
+    (* Pattern always matches and never binds anything *)
+    (* Find the function for the inner body and attach param on front *)
+    when Parmatch.inactive ~partial pat ->
+      (match translate_compound exp with
+        | ({desc=CFunction(args, body);_} as comp, setup) ->
+          ({comp with desc=CFunction(param::args, body)}, setup)
+        | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
+      )
+  | _ ->
+   let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
+   (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound comp)), [])
+  )
+
+(* Taken from transl_core.transl_letop of OCaml compiler *)
+(*
+Loop: f [andop{op, e}] -> op e f
+f [and1; and2; ...; andn] -> op1 e1 (op2 e2 (... (opn en f)))
+
+transl_letop letop ands id body =
+op = letop_id
+e = loop letop_e ands = and1 a1 (... (andn an let_e))
+f = id -> body
+
+app letop_id e f = letop_id (and1 a1 (... (andn an let_e))) (fun id -> body)
+*)
+and translate_letop letop ands param case partial =
+  let rec loop (prev_body, prev_setup) = function
+    | [] -> (prev_body, prev_setup)
+    | andop :: rest ->
+        let left_id = Ident.create_local "left" in
+        let right_id = Ident.create_local "right" in
+        let op = Imm.id (translate_ident andop.bop_op_path andop.bop_op_val.val_kind)
+        in
+        let (exp, exp_setup) = translate_compound andop.bop_exp in
+        let (lam, lam_setup) =
+        (* Bind just does let id = e in body -- unless id = e in which case just returns body *)
+        (Compound.app op [Imm.id left_id; Imm.id right_id], exp_setup @ [BLet(right_id, exp)])
+      (*    bind right_id exp (Compound.app op [Imm.id left_id; Imm.id right_id])  *)
+        in
+        let (res, res_setup) = loop (lam, lam_setup) rest
+        in (res, prev_setup @ (BLet(left_id, prev_body)) :: res_setup)
+      (*  bind left_id prev_lam (loop lam rest)  *)
+  in
+  let op = Imm.id (translate_ident letop.bop_op_path letop.bop_op_val.val_kind)
+  in
+  let (exp, exp_setup) = loop (translate_compound letop.bop_exp) ands in
+  let (func, func_setup) =
+    translate_function param [case] partial
+  in
+  let exp_id = Ident.create_local "andbody" in
+  let func_id = Ident.create_local "func" in
+  (Compound.app op [Imm.id exp_id; Imm.id func_id], exp_setup @ (BLet(exp_id, exp)) :: func_setup @ [BLet(func_id, func)])
+
 
 let rec get_idents = function
   | [] -> []

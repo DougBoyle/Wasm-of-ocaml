@@ -68,7 +68,7 @@ let unary ppf = function
 let print_imm ppf (imm : imm_expr) = match imm.desc with
   | ImmIdent id -> Ident.print ppf id
   | ImmConst c -> struct_const ppf c
-  | ImmMatchFail n -> fprintf ppf "%lil" n
+  | ImmMatchFail n -> fprintf ppf "@[<2>(fail@ %li)@]" n
 
 let rec print_compound ppf (c : compound_expr) = match c.desc with
     | CImm i -> print_imm ppf i
@@ -109,7 +109,7 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
            (match default with None -> "switch*" | _ -> "switch")
            print_imm imm switch cases
 
-    | CMatchTry (i, e1, e2) -> fprintf ppf "(try (%lil) %a with %a)" i print_ast e1 print_ast e2
+    | CMatchTry (i, e1, e2) -> fprintf ppf "@[<2>(try@ %a@;<1 -1>with (%li)@ %a)@]" print_ast e1 i print_ast e2
     | CApp (imm, args) ->
       let print_args ppf args = List.iter (fprintf ppf " %a" print_imm) args in
       fprintf ppf "(apply@ %a%a)" print_imm imm print_args args
@@ -119,7 +119,7 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
 
 and print_ast ppf e = match e.desc with
   | LCompound c -> print_compound ppf c
-  | LSeq (c, e) -> fprintf ppf "%a; %a" print_compound c print_ast e
+  | LSeq (c, e) -> fprintf ppf "@[<2>(seq@ %a@ %a)@]" print_compound c sequence e
   | LLet(id, export, e, body) ->
       let rec letbody e = match e.desc with
         | LLet(id, export, e, body) ->
@@ -141,3 +141,8 @@ and print_ast ppf e = match e.desc with
       id_arg_list in
    fprintf ppf  "@[<2>(letrec@ (@[<hv 1>%a@])@ %a)@]" bindings id_arg_list print_ast body
 
+and sequence ppf e = match e.desc with
+  | LSeq (comp, ast) ->
+    fprintf ppf "%a@ %a" print_compound comp sequence ast
+  | _ ->
+    print_ast ppf e
