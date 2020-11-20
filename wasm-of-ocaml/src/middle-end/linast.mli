@@ -65,6 +65,8 @@ type compound_expr_desc =
   | CBinary of binop * imm_expr * imm_expr
   | CSetField of imm_expr * int32 * imm_expr (* Field is just 0 for reference objects *)
   | CField of imm_expr * int32
+  | CArraySet of imm_expr * imm_expr * imm_expr
+  | CArrayGet of imm_expr * imm_expr
   | CMakeBlock of int32 * imm_expr list (* Tuples, References, Datatypes (constant/block). Mutable flag needed or not? *)
   | CGetTag of imm_expr
   (* if(i, e_1, e_2) evals e_1 if i=0 else e_2 in Wasm *)

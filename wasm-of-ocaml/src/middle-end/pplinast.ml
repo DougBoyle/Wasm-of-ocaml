@@ -76,6 +76,8 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
     | CBinary (op, imm1, imm2) -> fprintf ppf "(%a %a %a)" print_imm imm1 binary op print_imm imm2
     | CSetField (imm1, i, imm2) -> fprintf ppf "%a.(%lil) <- %a" print_imm imm1 i print_imm imm2
     | CField (imm, i) -> fprintf ppf "%a.(%lil)" print_imm imm i
+    | CArraySet (ar, i, v) -> fprintf ppf "array %a.(%a) <- %a" print_imm ar print_imm i print_imm v
+    | CArrayGet (ar, i) -> fprintf ppf "array %a.(%a)" print_imm ar print_imm i
     | CMakeBlock (i, imms) ->
       let print_imms ppf args =
         List.iter (fun e -> fprintf ppf "@ %a" print_imm e) args in

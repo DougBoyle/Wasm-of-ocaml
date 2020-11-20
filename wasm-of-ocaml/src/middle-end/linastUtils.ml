@@ -30,6 +30,8 @@ module Compound = struct
   let binary op imm1 imm2 = mk (CBinary (op, imm1, imm2))
   let setfield imm1 i imm2 = mk (CSetField (imm1, i, imm2))
   let field imm i = mk (CField (imm, i))
+  let arrayset imm1 imm2 imm3 = mk (CArraySet (imm1, imm2, imm3))
+  let arrayget imm1 imm2 = mk (CArrayGet (imm1, imm2))
   let makeblock i args = mk (CMakeBlock (i, args))
   let gettag imm = mk (CGetTag imm)
   let mkif imm e1 e2 = mk (CIf (imm, e1, e2))
@@ -37,7 +39,6 @@ module Compound = struct
   let mkfor id start stop dir e = mk (CFor (id, start, stop, dir, e))
   let mkswitch imm cases partial = mk (CSwitch (imm, cases, partial))
   let matchtry i e1 e2 = mk (CMatchTry (i, e1, e2))
- (* let matchtry e1 e2 = mk (CMatchTry (e1, e2)) *)
   let app imm args = mk (CApp (imm, args))
   let mkfun params e = mk (CFunction (params, e))
 end
@@ -64,7 +65,6 @@ type linast_setup =
   | BEffect of compound_expr
   | BLet of Ident.t * compound_expr
   | BLetRec of (Ident.t * compound_expr) list
-(*  | BLetExport of Asttypes.rec_flag * (Ident.t * compound_expr) list  -- Shouldn't be needed  *)
 
 let get_global_flag exported id = if List.exists (fun x -> x = id) exported then Global else Local
 
@@ -74,7 +74,6 @@ let rec binds_to_anf ?(exported=[]) binds body =
      | BEffect comp -> LinastExpr.seq comp body
      | BLet(id, comp) -> LinastExpr.mklet id (get_global_flag exported id) comp body
      | BLetRec lets -> LinastExpr.mkletrec (List.map (fun (id, e) -> (id, get_global_flag exported id, e)) lets) body
-   (*  | BLetExport(flag, lets) -> LinastExpr.mklet flag Global lets body *)
    ) binds body
 
 (* Primative name -> Ident *)

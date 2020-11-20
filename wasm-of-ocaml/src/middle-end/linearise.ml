@@ -255,7 +255,16 @@ and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribute
 
 (* AND/OR handled specially as they sometimes don't evaluate their second argument *)
 and translate_prim_app (primDesc : Primitive.description) args =
-      match (Hashtbl.find Primitives.prim_table primDesc.prim_name, args) with
+    (* Want to represent arrays the same way as tuples, so they get their own get/set operation rather than unary/binary *)
+    match (primDesc.prim_name, args) with
+      | "%array_safe_get", [arg1; arg2] -> let (imm1, setup1) = translate_imm arg1 in
+        let (imm2, setup2) = translate_imm arg2 in (Compound.arrayget imm1 imm2, setup1 @ setup2)
+      | "%array_safe_set", [arg1; arg2; arg3] ->
+        let (imm1, setup1) = translate_imm arg1 in
+        let (imm2, setup2) = translate_imm arg2 in
+        let (imm3, setup3) = translate_imm arg3 in
+        (Compound.arrayset imm1 imm2 imm3, setup1 @ setup2 @ setup3)
+      | _, _ -> (match (Hashtbl.find Primitives.prim_table primDesc.prim_name, args) with
         | Unary unop, [arg] -> let (imm, setup) = translate_imm arg in
           (Compound.unary unop imm, setup)
         | Binary AND, [arg1; arg2] -> let (imm1, setup) = translate_imm arg1 in
@@ -266,6 +275,7 @@ and translate_prim_app (primDesc : Primitive.description) args =
           let (imm2, setup2) = translate_imm arg2 in
           (Compound.binary binop imm1 imm2, setup1 @ setup2)
         | _ -> assert false (* Should never be possible to get an arity mismatch here *)
+      )
 
 let rec get_idents = function
   | [] -> []
