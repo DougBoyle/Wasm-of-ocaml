@@ -1,8 +1,9 @@
-dirs = src/ocaml/file_formats,src/ocaml/lambda,src/ocaml/driver,src/ocaml/typing,src/ocaml/utils,src/ocaml/parsing,src
-dirs2 = src/ocaml/file_formats,src/ocaml/lambda,src/ocaml/driver,src/ocaml/typing,src/ocaml/utils,src/ocaml/parsing,src/middle-end,src
+dirs = src/ocaml/file_formats,src/ocaml/lambda,src/ocaml/driver,src/ocaml/typing,src/ocaml/utils,src/ocaml/parsing,src/middle-end,src/wasm,src
 all:
-	ocamlbuild -pkg unix -Is $(dirs2) main.byte
+	ocamlbuild -Is $(dirs) main.byte
 ir:
-	ocamlbuild -pkg unix -Is $(dirs)/middle-end linast.cmi
+	ocamlbuild -Is $(dirs) linast.cmi
 linear:
-	ocamlbuild -pkg unix -Is $(dirs)/middle-end linearise.byte
+	ocamlbuild -Is $(dirs) linearise.byte
+wasm:
+	ocamlbuild -pkg wasm -Is $(dirs) wasmUtils.byte
