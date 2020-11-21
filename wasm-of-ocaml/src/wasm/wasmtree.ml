@@ -72,7 +72,9 @@ type binding =
   | MLocalBind of int32 (* local stack of function *)
   | MGlobalBind of int32 (* global variables *)
   | MClosureBind of int32 (* TODO: Difference compared to argbind?? *)
+  (* Unclear if these are actually needed or not
   | MSwapBind of int32 (* Used like a register would be *)
+  *)
   | MImport of int32 (* Index into list of imports -- not needed? All handled by being slightly higher level than wasm for now? *)
 
 type immediate =
@@ -183,6 +185,6 @@ type mash_program = {
 } 
 
 (* Why these rather than just 0/1? Likely due to Grain GC needing to represent things in a certain way, can simplify for mine *)
-
+(* TODO: Decide what actual values should be *)
 let const_true =  MConstLiteral (MConstI32 (Int32.of_int 0xFFFFFFFF))
 let const_false = MConstLiteral (MConstI32 (Int32.of_int 0x7FFFFFFF))
