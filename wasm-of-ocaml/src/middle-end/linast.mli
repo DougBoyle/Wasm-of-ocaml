@@ -15,8 +15,8 @@ type binop =
   | LTE
   | GTE
   | Compare
-  | Min (* missing *)
-  | Max (* missing *)
+  | Min
+  | Max
   | Eq_phys
   | Neq_phys
   (* boolean *)
@@ -29,7 +29,7 @@ type binop =
   | Div
   | Mod
   (* list *)
-  | Append (* missing *)
+  | Append
 
 type unop =
   (* boolean *)
@@ -39,7 +39,7 @@ type unop =
   | UnAdd (* Identity - part of OCaml due to principle of least suprise, just the identity op *)
   | Succ
   | Pred
-  | Abs (* missing *)
+  | Abs
 
 (* TODO: Also need constants for max_int and min_int *)
 
