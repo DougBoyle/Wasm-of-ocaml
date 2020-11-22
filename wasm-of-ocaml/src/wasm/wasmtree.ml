@@ -28,6 +28,8 @@ type unop = Linast.unop =
   | Pred
   | Abs
 
+(* TODO: Some of these handled by giving a Linast expression for them higher up, move that to a wasm definition/function
+         and hence make use of the operators here. *)
 type binop = Linast.binop =
   | Eq
   | Neq
