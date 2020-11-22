@@ -387,7 +387,8 @@ let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) 
  (*   Ast.Binary(Values.I32 Ast.IntOp.Add);  *)
   ] @ get_swap @ [
     Ast.Const(add_dummy_loc (Values.I32Value.to_value arity));
-   (* take pairs off stack, putting arity, number of free vars, and function index into closure object *)
+   (* take pairs off stack, putting arity, function index and number of free vars into closure object *)
+   (* TODO: How is possibility of partial application handled, or is arity based on expanded out tuples? *)
     store ~offset:0 ();
     store ~offset:4 ();
     store ~offset:8 ();
@@ -396,3 +397,40 @@ let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) 
     Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType); (* Apply the Lambda tag - may actually be needed *)
     Ast.Binary(Values.I32 Ast.IntOp.Or);
   ]  *)
+
+let allocate_data env vtag elts =
+  (* Grain compiler to-do: We don't really need to store the arity here. Could move this to module-static info *)
+  (* Heap memory layout of ADT types:
+     TODO: How many of these are actually needed? Certainly not module_tag
+           Leave out value type tag for now - likely only needed for garbage collection
+           Leave out type tag - type checking should ensure its never actually needed
+    [ <value type tag>, (*<module_tag>*), <type_tag>, <variant_tag>, <arity>, elts ... ]
+   *)
+  let num_elts = List.length elts in
+  let get_swap = get_swap env 0 in
+  let set_swap = set_swap env 0 in
+  let compile_elt idx elt =
+    get_swap @
+    (compile_imm env elt) @ [
+      store ~offset:(4 * (idx + 2)) (); (* Would be +5 but not including value type/module/type tags *)
+    ] in
+   (* Would be num_elts + 5 except not including 3 tags *)
+  (heap_allocate env (num_elts + 2)) @ set_swap @ get_swap
+ (*   +@ [
+    Ast.Const(const_int32 (tag_val_of_heap_tag_type ADTType));
+    store ~offset:0 ();
+  ] @ get_swap @ [
+    Ast.GetGlobal(var_of_ext_global env runtime_mod module_runtime_id);
+    store ~offset:0 ();
+  ] @ get_swap @ (compile_imm env ttag) @ [
+    store ~offset:4 ();
+  ] @ get_swap *) @ (compile_imm env vtag) @ [
+    store ~offset:0 ();
+  ] @ get_swap @ [
+    Ast.Const(const_int32 num_elts);
+    store ~offset:4 ();
+  ] @ (List.flatten @@ List.mapi compile_elt elts) @ get_swap
+   (* @ [
+    Ast.Const(const_int32 @@ tag_val_of_tag_type (GenericHeapType (Some ADTType)));
+    Ast.Binary(Values.I32 Ast.IntOp.Or);
+  ] *)
