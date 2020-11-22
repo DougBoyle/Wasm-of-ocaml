@@ -70,13 +70,14 @@ type constant =
 
 
 type binding =
+  (* Args (function arguments) and Local (free variables) and swap (register memory) all correspond to local memory *)
   | MArgBind of int32
   | MLocalBind of int32 (* local stack of function *)
   | MGlobalBind of int32 (* global variables *)
-  | MClosureBind of int32 (* TODO: Difference compared to argbind?? *)
-  (* Unclear if these are actually needed or not
+  (* Value held in closure which is the 0th local. Use that as a base for memory indirect access *)
+  | MClosureBind of int32
+  (* SwapBinds use local memory for a couple registers, due to inflexibility of a stack machine *)
   | MSwapBind of int32 (* Used like a register would be *)
-  *)
   | MImport of int32 (* Index into list of imports -- not needed? All handled by being slightly higher level than wasm for now? *)
 
 type immediate =

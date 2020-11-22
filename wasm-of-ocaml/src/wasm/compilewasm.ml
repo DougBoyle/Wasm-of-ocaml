@@ -29,6 +29,13 @@ type env = {
  (* imported_globals: (int32 Ident.tbl) Ident.tbl;  *)
 }
 
+(* Number of swap variables to allocate *)
+let swap_slots_i32 = [Types.I32Type]
+let swap_slots_i64 = [Types.I64Type]
+let swap_i32_offset = 0
+let swap_i64_offset = List.length swap_slots_i32
+let swap_slots = List.append swap_slots_i32 swap_slots_i64
+
 (* These are the bare-minimum imports needed for basic runtime support -- Many removed, see grain compcore.ml *)
 (* Ignore anything exception or printing related (could technically handle specific print cases with js calls) *)
 (* Primitives still not translated to idents at this stage - aids constant propagation if I want to do at this level *)
@@ -165,19 +172,18 @@ let compile_bind ~is_get (env : env) (b : binding) : Wasm.Ast.instr' list =
       [Ast.LocalSet(slot)]
   | MLocalBind(i) ->
     (* Local bindings need to be offset to account for arguments and swap variables *)
-    let slot = add_dummy_loc ((env.num_args (* + (List.length swap_slots)*)) ++ i) in
+    let slot = add_dummy_loc ((env.num_args + (List.length swap_slots)) ++ i) in
     if is_get then
      [Ast.LocalGet(slot)]
     else
      [Ast.LocalSet(slot)]
- (* Swap bindings actually needed or not?
  | MSwapBind(i) ->
     (* Swap bindings need to be offset to account for arguments *)
     let slot = add_dummy_loc (env.num_args ++ i) in
     if is_get then
-      singleton (Ast.GetLocal(slot))
+      [Ast.LocalGet(slot)]
     else
-      singleton (Ast.SetLocal(slot))    *)
+      [Ast.LocalSet(slot)]
   | MGlobalBind(i) ->
     (* Global bindings need to be offset to account for any imports *)
     let slot = add_dummy_loc (env.global_offset ++ i) in
@@ -203,7 +209,29 @@ let compile_bind ~is_get (env : env) (b : binding) : Wasm.Ast.instr' list =
     let slot = add_dummy_loc ((* env.import_offset ++  should be fixed *) i) in
     [Ast.GlobalGet(slot)]
 
-(* Get/Set swap left out - unclear if they will actually be needed *)
+let get_swap ?ty:(typ=Types.I32Type) env idx =
+  match typ with
+  | Types.I32Type ->
+    if idx > (List.length swap_slots_i32) then
+      raise Not_found;
+    compile_bind ~is_get:true env (MSwapBind(Int32.of_int (idx + swap_i32_offset)))
+  | Types.I64Type ->
+    if idx > (List.length swap_slots_i64) then
+      raise Not_found;
+    compile_bind ~is_get:true env (MSwapBind(Int32.of_int (idx + swap_i64_offset)))
+  | _ -> raise Not_found
+
+let set_swap ?ty:(typ=Types.I32Type) env idx =
+  match typ with
+  | Types.I32Type ->
+    if idx > (List.length swap_slots_i32) then
+      raise Not_found;
+    compile_bind ~is_get:false env (MSwapBind(Int32.of_int (idx + swap_i32_offset)))
+  | Types.I64Type ->
+    if idx > (List.length swap_slots_i64) then
+      raise Not_found;
+    compile_bind ~is_get:false env (MSwapBind(Int32.of_int (idx + swap_i64_offset)))
+  | _ -> raise Not_found
 
 let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   match i with
@@ -236,31 +264,17 @@ let compile_unary env op arg : Wasm.Ast.instr' list =
 let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   let compiled_arg1 = compile_imm env arg1 in
   let compiled_arg2 = compile_imm env arg2 in
-(*
-  TODO: What is the purpose of these, why are they necessary?
-let swap_get = get_swap ~ty:Types.I32Type env 0 in
+  let swap_get = get_swap ~ty:Types.I32Type env 0 in
   let swap_set = set_swap ~ty:Types.I32Type env 0 in
-  *)
-  (*
-  TODO: Not thinking about overflows/31-bit integers initially, do this once rest of program implemented
 
-  let overflow_safe instrs =
-    let compiled_swap_get = get_swap ~ty:Types.I64Type env 0 in
-    let compiled_swap_set = set_swap ~ty:Types.I64Type env 0 in
-    instrs @
-    compiled_swap_set @
-    compiled_swap_get @
-    compiled_swap_get @
-    (check_overflow env) @
-    compiled_swap_get +@ [
-      Ast.Convert(Values.I32 Ast.IntOp.WrapI64);
-    ] in
-   *)
+  (*
+  TODO: Not thinking about overflows/31-bit integers initially.
+        Work out if overflow_safe needed or not for OCaml
+  *)
 
   match op with
   | Add ->
     (* TODO: Removed overflow_safe bit - commented out in first case, removed in rest *)
-   (* overflow_safe @@   *)
     compiled_arg1 @ [
       Ast.Convert(Values.I64 Ast.IntOp.ExtendSI32);
     ] @
@@ -293,18 +307,20 @@ let swap_get = get_swap ~ty:Types.I32Type env 0 in
      i.e. when they are compiled to function abstractions, still use AND/OR rather than rewriting as an if-then-else *)
   | AND ->
     compiled_arg1 @
-  (*  swap_set @            -- If I determine that these are necessary, go back to Grain file to see original AND case
-    swap_get @  *)
+    swap_set @
+    swap_get @
     decode_bool @ [
       Ast.If(ValBlockType (Some Types.I32Type),
              List.map add_dummy_loc compiled_arg2,
-             List.map add_dummy_loc  compiled_arg1)  (* swap_get replaced with compiled_arg1 - may cause some duplication *)
+             List.map add_dummy_loc swap_get)  (* swap_get replaced with compiled_arg1 - may cause some duplication *)
     ]
   | OR ->
     compiled_arg1 @
+    swap_set @
+    swap_get @
     decode_bool @ [
       Ast.If(ValBlockType (Some Types.I32Type),
-             List.map add_dummy_loc compiled_arg1,
+             List.map add_dummy_loc swap_get,
              List.map add_dummy_loc compiled_arg2)
     ]
   (* TODO: Rewrite to call runtime compare function to do more general 'a * 'a comparison *)
@@ -335,3 +351,48 @@ let swap_get = get_swap ~ty:Types.I32Type env 0 in
   | Neq | Min | Max | Eq_phys | Neq_phys | Div | Mod | Append -> failwith "Not yet implemented"
 
 (* Line 470 of original code *)
+
+(** Heap allocations. *)
+let round_up (num : int) (multiple : int) : int =
+  multiple * (((num - 1) / multiple) + 1)
+
+(** Rounds the given number of words to be aligned correctly - TODO: Why is alignment necessary? *)
+let round_allocation_size (num_words : int) : int =
+  round_up num_words 4
+
+let heap_allocate env (num_words : int) =
+  let words_to_allocate = round_allocation_size num_words in
+  [Ast.Const(const_int32 (4 * words_to_allocate)); call_alloc env;]
+
+(* Not sure check_memory needed *)
+(* Not doing strings initially, so can leave out allocate_string/buf_to_ints *)
+
+
+let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) =
+  let num_free_vars = List.length variables in
+  let closure_size = num_free_vars + 3 in
+  let get_swap = get_swap env 0 in
+  let set_swap = set_swap env 0 in
+  let access_lambda = Option.value ~default:(get_swap @ [
+      Ast.Const(const_int32 (4 * round_allocation_size closure_size));
+      Ast.Binary(Values.I32 Ast.IntOp.Sub);
+    ]) lambda in
+  env.backpatches := (access_lambda, closure_data)::!(env.backpatches);
+  (* ToS (grows ->) : heap_ptr; num_free_vars; ptr; (reloc_base + func_idx + offset); ptr; arity  *)
+  (heap_allocate env closure_size) @ set_swap @ get_swap @ [
+    Ast.Const(const_int32 num_free_vars);
+  ] @ get_swap @ [
+ (*   Ast.GlobalGet(var_of_ext_global env runtime_mod reloc_base);     No modules so should be known at compile time *)
+    Ast.Const(wrap_int32 (Int32.(add func_idx (of_int env.func_offset))));
+ (*   Ast.Binary(Values.I32 Ast.IntOp.Add);  *)
+  ] @ get_swap @ [
+    Ast.Const(add_dummy_loc (Values.I32Value.to_value arity));
+   (* take pairs off stack, putting arity, number of free vars, and function index into closure object *)
+    store ~offset:0 ();
+    store ~offset:4 ();
+    store ~offset:8 ();
+  ] @ get_swap
+  (*  @ [
+    Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType); (* Apply the Lambda tag - may actually be needed *)
+    Ast.Binary(Values.I32 Ast.IntOp.Or);
+  ]  *)
