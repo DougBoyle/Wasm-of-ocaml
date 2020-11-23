@@ -59,6 +59,20 @@ let runtime_function_imports = [
   };]
 let runtime_imports = runtime_global_imports @ runtime_function_imports
 
+let init_env () = {
+  (* heap_top=add_dummy_loc (Int32.of_int (List.length runtime_global_imports)); -- Shouldn't need to be visible *)
+  num_args=0;
+  func_offset=0;
+  global_offset=0; (* TODO: GrainRuntime has reloc_base and module_runtime_id - shouldn't need either hence 0 not 2 *)
+ (* import_global_offset=0;  Should only need 1 offset, no constants
+  import_func_offset=0; *)
+  import_offset=0;
+  func_types=ref [];
+  backpatches=ref [];
+  imported_funcs=Ident.empty;
+  (* imported_globals=Ident.empty;  Shouldn't be any *)
+}
+
 (* TODO: Support strings *)
 (* TODO: Encoded int n = n*2 -- Shouldn't be necessary due to no GC
          IS AFFECTED BY FACT OCAML EXPECTS 31-BIT INTEGERS, NOT 32 - COME BACK TO ONCE WORKING, OVERFLOWS ARE RARE
@@ -604,9 +618,10 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
     body;
   }
 
-(* TODO: Is this necessary? (global)Imports should be fixed. Why the +2?? Relates to how compile_globals works *)
+(* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works
+   Shouldn't actually import any global costnats, so +2 from grain version removed (grain runtime has 2 globals in it) *)
 let compute_table_size env {imports; exports; functions} =
-  (List.length functions) + ((List.length imports) - (List.length runtime_global_imports)) + 2
+  (List.length functions) + ((List.length imports) - (List.length runtime_global_imports))
 
 (* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
 (* TODO: Understand what all of ths does/is needed for *)
@@ -815,3 +830,36 @@ let prepare env ({imports} as prog) =
     imports=runtime_imports;
     num_globals=prog.num_globals + import_offset;
   }
+
+let compile_wasm_module ?env prog =
+  let open Wasm.Ast in
+  let env = match env with
+    | None -> init_env ()
+    | Some(e) -> e in
+  let env, prog = prepare env prog in
+  let funcs = compile_functions env prog in
+  let imports = compile_imports env prog in
+  let exports = compile_exports env prog in
+  let globals = compile_globals env prog in
+ (* let tables = compile_tables env prog in -- Grain version always left this empty - work out what it is/should be *)
+  let elems = compile_elems env prog in
+  let types = List.map add_dummy_loc (!(env.func_types)) in
+  let ret = add_dummy_loc {
+    empty_module with
+    funcs;
+    imports;
+    exports;
+    globals;
+    tables=[];
+    elems;
+    types;
+    start=None;
+  } in
+  validate_module ret;
+  ret
+
+let module_to_string compiled_module =
+  (* Print module to string *)
+  Wasm.Sexpr.to_string 80 @@ Wasm.Arrange.module_ compiled_module
+
+(* May want to register an exception printer if I have issues debuggging - see Printexc.register_printer *)
