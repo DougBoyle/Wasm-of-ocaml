@@ -20,7 +20,8 @@ type env = {
   global_offset: int;
 (*  import_global_offset: int;
   import_func_offset: int;  -- unclear how much knowledge about imports will be needed
-  import_offset: int;  *)
+                               Since OCaml runtime should only contain functions, import_offest covers both above *)
+  import_offset: int;  (* Should be able to set to just the number of functions in OCaml runtime *)
 
  (* func_types: Wasm.Types.func_type BatDeque.t ref;   Don't include need for double-ended queue currently *)
  func_types : Wasm.Types.func_type list ref;
@@ -29,7 +30,7 @@ type env = {
   (* Allocated closures which need backpatching *)
   backpatches: (Wasm.Ast.instr' (* Concatlist.t  *) list * closure_data) list ref;
   imported_funcs: (int32 Ident.tbl) Ident.tbl;  (* TODO: May not be necessary if imports fixed to just the OCaml runtime parts *)
- (* imported_globals: (int32 Ident.tbl) Ident.tbl;  *)
+  (* imported_globals: (int32 Ident.tbl) Ident.tbl;  *)
 }
 
 (* Number of swap variables to allocate *)
@@ -44,7 +45,10 @@ let swap_slots = List.append swap_slots_i32 swap_slots_i64
 (* Primitives still not translated to idents at this stage - aids constant propagation if I want to do at this level *)
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let alloc_ident = Ident.create_persistent "alloc"
+(* TODO: Add runtime functions for compare, equals, etc. *)
 
+
+(* global_imports should just be empty hence redundant - runtime should only have functions in it *)
 let runtime_global_imports = []
 let runtime_function_imports = [
   {
@@ -748,3 +752,66 @@ let compile_functions env ({functions} as prog) =
   let compiled_funcs = List.map (compile_function env) functions in
   let main = compile_main env prog in
     compiled_funcs @ [main]
+
+(* Leaving out "reparse" function for now - meant so that actual locations of parts of program can be found
+   when validation fails. TODO: May want to add this to help with debugging *)
+let validate_module (module_ : Wasm.Ast.module_) =
+  try Valid.check_module module_
+  with Wasm.Valid.Invalid(region, msg) ->
+    failwith "Module validation failed. May want to implement 'reparse' to be able to find failing region of program"
+
+(* Fold left but with an added integer argument *)
+let rec fold_lefti f e l =
+  fst (List.fold_left (fun (e, i) x -> (f e i x, i+1)) (e, 0) l)
+
+(* Sets up 'env' with all the imported components and adds them to 'prog', ready to start actual compilation *)
+(* Should be able to simplify as all imports are just OCaml runtime *)
+let prepare env ({imports} as prog) =
+  let process_import ?dynamic_offset:(dynamic_offset=0) ?is_runtime_import:(is_runtime_import=false)
+      (* Import module should be fixed - just OCaml runtime. Every import should be a is_runtime_import? *)
+      (acc_env) idx {mimp_mod; mimp_name; mimp_type;} =
+    let rt_idx = if is_runtime_import then idx + dynamic_offset else idx in
+    (* TODO: Only module is the runtime, should be able to replace with adding it once and ignoring after that *)
+    let register tbl =
+      let tbl = begin
+        try (* Ident tbl find_same has no optional/find_all_same version, so need to wrap in try/catch to test if present *)
+          ignore (Ident.find_same mimp_mod tbl); tbl
+        with
+          Not_found -> Ident.add mimp_mod Ident.empty tbl
+      end in
+      Ident.add mimp_mod (Ident.add mimp_name (Int32.of_int rt_idx) (Ident.find_same mimp_mod tbl)) tbl
+    in
+    (* Don't expect to actually need imported_globals (OCaml runtime should only have funcs, no constants) so have
+       removed the use of imported_globals - see Grain 1074 if actually needed *)
+    let imported_funcs = begin
+      match mimp_type with
+      | MFuncImport _ ->
+        (register acc_env.imported_funcs)
+      | MGlobalImport _ -> failwith "No global imports expected, just functions"
+    end in
+    {acc_env with imported_funcs} in
+  (* TODO: All of these should be fixed values based on the structure of the runtime
+           runtime_imports is defined at very top of program. *)
+  let import_offset = List.length runtime_imports in
+ (* Should be redundant as to only have function imports, hence only 1 offset needed (check import_offset used everywhere)
+  let import_func_offset = List.length runtime_function_imports in
+  let import_global_offset = import_offset + (List.length imports) in  *)
+  (* Shouldn't actually be any 'new_imports' *)
+(*  let new_imports = runtime_imports @ imports in *)
+  let new_env = fold_lefti (process_import ~is_runtime_import:true) env runtime_global_imports in
+  let new_env = fold_lefti (process_import ~is_runtime_import:true) new_env runtime_function_imports in
+  let new_env = fold_lefti (process_import ~dynamic_offset:import_offset) new_env imports in
+  let global_offset = import_offset in (* replaced impor_global_offset - should be the same thing? *)
+  let func_offset = global_offset - (List.length runtime_global_imports) in
+  {
+    new_env with
+    import_offset;
+  (*  import_func_offset; -- only importing
+    import_global_offset; *)
+    global_offset;
+    func_offset;
+  }, { (* Grain version (line 1080) seemed to recalculate various bits. All imports are from runtime so shouldn't need to *)
+    prog with
+    imports=runtime_imports;
+    num_globals=prog.num_globals + import_offset;
+  }
