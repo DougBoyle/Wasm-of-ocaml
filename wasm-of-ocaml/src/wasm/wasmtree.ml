@@ -55,7 +55,7 @@ type binop = Linast.binop =
   | Append
 
 (* Types within the WASM output *)
-type asmtype =
+type asmtype = Wasm.Types.value_type =
   | I32Type
   | I64Type
   | F32Type
@@ -145,11 +145,12 @@ type import_type =
   | MFuncImport of asmtype list * asmtype list
   | MGlobalImport of asmtype
 
-
+(* Not needed, all imports are part of the runtime *)
+(*
 type import_kind =
   | MImportWasm
   | MImportGrain
-
+*)
 
 type import_setup =
   | MCallGetter
@@ -161,7 +162,7 @@ type import = {
   mimp_mod: Ident.t;
   mimp_name: Ident.t;
   mimp_type: import_type;
-  mimp_kind: import_kind;
+ (* mimp_kind: import_kind; *)
   mimp_setup: import_setup;
 } 
 

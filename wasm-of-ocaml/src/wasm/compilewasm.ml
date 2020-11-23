@@ -9,6 +9,9 @@ open Wasm
 (* Associate a dummy location to a value - Wasm.Ast.instr = instr' Source.phrase so every part needs location *)
 let add_dummy_loc (x : 'a) : 'a Source.phrase = Source.(x @@ no_region)
 
+(* Needed as Wasm Ast represents module names (e.g. in import list) as "name" type, which is actually int list *)
+let encode_string : string -> int list = Utf8.decode
+
 type env = {
   (* (* Pointer to top of heap (needed until GC is implemented) *)
   heap_top: Wasm.Ast.var; -- likely GC related *)
@@ -48,7 +51,6 @@ let runtime_function_imports = [
     mimp_mod=runtime_mod;
     mimp_name=alloc_ident;
     mimp_type=MFuncImport([I32Type], [I32Type]);
-    mimp_kind=MImportWasm;
     mimp_setup=MSetupNone;
   };]
 let runtime_imports = runtime_global_imports @ runtime_function_imports
@@ -132,6 +134,7 @@ let get_func_type_idx env typ =
     List.length !(env.func_types) - 1
   | Some((i, _)) -> i
 
+(* Assumes all functions take an int32 - may cause issues when using floats? *)
 let get_arity_func_type_idx env arity =
   let has_arity (Types.FuncType(args, _)) = (List.length args) = arity in
   match find_index has_arity !(env.func_types) with
@@ -581,3 +584,93 @@ and compile_instr env instr =
   | MTagOp _ -> failwith "NYI: (compile_instr): MTagOp"
 
 (* 826 in Grain *)
+(* TODO: Understand how arity relates to currying/partial application *)
+let compile_function env {index; arity; stack_size; body=body_instrs} =
+  let arity_int = Int32.to_int arity in
+  let body_env = {env with num_args=arity_int} in
+  let body = List.map add_dummy_loc
+    ((compile_block body_env body_instrs) @ [Ast.Return]) in
+  let ftype_idx = get_arity_func_type_idx env arity_int in
+  let ftype = add_dummy_loc Int32.(of_int ftype_idx) in
+  let locals = List.append swap_slots @@ List.init (stack_size) (fun n -> Types.I32Type) in
+  let open Wasm.Ast in (* so func' record type in scope *)
+  add_dummy_loc {
+    ftype;
+    locals;
+    body;
+  }
+
+(* TODO: Is this necessary? (global)Imports should be fixed. Why the +2?? Relates to how compile_globals works *)
+let compute_table_size env {imports; exports; functions} =
+  (List.length functions) + ((List.length imports) - (List.length runtime_global_imports)) + 2
+
+(* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
+(* TODO: Understand what all of ths does/is needed for *)
+(* Is it okay for this to conflict with runtime_mod Ident.t variable?? *)
+let import_module_name = "OcamlRuntimeMod"
+let get_import_name name = "OcamlRuntimeExport" ^ (Ident.name name)
+let compile_imports env ({imports} as prog) =
+ (* let compile_asm_type t =
+    match t with (* Why aren't these just the same type to begin with? *)
+    | I32Type -> Types.I32Type
+    | I64Type -> Types.I64Type
+    | F32Type -> Types.F32Type
+    | F64Type -> Types.F64Type
+  in  *)
+
+ (*  Only OCaml runtime imports present, so set these to fixed names above
+   let compile_module_name name = function
+    | MImportWasm -> Ident.name name
+    | MImportGrain -> "GRAIN$MODULE$" ^ (Ident.name name)
+  in
+
+  let compile_import_name name = function
+    | MImportWasm -> Ident.name name
+    | MImportGrain -> "GRAIN$EXPORT$GET$" ^ (Ident.name name)
+  in *)
+
+  let compile_import {mimp_mod; mimp_name; mimp_type} =
+    let module_name = encode_string (import_module_name) in
+    let item_name = encode_string @@ get_import_name mimp_name in
+    let idesc = match mimp_type with
+      | MGlobalImport typ ->
+        let func_type = Types.FuncType([], [typ]) in
+        add_dummy_loc @@ Ast.FuncImport(add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
+      | MFuncImport(args, ret) ->
+        let func_type = Types.FuncType(args, ret) in
+        add_dummy_loc @@ Ast.FuncImport(add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
+   (*   | MGlobalImport typ ->  -- Unused since all imports are from runtime so fall into the first case
+        let imptyp = Types.GlobalType(typ, Types.Immutable) in
+        add_dummy_loc @@ Ast.GlobalImport(imptyp)  *)
+    in
+    (* Wasm.Ast import' type *)
+    let open Wasm.Ast in
+    add_dummy_loc {
+      module_name;
+      item_name;
+      idesc;
+    } in
+  let table_size = compute_table_size env prog in
+  let imports = List.map compile_import imports in
+  (List.append
+    imports
+    (* Single memory/table required by a Wasm module -- imported rather than created itself? *)
+    [
+      add_dummy_loc {
+        Ast.module_name=encode_string (Ident.name runtime_mod);
+        Ast.item_name=encode_string "mem";
+        Ast.idesc=add_dummy_loc (Ast.MemoryImport (Types.MemoryType({
+            Types.min=Int32.zero;
+            Types.max=None;
+          })));
+      };
+      add_dummy_loc {
+        Ast.module_name=encode_string (Ident.name runtime_mod);
+        Ast.item_name=encode_string "tbl";
+        Ast.idesc=add_dummy_loc (Ast.TableImport (Types.TableType({
+            Types.min=Int32.of_int table_size;
+            Types.max=None;
+          }, Types.FuncRefType))); (* Actually no choice other than FuncRefType in current Wasm *)
+      };
+    ])
+
