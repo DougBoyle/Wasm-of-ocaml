@@ -353,8 +353,6 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   (* Append currently being mapped to a linast expression higher up *)
   | Neq | Min | Max | Eq_phys | Neq_phys | Div | Mod | Append -> failwith "Not yet implemented"
 
-(* Line 470 of original code *)
-
 (** Heap allocations. *)
 let round_up (num : int) (multiple : int) : int =
   multiple * (((num - 1) / multiple) + 1)
@@ -583,8 +581,10 @@ and compile_instr env instr =
   | MArityOp _ -> failwith "NYI: (compile_instr): MArityOp"
   | MTagOp _ -> failwith "NYI: (compile_instr): MTagOp"
 
-(* 826 in Grain *)
 (* TODO: Understand how arity relates to currying/partial application *)
+(* TODO: Args in Grain correspond to elements of a tuple, not curried arguments.
+         Either need to change to be a set of functions or have application modify arity until 0, then call. *)
+(* For now can always take safe approach and uncurry when compiling to wasmtree *)
 let compile_function env {index; arity; stack_size; body=body_instrs} =
   let arity_int = Int32.to_int arity in
   let body_env = {env with num_args=arity_int} in
@@ -608,40 +608,22 @@ let compute_table_size env {imports; exports; functions} =
 (* TODO: Understand what all of ths does/is needed for *)
 (* Is it okay for this to conflict with runtime_mod Ident.t variable?? *)
 let import_module_name = "OcamlRuntimeMod"
+(* Can just use the Ident.name name rather than prefixing??
+   Should choose name to avoid possibility of compiling a program with the same name? e.g. OcamlRuntimeMod.ml? *)
 let get_import_name name = "OcamlRuntimeExport" ^ (Ident.name name)
 let compile_imports env ({imports} as prog) =
- (* let compile_asm_type t =
-    match t with (* Why aren't these just the same type to begin with? *)
-    | I32Type -> Types.I32Type
-    | I64Type -> Types.I64Type
-    | F32Type -> Types.F32Type
-    | F64Type -> Types.F64Type
-  in  *)
-
- (*  Only OCaml runtime imports present, so set these to fixed names above
-   let compile_module_name name = function
-    | MImportWasm -> Ident.name name
-    | MImportGrain -> "GRAIN$MODULE$" ^ (Ident.name name)
-  in
-
-  let compile_import_name name = function
-    | MImportWasm -> Ident.name name
-    | MImportGrain -> "GRAIN$EXPORT$GET$" ^ (Ident.name name)
-  in *)
-
   let compile_import {mimp_mod; mimp_name; mimp_type} =
     let module_name = encode_string (import_module_name) in
     let item_name = encode_string @@ get_import_name mimp_name in
     let idesc = match mimp_type with
+      (* TODO: Should this actually be the other case? i.e. line 877 of Grain, not 869.
+               Look at what determines ImportGrain vs ImportWasm i.e. which is the runtime environment for Grain *)
       | MGlobalImport typ ->
         let func_type = Types.FuncType([], [typ]) in
         add_dummy_loc @@ Ast.FuncImport(add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
       | MFuncImport(args, ret) ->
         let func_type = Types.FuncType(args, ret) in
         add_dummy_loc @@ Ast.FuncImport(add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
-   (*   | MGlobalImport typ ->  -- Unused since all imports are from runtime so fall into the first case
-        let imptyp = Types.GlobalType(typ, Types.Immutable) in
-        add_dummy_loc @@ Ast.GlobalImport(imptyp)  *)
     in
     (* Wasm.Ast import' type *)
     let open Wasm.Ast in
@@ -674,3 +656,95 @@ let compile_imports env ({imports} as prog) =
       };
     ])
 
+(* Is there any need for naming extensions? Doesn't look like it except to avoid naming something _start etc.
+   For now assume that never happens - convenience of being able to use actual names vs *)
+(* Linearise ensures that only one thing with each name gets exported, so don't need worry about duplicates *)
+let compile_exports env {functions; imports; exports; num_globals} =
+  (* TODO: What are these indexes? *)
+  let compile_getter i {ex_name; ex_global_index; ex_getter_index} =
+    let exported_name = (*"GRAIN$EXPORT$GET$" ^*) (Ident.name ex_name) in
+    let name = encode_string exported_name in
+    let fidx = (Int32.to_int ex_getter_index) + env.func_offset (* Is func_offset necessary? *) in
+    let export =
+      let open Wasm.Ast in
+      add_dummy_loc {
+        name;
+        edesc=add_dummy_loc (Ast.FuncExport (add_dummy_loc @@ Int32.of_int fidx));
+      } in
+    export
+  in
+  let compile_lambda_export i _ =
+    let name = encode_string ((* "GRAIN$LAM_" ^  -- also not needed? *) (string_of_int i)) in
+    let edesc = add_dummy_loc (Ast.FuncExport(add_dummy_loc @@ Int32.of_int (i + env.func_offset))) in
+    let open Wasm.Ast in
+    add_dummy_loc { name; edesc } in
+  let heap_adjust_idx = env.func_offset + (List.length functions) in
+  let main_idx = heap_adjust_idx + 1 in
+ (* let heap_adjust_idx = add_dummy_loc @@ Int32.of_int heap_adjust_idx in *)
+  let main_idx = add_dummy_loc @@ Int32.of_int main_idx in
+  let compiled_lambda_exports = List.mapi compile_lambda_export functions in
+  let compiled_exports = List.mapi compile_getter exports in
+     compiled_lambda_exports @
+        compiled_exports @
+        [
+        (* -- Unclear why anything other than maybe a main function (if issues with shifting 31/32-bit ints) needed
+          add_dummy_loc {
+            Ast.name=encode_string "GRAIN$HEAP_ADJUST";
+            Ast.edesc=add_dummy_loc (Ast.FuncExport heap_adjust_idx);
+          };*)
+          add_dummy_loc {
+            Ast.name=encode_string "OCAML$MAIN";
+            Ast.edesc=add_dummy_loc (Ast.FuncExport main_idx);
+          };
+          (*
+          add_dummy_loc {
+            Ast.name=encode_string (Ident.name table_size);
+            (* We add one here because of heap top *)
+            Ast.edesc=add_dummy_loc (Ast.GlobalExport (add_dummy_loc @@ Int32.of_int (num_globals + 1 + (List.length runtime_global_imports))));
+          }; *)
+        ]
+
+let compile_elems env prog =
+  let table_size = compute_table_size env prog in
+  let open Wasm.Ast in
+  (* Elems initialises the function table, just initialise ith element of table to point to function i (last line) *)
+  (* https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format - Defining a table in wasm *)
+  [
+    add_dummy_loc {
+      index=add_dummy_loc (Int32.zero);
+      offset=add_dummy_loc [
+        add_dummy_loc (Ast.GlobalGet(add_dummy_loc @@ Int32.of_int 0)); (* What is stored in index 0?? Can this be fixed? *)
+      ];
+      init=List.init table_size (fun n -> (add_dummy_loc (Int32.of_int n)));
+    };
+  ]
+let compile_globals env ({num_globals} as prog) =
+    (* Linked to as above, what is the 1 offset, what goes in index 0? *)
+    (List.init (1 + num_globals) (fun _ -> add_dummy_loc {
+         Ast.gtype=Types.GlobalType(Types.I32Type, Types.Mutable);
+         Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 0)]);
+       })) @
+    [  (* TODO: Why do we add the table size as the bottom item of the list?? *)
+      add_dummy_loc {
+        Ast.gtype=Types.GlobalType(Types.I32Type, Types.Immutable);
+        Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 (compute_table_size env prog))]);
+      }
+    ]
+
+(* Heap_adjust seems to just move "heap_top" global up by first argument. Seems like heap_top should be
+   hidden (not exported) in OCaml runtime, and that heap_adjust should be part of the alloc function *)
+
+(* Currently unclear if this will be needed or not. Why is index -99? *)
+let compile_main env prog =
+  compile_function env
+    {
+      index=Int32.of_int (-99);
+      arity=Int32.zero;
+      body=prog.main_body; (* top part of program put into its own function. Main effectively acts as _start? *)
+      stack_size=prog.main_body_stack_size;
+    }
+
+let compile_functions env ({functions} as prog) =
+  let compiled_funcs = List.map (compile_function env) functions in
+  let main = compile_main env prog in
+    compiled_funcs @ [main]
