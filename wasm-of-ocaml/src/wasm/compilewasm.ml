@@ -485,5 +485,99 @@ let do_backpatches env backpatches =
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
   (List.flatten (List.map do_backpatch backpatches))
 
+(* Used to compile MStore(binds) instructions. Does backpatches (see above) *)
+let rec compile_store env binds =
+  let process_binds env =
+    let process_bind (b, instr) acc =
+      let store_bind = compile_bind ~is_get:false env b in
+      let get_bind = compile_bind ~is_get:true env b in
+      let compiled_instr = match instr with
+        | MAllocate(MClosure(cdata)) ->
+          allocate_closure env ~lambda:get_bind cdata
+        | _ -> compile_instr env instr in
+      (compiled_instr @ store_bind) @ acc in
+    List.fold_right process_bind binds [] in
+  let instrs, backpatches = collect_backpatches env process_binds in
+  instrs @ (do_backpatches env backpatches)
 
-(* Line 686 in Grain version *)
+(* TODO: Look at compile_switch line 700, see if any significant benefit (without extra difficulty) of doing here
+         vs when mapping into wasmtree. *)
+
+and compile_block env block =
+  List.flatten (List.map (compile_instr env) block)
+
+(* THE CENTRAL FUNCTION USING ALL THE THINGS ABOVE *)
+(* TODO: Go through and understand how each case works *)
+and compile_instr env instr =
+  match instr with
+  | MDrop -> [Ast.Drop]
+  | MImmediate(imm) -> compile_imm env imm
+  | MAllocate(alloc) -> compile_allocation env alloc
+  | MDataOp(op, block) -> compile_data_op env block op
+  | MUnary(op, arg) -> compile_unary env op arg
+  | MBinary(op, arg1, arg2) -> compile_binary env op arg1 arg2
+  (* Decide level to do switches at *)
+ (* | MSwitch(arg, branches, default) -> compile_switch env arg branches default  *)
+  | MStore(binds) -> compile_store env binds
+
+  | MCallIndirect(func, args) ->
+    let compiled_func = compile_imm env func in
+    let compiled_args = List.flatten (List.map (compile_imm env) args) in
+    let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env (1 + List.length args))) in
+    let get_swap = get_swap env 0 in
+    let set_swap = set_swap env 0 in
+    let all_args =
+      compiled_func @
+    (*  untag LambdaTagType @  -- Probably need, but ignoring tags for now *)
+      set_swap @
+      get_swap @
+      compiled_args in
+
+    all_args @
+    get_swap @ [
+      load ~offset:4 ();
+      Ast.CallIndirect(ftype);
+    ]
+
+  | MIf(cond, thn, els) ->
+    let compiled_cond = compile_imm env cond in
+    let compiled_thn = List.map
+        add_dummy_loc
+        (compile_block env thn) in
+    let compiled_els = List.map
+        add_dummy_loc
+        (compile_block env els) in
+    compiled_cond @
+    decode_bool @ [
+      Ast.If(ValBlockType (Some Types.I32Type),
+             compiled_thn,
+             compiled_els);
+    ]
+
+  | MWhile(cond, body) ->
+    let compiled_cond = (compile_block env cond) in
+    let compiled_body = (compile_block env body) in
+    [Ast.Block(ValBlockType (Some Types.I32Type),
+       List.map add_dummy_loc
+        [Ast.Loop(ValBlockType (Some Types.I32Type),
+              List.map add_dummy_loc
+              ([Ast.Const const_false] @
+              compiled_cond @
+              decode_bool @
+              [Ast.Test(Values.I32 Ast.IntOp.Eqz);
+               Ast.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
+              [Ast.Drop] @
+              compiled_body @
+              [Ast.Br (add_dummy_loc @@ Int32.of_int 0)]))])]
+
+  | MCallKnown(func_idx, args) ->
+    let compiled_args = List.flatten @@ List.map (compile_imm env) args in
+    compiled_args @ [
+       Ast.Call(add_dummy_loc
+         (Int32.of_int ((* env.import_func_offset +  -- TODO: should be fixed value *) (Int32.to_int func_idx))));
+    ]
+  (* TODO: If never compiled, why does it exist? Purely documentation? *)
+  | MArityOp _ -> failwith "NYI: (compile_instr): MArityOp"
+  | MTagOp _ -> failwith "NYI: (compile_instr): MTagOp"
+
+(* 826 in Grain *)

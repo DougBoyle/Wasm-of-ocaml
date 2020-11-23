@@ -131,7 +131,7 @@ type instr =
   | MIf of immediate * block * block
   | MWhile of block * block
   (* TODO: Should my IR compile down switches to ifs at this point? *)
-  | MSwitch of immediate * (int32 * block) list * block (* value, branches, default *)
+ (* | MSwitch of immediate * (int32 * block) list * block *) (* value, branches, default *)
   | MUnary of unop * immediate
   | MBinary of binop * immediate * immediate
   | MDataOp of data_op * immediate
