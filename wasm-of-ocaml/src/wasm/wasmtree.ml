@@ -96,9 +96,9 @@ type allocation_type =
   | MData of immediate * immediate list (* Generalise tuples/adts/records etc. all into same type. Closures are separate *)
   (* | MTuple of immediate list
   | MADT of immediate * immediate * immediate list (* Type Tag, Variant Tag, Elements *)  *)
-  | MString of string
+ (* | MString of string -- Leave strings for now *)
 
-
+(* TODO: What does each of these do? *)
 type tag_op =
   | MCheckTag
   | MAssertTag
@@ -118,6 +118,7 @@ type arity_op =
 type data_op =
   | MGet of int32
   | MSet of int32 * immediate
+  | MGetTag
 
 type instr =
   | MImmediate of immediate

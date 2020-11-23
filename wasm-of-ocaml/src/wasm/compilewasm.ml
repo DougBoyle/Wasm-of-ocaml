@@ -434,3 +434,56 @@ let allocate_data env vtag elts =
     Ast.Const(const_int32 @@ tag_val_of_tag_type (GenericHeapType (Some ADTType)));
     Ast.Binary(Values.I32 Ast.IntOp.Or);
   ] *)
+
+let compile_allocation env alloc_type =
+  match alloc_type with
+  | MClosure(cdata) -> allocate_closure env cdata
+  (* | MString(str) -> allocate_string env str *)
+  | MData(tag, elts) -> allocate_data env tag elts
+
+let compile_data_op env imm op =
+  let block = compile_imm env imm in
+  match op with
+  | MGet(idx) ->
+    let idx_int = Int32.to_int idx in
+    (* Note that we're assuming the type-checker has done its
+       job and this access is not out of bounds. *)
+    block @ (* (untag TupleTagType) ::   -- probably not needed *) [
+        load ~offset:(4 * (idx_int + 2)) (); (* +2 as blocks start with variant tag; arity; ... *)
+      ]
+  | MSet(idx, imm) ->
+    let idx_int = Int32.to_int idx in
+    block @ (* (untag TupleTagType) @ *) (compile_imm env imm) @ [
+        store ~offset:(4 * (idx_int + 2)) ();
+      ] @ (compile_imm env imm) (* Why do we put the value on the stack again after? *)
+  | MGetTag ->
+    block @ (* (untag (GenericHeapType (Some ADTType))) +@ *) [
+      load ~offset:0 ();
+    ]
+
+(* TODO: How do backpatches work? What are they achieving that needs to be done in a separate stage?
+         Gets done for every 'allocate_closure' so not just about recursive functions (unless being over-cautious) *)
+(* What is this doing? Appears to just call f on the given env, but with backpatches reset *)
+let collect_backpatches env f =
+  let nested_backpatches = ref [] in
+  let res = f {env with backpatches=nested_backpatches} in
+  res, !nested_backpatches
+
+(* Mutually recursive functions, once closures created, need to associate each variable for one of the other functions
+   (or themself) with that closure. So go through and put a pointer to each needed closure in each of the closures. *)
+let do_backpatches env backpatches =
+  let do_backpatch (lam, {variables}) =
+    let get_swap = get_swap env 0 in
+    let set_swap = set_swap env 0 in
+    (* Put lam in the swap register *)
+    let preamble = lam (* @ [   -- Leaving out tags for now - likely needed for Lambdas!
+        Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType);
+        Ast.Binary(Values.I32 Ast.IntOp.Xor);
+      ] *) @ set_swap in
+    let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
+      get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 3)) ();] in
+    preamble @ (List.flatten (List.mapi backpatch_var variables)) in
+  (List.flatten (List.map do_backpatch backpatches))
+
+
+(* Line 686 in Grain version *)
