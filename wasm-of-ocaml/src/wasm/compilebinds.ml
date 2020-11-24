@@ -179,7 +179,7 @@ let next_global id =
 (* BULK OF CODE *)
 let rec compile_comp env (c : compound_expr) =
   match c.desc with
-  | CSwitch(arg, branches, default) -> raise NotImplemented
+  | CSwitch(arg, branches, default) -> raise (NotImplemented __LOC__)
  (* TODO: Determine what level to handle switches at, see if table in Wasm is useful
    let compiled_arg = compile_imm env arg in
     MSwitch(compiled_arg,
@@ -192,7 +192,7 @@ let rec compile_comp env (c : compound_expr) =
     MWhile(compile_imm env cond, compile_linast env body)
   (* TODO: Translate here or at lower step? Should just be able to add the ident to the current stack?
            Easy to do due to succ/pred unary operators *)
-  | CFor(id, start, finish, dir, body) -> raise NotImplemented
+  | CFor(id, start, finish, dir, body) -> raise (NotImplemented __LOC__)
   (* TODO: Understnad what Grain used box/unbox and tuples for here. Passing tuple as list of args to function?
   | CPrim1(Box, arg) ->
     MAllocate(MTuple [compile_imm env arg])
@@ -207,12 +207,12 @@ let rec compile_comp env (c : compound_expr) =
   | CMakeBlock (tag, args) ->
       MAllocate(MData(tag, List.map (compile_imm env) args))
   (* TODO: Arrays *)
-  | CArraySet(obj, idx, v) -> raise NotImplemented
-  | CArrayGet(obj, idx) -> raise NotImplemented
+  | CArraySet(obj, idx, v) -> raise (NotImplemented __LOC__)
+  | CArrayGet(obj, idx) -> raise (NotImplemented __LOC__)
   (* TODO: Strings/floats *)
   | CGetTag(obj) ->
     MDataOp(MGetTag, compile_imm env obj)
-  | CMatchTry (i, body1, body2) -> raise NotImplemented (* TODO: Work out how to handle at Wasm level *)
+  | CMatchTry (i, body1, body2) -> raise (NotImplemented __LOC__) (* TODO: Work out how to handle at Wasm level *)
   | CFunction(args, body) -> (* TODO: Resolve mismatch of args!! Just have functions take 1 arg for now (tuples later) *)
     MAllocate(MClosure(compile_function env args body))
   | CApp(f, args) ->

@@ -4,7 +4,7 @@ open Types
 let defaultLoc = Location.none
 let defaultEnv = Env.empty
 
-exception NotImplemented
+exception NotImplemented of string
 exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not accept these elements *)
 
 (* Don't worry about passing around locations/environments for now, just a hastle *)
@@ -82,5 +82,27 @@ let primIds : (string * Ident.t) list ref = ref []
 let primBinds : linast_setup list ref = ref []
 
 (* TODO: Helper functions to enable translating to wasm (and also optimisation passes later) *)
-let free_vars ast = raise NotImplemented
-let count_vars ast = raise NotImplemented
+let free_vars ast = raise (NotImplemented __LOC__)
+(* TODO: Work out logic behind counting, why is this the number needed? Number of vars needed at any 1 point *)
+(* Assumption that all vars can use the same type of local variable - is this true/relevant? *)
+let rec count_vars (ast : linast_expr) = match ast.desc with
+  | LLet (_, _, comp, body) -> max (count_vars_comp comp) (1 + count_vars body)
+  | LLetRec (binds, body) ->
+    let max_binds = List.fold_left max 0 (List.map (fun (_, _, c) -> count_vars_comp c) binds) in
+    max max_binds (List.length binds + (count_vars body))
+   | LSeq(comp, linast) -> max (count_vars_comp comp) (count_vars linast)
+   | LCompound c -> count_vars_comp c
+
+and count_vars_comp c =
+  match c.desc with
+  | CIf(_, t, f) -> max (count_vars t) (count_vars f)
+  | CWhile(_, b) -> count_vars b
+  | CSwitch(_, cases, default) ->
+   let max_case = List.fold_left max 0 (List.map (fun (_, b) -> count_vars b) cases) in
+   (match default with None -> max_case | Some c -> max max_case (count_vars c))
+  | CApp(_, args) -> List.length args (* Why do args matter but not functions *)
+  (* TODO: Check the semantics here - Currently bindings can carry over so have to take the sum??
+           Ignores the fact that some variables could be repeated in places in which case double counted.
+           May need smarter method. Very conservative for now *)
+  | CMatchTry (_, e1, e2) -> (count_vars e1) + (count_vars e2)
+  | _ -> 0

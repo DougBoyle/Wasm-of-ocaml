@@ -21,7 +21,7 @@ let translate_ident path = function
   | _ -> (match path with
     | Path.Pident id -> id
     | Path.Pdot(Path.Pident (Ident.Global "Stdlib"), s) -> Primitives.translate_other_prim s
-    | _ -> raise NotImplemented)
+    | _ -> raise (NotImplemented __LOC__))
 
 (*
 let translate_ident = function
@@ -78,7 +78,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     let (compound, setup) = translate_compound e in
     (Imm.id id, setup @ [BLet(id, compound)])
 
-  | Texp_letop {let_; ands; param; body; partial} -> raise NotImplemented
+  | Texp_letop {let_; ands; param; body; partial} -> raise (NotImplemented __LOC__)
   | _ -> raise NotSupported
 
 (* TAKEN FROM OCAML COMPILER Lambda/Translcore.ml *)

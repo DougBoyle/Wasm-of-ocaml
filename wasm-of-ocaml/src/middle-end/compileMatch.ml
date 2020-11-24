@@ -108,8 +108,8 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
 
 
   (* Don't expect to need to match Tpat_value or Tpat_lazy -- GADT, they aren't value patterns *)
-  | Tpat_array pl -> raise NotImplemented
-  | Tpat_variant (_, _, _) -> raise NotImplemented
+  | Tpat_array pl -> raise (NotImplemented __LOC__)
+  | Tpat_variant (_, _, _) -> raise (NotImplemented __LOC__)
   | _ -> raise NotSupported
 
 let include_guard fail expr = function
