@@ -6,4 +6,4 @@ ir:
 linear:
 	ocamlbuild -Is $(dirs) linearise.byte
 wasm:
-	ocamlbuild -pkg wasm -Is $(dirs) compilewasm.byte
+	ocamlbuild -pkg wasm -Is $(dirs) compilebinds.byte

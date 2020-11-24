@@ -258,7 +258,7 @@ let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   match i with
   | MImmConst c -> [Ast.Const(add_dummy_loc @@ compile_const c)]
   | MImmBinding b -> compile_bind ~is_get:true env b
-  | MFail i -> failwith "Need to implement Fail - likely requires passing around something to track where handlers are"
+  | MImmFail i -> failwith "Need to implement Fail - likely requires passing around something to track where handlers are"
 
 (* call_error_handler left out - not doing proper exceptions (makes a call to runtime_throw_error) *)
 (* Don't think error_if_true or check_overflow needed either - OCaml allows slient overflows *)
@@ -443,7 +443,7 @@ let allocate_data env vtag elts =
     store ~offset:0 ();
   ] @ get_swap @ (compile_imm env ttag) @ [
     store ~offset:4 ();
-  ] @ get_swap *) @ (compile_imm env vtag) @ [
+  ] @ get_swap *) (* @ (const_int32 vtag) *) @ [Ast.Const(const_int32 vtag);
     store ~offset:0 ();
   ] @ get_swap @ [
     Ast.Const(const_int32 num_elts);
@@ -574,7 +574,7 @@ and compile_instr env instr =
     ]
 
   | MWhile(cond, body) ->
-    let compiled_cond = (compile_block env cond) in
+    let compiled_cond = compile_imm env cond in
     let compiled_body = (compile_block env body) in
     [Ast.Block(ValBlockType (Some Types.I32Type),
        List.map add_dummy_loc
@@ -813,9 +813,9 @@ let prepare env ({imports} as prog) =
   let import_global_offset = import_offset + (List.length imports) in  *)
   (* Shouldn't actually be any 'new_imports' *)
 (*  let new_imports = runtime_imports @ imports in *)
-  let new_env = fold_lefti (process_import ~is_runtime_import:true) env runtime_global_imports in
-  let new_env = fold_lefti (process_import ~is_runtime_import:true) new_env runtime_function_imports in
-  let new_env = fold_lefti (process_import ~dynamic_offset:import_offset) new_env imports in
+  let new_env = Utils.fold_lefti (process_import ~is_runtime_import:true) env runtime_global_imports in
+  let new_env = Utils.fold_lefti (process_import ~is_runtime_import:true) new_env runtime_function_imports in
+  let new_env = Utils.fold_lefti (process_import ~dynamic_offset:import_offset) new_env imports in
   let global_offset = import_offset in (* replaced impor_global_offset - should be the same thing? *)
   let func_offset = global_offset - (List.length runtime_global_imports) in
   {
@@ -853,6 +853,9 @@ let compile_wasm_module ?env prog =
     tables=[];
     elems;
     types;
+    (* TODO: Probably want this to replace 'main'? Need to decide how externally calling into OCaml will work.
+             Could add an extra function to runtime to map js ints to ocaml ints once tags added (shift to 31-bits),
+              then call that from js. *)
     start=None;
   } in
   validate_module ret;

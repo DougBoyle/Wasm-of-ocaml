@@ -80,3 +80,7 @@ let rec binds_to_anf ?(exported=[]) binds body =
 let primIds : (string * Ident.t) list ref = ref []
 (* List of Binds to include in program *)
 let primBinds : linast_setup list ref = ref []
+
+(* TODO: Helper functions to enable translating to wasm (and also optimisation passes later) *)
+let free_vars ast = raise NotImplemented
+let count_vars ast = raise NotImplemented

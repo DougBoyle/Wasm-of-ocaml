@@ -83,7 +83,7 @@ type binding =
 type immediate =
   | MImmConst of constant
   | MImmBinding of binding
-  | MFail of int32 (* Match failure - compiles to a branch out to the block for the switch of same label *)
+  | MImmFail of int32 (* Match failure - compiles to a branch out to the block for the switch of same label *)
 
 type closure_data = {
   func_idx: int32;
@@ -93,7 +93,7 @@ type closure_data = {
 
 type allocation_type =
   | MClosure of closure_data
-  | MData of immediate * immediate list (* Generalise tuples/adts/records etc. all into same type. Closures are separate *)
+  | MData of int32 * immediate list (* Generalise tuples/adts/records etc. all into same type. Closures are separate *)
   (* | MTuple of immediate list
   | MADT of immediate * immediate * immediate list (* Type Tag, Variant Tag, Elements *)  *)
  (* | MString of string -- Leave strings for now *)
@@ -119,17 +119,18 @@ type data_op =
   | MGet of int32
   | MSet of int32 * immediate
   | MGetTag
+(* TODO: Arrays *)
 
 type instr =
   | MImmediate of immediate
   | MCallKnown of int32 * immediate list (* Optimized path for statically-known function names *)
   | MCallIndirect of immediate * immediate list
- (* | MError of grain_error * immediate list    No exceptions *)
   | MAllocate of allocation_type
+  (* Are these ever actually used? Seem to only give errors *)
   | MTagOp of tag_op * (* tag_type * *) immediate
   | MArityOp of arity_operand * arity_op * immediate
   | MIf of immediate * block * block
-  | MWhile of block * block
+  | MWhile of immediate * block
   (* TODO: Should my IR compile down switches to ifs at this point? *)
  (* | MSwitch of immediate * (int32 * block) list * block *) (* value, branches, default *)
   | MUnary of unop * immediate
