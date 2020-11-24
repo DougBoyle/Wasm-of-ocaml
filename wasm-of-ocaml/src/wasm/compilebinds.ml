@@ -24,8 +24,6 @@ let initial_env = {
 
 (* Function index for doing lambda lifting *)
 let lift_index = ref 0
-(* TODO: When is reset actually needed? *)
-let reset_lift () = lift_index := 0
 let next_lift () = let v = !lift_index in incr lift_index; v
 
 (* Track global variables *)
@@ -35,8 +33,6 @@ let global_index = ref 0
 let global_exports () = let tbl = !global_table in
   Ident.fold_all
   (fun ex_name (ex_global_index, ex_getter_index) acc -> {ex_name; ex_global_index; ex_getter_index}::acc) tbl []
-(* Is reset needed? *)
-let reset_globals () = global_table := Ident.empty; global_index := 0
 
 let next_global_indexes id = (* According to Grain - some issue with 'hygiene'? *)
   (* No find_opt so using find_all and checking for the empty list *)
@@ -69,7 +65,6 @@ type work_element = {
 
 let worklist = ref ([] : work_element list)
 
-let worklist_reset () = worklist := []
 (* TODO: Use BatDeque to be able to cons in reverse.
          Why is this built in reverse order? May be possible to rewrite other way round *)
 let worklist_add elt = worklist := !worklist @ [elt]
@@ -279,11 +274,7 @@ let compile_remaining_worklist () =
    May change when abs/min/max implemented in runtime, but will still be very fixed i.e. just check if used or not *)
 (* lift_imports creates a list of 'setups' - are these relevant/needed? May want to check what it does carefully *)
 
-
 let transl_program (program : linast_expr) : wasm_program =
-(*  reset_lift(); (* TODO: Implies this can be called more than once! Probably not true *)
-  reset_global();
-  worklist_reset(); *)
   let imports, setups, env = [], [], initial_env (* lift_imports initial__env anf_prog.imports *) in
   let main_body_stack_size = count_vars program in
   let main_body = setups @ (compile_linast env program) in
