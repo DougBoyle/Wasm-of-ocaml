@@ -32,7 +32,7 @@ let next_lift () = let v = !lift_index in incr lift_index; v
 let global_table = ref (Ident.empty: (int32 * int32) Ident.tbl)
 let global_index = ref 0
 (* TODO: What is this doing? Why is there both a global_index and getter_index?? *)
-let global_exports = let tbl = !global_table in
+let global_exports () = let tbl = !global_table in
   Ident.fold_all
   (fun ex_name (ex_global_index, ex_getter_index) acc -> {ex_name; ex_global_index; ex_getter_index}::acc) tbl []
 (* Is reset needed? *)
@@ -73,7 +73,6 @@ let worklist_reset () = worklist := []
 (* TODO: Use BatDeque to be able to cons in reverse.
          Why is this built in reverse order? May be possible to rewrite other way round *)
 let worklist_add elt = worklist := !worklist @ [elt]
-let worklist_empty () = !worklist = []
 let worklist_pop () = match !worklist with
   | [] -> raise Not_found
   | x::xs -> worklist := xs; x
@@ -230,4 +229,71 @@ let rec compile_comp env (c : compound_expr) =
     MCallKnown(builtin_idx, List.map (compile_imm env) args) *)
   | CImm i -> MImmediate(compile_imm env i)
 
-and compile_linast env a = failwith ""
+and compile_linast env expr = match expr.desc with
+ | LSeq(hd, tl) -> (compile_comp env hd)::MDrop::(compile_linast env tl)
+ | LLetRec(binds, body) ->
+   let get_loc idx ((id, global, _) as bind) =
+     match global with
+     | Global -> (MGlobalBind(Int32.of_int (next_global id)), bind)
+     | Local -> (MLocalBind(Int32.of_int (env.stack_idx + idx)), bind) in
+   let binds_with_locs = List.mapi get_loc binds in
+   let new_env = List.fold_left (fun acc (new_loc, (id, _, _)) -> (* - Should use global field?? *)
+       (* Why does stack idx increase regardless - surely should only go up for non-globals? Just being cautious?? *)
+       {acc with binds=Ident.add id new_loc acc.binds; stack_idx=acc.stack_idx + 1})
+       env binds_with_locs in
+       let wasm_binds = List.fold_left (fun acc (loc, (_, _, rhs)) ->
+           (loc, (compile_comp new_env rhs)) :: acc)
+           [] binds_with_locs in
+       MStore(List.rev wasm_binds) :: (compile_linast new_env body) (* Store takes a list?? *)
+ | LLet (id, global, bind, body) ->
+   let location = (match global with (* As above but only 1 element *)
+     | Global -> MGlobalBind(Int32.of_int (next_global id))
+     | Local -> MLocalBind(Int32.of_int (env.stack_idx))) in
+   (* Could split whole thing into global/local case to avoid adding empty space to stack? *)
+   let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx + 1} in
+   let wasm_binds = [(location, (compile_comp new_env bind))] in
+   MStore(wasm_binds) :: (compile_linast new_env body)
+ | LCompound c -> [compile_comp env c]
+
+let compile_work_element({body; env} : work_element) =
+  match body with (* Piece together any bits of work remaining *)
+  | Lin body ->
+    compile_linast env body
+  | Compiled block -> block
+
+(* Fold left but on reference to a list, where list may be updated by function being applied *)
+let fold_left_worklist f base =
+  let rec help acc = match !worklist with
+    | [] -> acc
+    | _ -> help (f acc (worklist_pop())) in
+  help base
+
+let compile_remaining_worklist () =
+  let compile_one funcs ((({idx=index; arity; stack_size}) as cur) : work_element) =
+    let body = compile_work_element cur in
+    {index=Int32.of_int index; arity=Int32.of_int arity; body; stack_size;}::funcs in
+  List.rev (fold_left_worklist compile_one [])
+
+(* lift_imports left out as Linast doesn't specify any imports currently. Only imports are the standard
+   runtime ones which are implicit at this stage and always included.
+   May change when abs/min/max implemented in runtime, but will still be very fixed i.e. just check if used or not *)
+(* lift_imports creates a list of 'setups' - are these relevant/needed? May want to check what it does carefully *)
+
+
+let transl_program (program : linast_expr) : wasm_program =
+(*  reset_lift(); (* TODO: Implies this can be called more than once! Probably not true *)
+  reset_global();
+  worklist_reset(); *)
+  let imports, setups, env = [], [], initial_env (* lift_imports initial__env anf_prog.imports *) in
+  let main_body_stack_size = count_vars program in
+  let main_body = setups @ (compile_linast env program) in
+  let exports = global_exports() in
+  let functions = compile_remaining_worklist() in
+  {
+    functions;
+    imports;
+    exports;
+    main_body;
+    main_body_stack_size;
+    num_globals=(!global_index);
+  }

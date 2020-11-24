@@ -173,21 +173,21 @@ type export = {
   ex_getter_index: int32;
 } 
 
-type mash_function = {
+type wasm_function = {
   index: int32;
   arity: int32; (* Note from grain code to do: Proper typing of arguments *)
   body: block;
   stack_size: int;
 } 
 
-type mash_program = {
-  functions: mash_function list;
+type wasm_program = {
+  functions: wasm_function list;
   imports: import list;
   exports: export list;
   main_body: block;
   main_body_stack_size: int;
   num_globals: int;
-  signature: Cmi_format.cmi_infos;
+  (* signature: Cmi_format.cmi_infos; Just annotation, not actually used to produce wasm (just cmi files etc.) *)
 } 
 
 (* Why these rather than just 0/1? Likely due to Grain GC needing to represent things in a certain way, can simplify for mine *)
