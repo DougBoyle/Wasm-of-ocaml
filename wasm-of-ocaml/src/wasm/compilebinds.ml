@@ -94,8 +94,8 @@ let compile_imm env (i : imm_expr) =
 
 (* TODO: Understnad all of this (particularly later part) *)
 let compile_function env args body : closure_data =
-  let used_var_set = free_vars body in
-  let free_var_set = Ident.Set.diff used_var_set @@ Ident.Set.of_list args in
+  let used_var_set = free_vars Ident.Set.empty body in
+  let free_var_set = Ident.Set.diff used_var_set (Ident.Set.of_list args) in
   let free_vars = Ident.Set.elements free_var_set in
   (* ClosureBind represents variables accessed by looking up in closure environment *)
   let free_binds = Utils.fold_lefti (fun acc closure_idx var ->
