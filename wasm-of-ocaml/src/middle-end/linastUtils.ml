@@ -81,6 +81,18 @@ let primIds : (string * Ident.t) list ref = ref []
 (* List of Binds to include in program *)
 let primBinds : linast_setup list ref = ref []
 
+(* 10 was arbitrarily chosen as initial size *)
+let handler_envs : (int32, Ident.Set.t) Hashtbl.t = Hashtbl.create 10
+let update_handler_env i env =
+  match Hashtbl.find_opt handler_envs i with
+  | Some e -> Hashtbl.replace handler_envs i (Ident.Set.union e env)
+  | None -> Hashtbl.add handler_envs i env
+(* Getting handler env removes it from the hashtbl, so never need an explicit reset between uses.
+   Never actually an issue as handler identifiers aren't reused, so compiler only does this once per handler. *)
+let get_handler_env i env = match Hashtbl.find_opt handler_envs i with
+  | Some e -> Hashtbl.remove handler_envs i; Ident.Set.union env e
+  | None -> env
+
 (* TODO: Helper functions to enable translating to wasm (and also optimisation passes later) *)
 (* Env is variables bound in body of expression *)
 let rec free_vars env (e : linast_expr) =
@@ -120,22 +132,30 @@ and free_vars_comp env (c : compound_expr) = match c.desc with
   | CMakeBlock(_, args) ->
     List.fold_left (fun acc a -> Ident.Set.union (free_vars_imm env a) acc) Ident.Set.empty args
   | CImm i -> free_vars_imm env i
-  (* TODO: MatchTry again breaks calculating variables? Or just need to treat both sides as 1 expression?
-           Would somehow have to extract 'env' from wherever a 'fail' occurs, as need to know variables
-           bound before the exit occured. Could possibly do by passing around a function to handle exit case.
-           Or just concede and rebind variables when fail/handles occur? *)
-  (* Could use fact handler identifiers are unique and only get multiple bindings to one in specific places?
-     Idents also unique so can just keep a reference list of environment to evaluate each handler,
-     somewhat similar to how optimised pattern matching works. *)
-  | CMatchTry (_, body, handle) -> raise (NotImplemented __LOC__)
+    (* Fail cases record the env at that point, union taken to avoid counting varaibles in handler which
+       are bound by matching in the try block. Doesn't discount actual free varaibles due to use of unique Idents. *)
+  | CMatchTry (i, body, handler) ->
+    (* Must be evaluated in this order *)
+    let free_in_body = free_vars env body in
+    Ident.Set.union free_in_body (free_vars (get_handler_env i env) handler)
+
 
 and free_vars_imm env (i : imm_expr) = match i.desc with
   | ImmIdent x when not (Ident.Set.mem x env) -> Ident.Set.singleton x
+  (* Track possibly bound variables for when handler body entered *)
+  | ImmMatchFail i -> update_handler_env i env; Ident.Set.empty
   | _ -> Ident.Set.empty
 
-(* TODO: Work out logic behind counting, why is this the number needed? Number of vars needed at any 1 point *)
+(* Just needs the maximum since same 'env' (contains most recent stack index) is passed to compilation
+   of both sides e.g. Seq(hd, tl). tl doesn't use anything added to scope in hd so can just overwrite.
+   Makes semantics of the handle case difficult, need to know how variables have previously been bound
+   when going to compile handle case, likely by using references as a 'cheat' to scoping in this case.
+   TODO: Is it justifiable given how odd the semantics/reasoning is? *)
+(* Like a very basic form of register colouring! *)
 (* Assumption that all vars can use the same type of local variable - is this true/relevant? *)
 let rec count_vars (ast : linast_expr) = match ast.desc with
+  (* Split up how many things needed at a time.
+     For let x = e in e', can overwrite all variables in e once its constructed, then just have x and e' *)
   | LLet (_, _, comp, body) -> max (count_vars_comp comp) (1 + count_vars body)
   | LLetRec (binds, body) ->
     let max_binds = List.fold_left max 0 (List.map (fun (_, _, c) -> count_vars_comp c) binds) in
@@ -143,16 +163,20 @@ let rec count_vars (ast : linast_expr) = match ast.desc with
    | LSeq(comp, linast) -> max (count_vars_comp comp) (count_vars linast)
    | LCompound c -> count_vars_comp c
 
+(* TODO: Don't believe CApp case needs to be considered, just cases which constain a linastexpr (so bind stuff)
+   Can ignore CFunction since its bindings won't actually be evaluated (function gets lifted in actual wasm)
+   CMatchTry can be smarter by tracking which points actually lead to a fail, but for now can just be cautious
+   and take sum - safe to over-estimate number needed.
+   *)
 and count_vars_comp c =
   match c.desc with
   | CIf(_, t, f) -> max (count_vars t) (count_vars f)
+  | CFor(_, _, _, _, body) -> (count_vars body) + 1
   | CWhile(_, b) -> count_vars b
   | CSwitch(_, cases, default) ->
    let max_case = List.fold_left max 0 (List.map (fun (_, b) -> count_vars b) cases) in
    (match default with None -> max_case | Some c -> max max_case (count_vars c))
-  | CApp(_, args) -> List.length args (* Why do args matter but not functions *)
-  (* TODO: Check the semantics here - Currently bindings can carry over so have to take the sum??
-           Ignores the fact that some variables could be repeated in places in which case double counted.
-           May need smarter method (Like Ident.Set used for free vars). Very conservative for now. *)
+(*  | CApp(_, args) -> List.length args  Don't believe this case is necessary  *)
+  (* An over-estimate, safe to do but can get more precise by tracking bindings made when each exit reached *)
   | CMatchTry (_, e1, e2) -> (count_vars e1) + (count_vars e2)
   | _ -> 0
