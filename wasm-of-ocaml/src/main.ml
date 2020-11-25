@@ -7,6 +7,7 @@ let _ = Clflags.dont_write_files := true
 let main () =
   let filename = !input in
   let output_prefix = Compenv.output_prefix filename in
+  let output_file = output_prefix ^ ".wasm" in
   try
     let (tree, coercions) = Compile.typed_implementation Format.err_formatter filename output_prefix in
   (*  Printtyped.implementation_with_coercion Format.std_formatter (tree, coercions);  *)
@@ -16,8 +17,11 @@ let main () =
     Pplinast.print_ast Format.std_formatter ir; Format.print_newline();
     Printf.printf "\nLambda:\n";
     Printlambda.program Format.std_formatter lambdaProgram; Format.print_newline(); *)
-    let _ = Compilebinds.transl_program ir in
-    Printf.printf "SUCCESS\n"
+    let wasm_ast = Compilebinds.transl_program ir in
+    let wasm = Compilewasm.compile_wasm_module wasm_ast in
+    let binary = Wasm.Encode.encode wasm in
+    let f = open_out_bin output_file in
+    output_string f binary; close_out f; Printf.printf "SUCCESS\n"
   with x -> Location.report_exception Format.err_formatter x
 
 let _ = Arg.parse []

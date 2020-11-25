@@ -193,6 +193,7 @@ let rec compile_comp env (c : compound_expr) =
 
   | CFunction(args, body) -> (* TODO: Resolve mismatch of args!! Just have functions take 1 arg for now (tuples later) *)
     MAllocate(MClosure(compile_function env args body))
+  (* TODO: Currying vs tuple mismatch - likely want to do many Function calls (can expand lower down) *)
   | CApp(f, args) ->
     (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Yes, for abs/min/max later *)
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args)

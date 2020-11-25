@@ -274,7 +274,9 @@ let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   | MImmBinding b -> compile_bind ~is_get:true env b
   | MImmFail j -> (match j with
     | -1l -> [Ast.Unreachable] (* trap *)
-    | _ -> [Ast.Br (add_dummy_loc (List.find ((=) j) env.handler_heights))]) (* get block to jump to *)
+    (* get block to jump to *)
+    | _ -> [Ast.Br (add_dummy_loc (List.assoc j env.handler_heights))])
+
 
 (* call_error_handler left out - not doing proper exceptions (makes a call to runtime_throw_error) *)
 (* Don't think error_if_true or check_overflow needed either - OCaml allows slient overflows *)
@@ -460,7 +462,7 @@ let allocate_data env vtag elts =
     store ~offset:0 ();
   ] @ get_swap @ (compile_imm env ttag) @ [
     store ~offset:4 ();
-  ] @ get_swap *) (* @ (const_int32 vtag) *) @ [Ast.Const(const_int32 vtag);
+  ] @ get_swap *) (* @ (const_int32 vtag) *) @ [Ast.Const(wrap_int32 vtag);
     store ~offset:0 ();
   ] @ get_swap @ [
     Ast.Const(const_int32 num_elts);
@@ -555,7 +557,7 @@ and compile_instr env instr =
   (* Decide level to do switches at *)
  (* | MSwitch(arg, branches, default) -> compile_switch env arg branches default  *)
   | MStore(binds) -> compile_store env binds
-
+  (* TODO: Currying vs tuples - may need to generate many Ast.CallIndirects - take 1 arg at a time?? *)
   | MCallIndirect(func, args) ->
     let compiled_func = compile_imm env func in
     let compiled_args = List.flatten (List.map (compile_imm env) args) in
@@ -616,7 +618,7 @@ and compile_instr env instr =
     let handler_body = compile_block (enter_block env) handler in
     [Ast.Block(ValBlockType (Some Types.I32Type), (* Outer 'try/with' block *)
        List.map add_dummy_loc
-        ([Ast.Block(ValBlockType (Some Types.I32Type), (* inner block for body *)
+        ([Ast.Block(ValBlockType (Some Types.I32Type), (* inner block for body - What should blocktype be?*)
               List.map add_dummy_loc
               (compiled_body @ [Ast.Br (add_dummy_loc 1l)]))]  (* try case succeeded, skip handler *)
         @ handler_body))]
@@ -800,11 +802,25 @@ let compile_functions env ({functions} as prog) =
   let main = compile_main env prog in
     compiled_funcs @ [main]
 
+let module_to_string compiled_module =
+  (* Print module to string *)
+  Wasm.Sexpr.to_string 80 @@ Wasm.Arrange.module_ compiled_module
+
+let reparse_module (module_ : Wasm.Ast.module_) =
+  let open Wasm.Source in
+  let as_str = Wasm.Sexpr.to_string 80 (Wasm.Arrange.module_ module_) in
+  let {it=script} = Wasm.Parse.string_to_module as_str in
+  match script with
+  | Wasm.Script.Textual(m) -> m
+  | Encoded _ -> failwith "Internal error: reparse_module: Returned Encoded (should be impossible)"
+  | Quoted _ -> failwith "Internal error: reparse_module: Returned Quoted (should be impossible)"
+
 (* Leaving out "reparse" function for now - meant so that actual locations of parts of program can be found
    when validation fails. TODO: May want to add this to help with debugging *)
 let validate_module (module_ : Wasm.Ast.module_) =
   try Valid.check_module module_
   with Wasm.Valid.Invalid(region, msg) ->
+    Printf.printf "%s\n" (module_to_string module_);
     failwith "Module validation failed. May want to implement 'reparse' to be able to find failing region of program"
 
 (* Fold left but with an added integer argument *)
@@ -893,8 +909,6 @@ let compile_wasm_module ?env prog =
   validate_module ret;
   ret
 
-let module_to_string compiled_module =
-  (* Print module to string *)
-  Wasm.Sexpr.to_string 80 @@ Wasm.Arrange.module_ compiled_module
+
 
 (* May want to register an exception printer if I have issues debuggging - see Printexc.register_printer *)

@@ -279,6 +279,7 @@ and translate_prim_app (primDesc : Primitive.description) args =
       )
 
 and translate_function param cases partial =
+  (* TODO: Use this first one or not? Current Wasm implementation doesn't allow currying! *)
    (match cases with [{c_lhs=pat; c_guard=None;
     c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
     partial = partial'; }; exp_env; exp_type} as exp}]
