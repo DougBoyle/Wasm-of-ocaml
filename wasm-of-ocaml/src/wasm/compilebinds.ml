@@ -131,31 +131,8 @@ let compile_function env args body : closure_data =
     variables=(List.map (fun id -> MImmBinding(find_id id env)) free_vars);
   }
 
-(* TODO: What is this doing? Where are wrappers needed/used? Just consists of a function call. *)
-let compile_wrapper env real_idx arity : closure_data =
-  let body = [
-    MCallKnown(Int32.of_int real_idx, List.init arity (fun i -> MImmBinding(MArgBind(Int32.of_int (i + 1)))));
-  ] in
-  let idx = next_lift() in
-  let lam_env = {
-    env with
-    binds=Ident.empty;
-    stack_idx=0;
-    arity=arity + 1; (* Add own closure as an argument -- can optimise in future if no free vars *)
-  } in
-  let worklist_item = {
-    body=Compiled body;
-    env=lam_env;
-    idx;
-    arity=arity + 1;
-    stack_size=0;
-  } in
-  worklist_add worklist_item;
-  {
-    func_idx=(Int32.of_int idx);
-    arity=(Int32.of_int (arity + 1));
-    variables=[];
-  }
+(* Compile_wrapper only used in process_imports for Wasmfunctions. Allows treating wasm function as closure?
+   Not needed, as wasm_functions are just runtime calls, can map to directly. *)
 
 (* TODO: Work out why no arity/stack_size - All referenced variables must also be globals?? *)
 let next_global id =
@@ -213,6 +190,7 @@ let rec compile_comp env (c : compound_expr) =
   | CGetTag(obj) ->
     MDataOp(MGetTag, compile_imm env obj)
   | CMatchTry (i, body1, body2) -> raise (NotImplemented __LOC__) (* TODO: Work out how to handle at Wasm level *)
+
   | CFunction(args, body) -> (* TODO: Resolve mismatch of args!! Just have functions take 1 arg for now (tuples later) *)
     MAllocate(MClosure(compile_function env args body))
   | CApp(f, args) ->

@@ -131,6 +131,7 @@ type instr =
   | MArityOp of arity_operand * arity_op * immediate
   | MIf of immediate * block * block
   | MWhile of immediate * block
+  | MTry of int32 * block * block
   (* TODO: Should my IR compile down switches to ifs at this point? *)
  (* | MSwitch of immediate * (int32 * block) list * block *) (* value, branches, default *)
   | MUnary of unop * immediate

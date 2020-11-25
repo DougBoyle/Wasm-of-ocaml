@@ -12,6 +12,13 @@ let add_dummy_loc (x : 'a) : 'a Source.phrase = Source.(x @@ no_region)
 (* Needed as Wasm Ast represents module names (e.g. in import list) as "name" type, which is actually int list *)
 let encode_string : string -> int list = Utf8.decode
 
+(* TODO: Add something similar to func_types but tracking the distance to each handler block for fails. *)
+(* try e1 with i -> e2   gets compiled as:
+   `block Try: (block Handle: e1; branch to end of Try); e2` - fail compiled to a branch to end of Handle block
+   Hence successful execution skips to end of try block whereas fails jump into the try block
+   Both should be 0 arity blocks?
+   Any fail -1 gets converted to a trap, fail i does lookup to get correct index (needs maintaining between blocks)
+*)
 type env = {
   (* (* Pointer to top of heap (needed until GC is implemented) *)
   heap_top: Wasm.Ast.var; -- likely GC related *)
@@ -31,7 +38,13 @@ type env = {
   backpatches: (Wasm.Ast.instr' (* Concatlist.t  *) list * closure_data) list ref;
   imported_funcs: (int32 Ident.tbl) Ident.tbl;  (* TODO: May not be necessary if imports fixed to just the OCaml runtime parts *)
   (* imported_globals: (int32 Ident.tbl) Ident.tbl;  *)
+  (* Number of blocks to jump through to reach each handler in scope.
+     Possibly better choices to use than lists but never mind. *)
+  handler_heights: (int32 * int32) list;
 }
+
+let enter_block ?(n=1l) ({handler_heights;} as env) =
+  {env with handler_heights = List.map (fun (handler, height) -> (handler, Int32.add n height)) handler_heights}
 
 (* Number of swap variables to allocate *)
 let swap_slots_i32 = [Types.I32Type]
@@ -71,6 +84,7 @@ let init_env () = {
   backpatches=ref [];
   imported_funcs=Ident.empty;
   (* imported_globals=Ident.empty;  Shouldn't be any *)
+  handler_heights = [];
 }
 
 (* TODO: Support strings *)
@@ -258,7 +272,9 @@ let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   match i with
   | MImmConst c -> [Ast.Const(add_dummy_loc @@ compile_const c)]
   | MImmBinding b -> compile_bind ~is_get:true env b
-  | MImmFail i -> failwith "Need to implement Fail - likely requires passing around something to track where handlers are"
+  | MImmFail j -> (match j with
+    | -1l -> [Ast.Unreachable] (* trap *)
+    | _ -> [Ast.Br (add_dummy_loc (List.find ((=) j) env.handler_heights))]) (* get block to jump to *)
 
 (* call_error_handler left out - not doing proper exceptions (makes a call to runtime_throw_error) *)
 (* Don't think error_if_true or check_overflow needed either - OCaml allows slient overflows *)
@@ -326,13 +342,14 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   (* TODO: Divide and Modulo *)
   (* Can still occur due to how && and || are compiled when not applied to anything??
      i.e. when they are compiled to function abstractions, still use AND/OR rather than rewriting as an if-then-else *)
+  (* Note - safe to recompile args since compile_imm's only side-effect is generating dummy locations *)
   | AND ->
     compiled_arg1 @
     swap_set @
     swap_get @
-    decode_bool @ [
+    decode_bool @ [ (* TODO: 'If' blocks introduce a label too, delay compiling arg1/2?? *)
       Ast.If(ValBlockType (Some Types.I32Type),
-             List.map add_dummy_loc compiled_arg2,
+             List.map add_dummy_loc (compile_imm (enter_block env) arg2), (* Recompile with updated trap handlers *)
              List.map add_dummy_loc swap_get)  (* swap_get replaced with compiled_arg1 - may cause some duplication *)
     ]
   | OR ->
@@ -342,7 +359,7 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
     decode_bool @ [
       Ast.If(ValBlockType (Some Types.I32Type),
              List.map add_dummy_loc swap_get,
-             List.map add_dummy_loc compiled_arg2)
+             List.map add_dummy_loc (compile_imm (enter_block env) arg2))
     ]
   (* TODO: Rewrite to call runtime compare function to do more general 'a * 'a comparison *)
   | GT ->
@@ -562,10 +579,10 @@ and compile_instr env instr =
     let compiled_cond = compile_imm env cond in
     let compiled_thn = List.map
         add_dummy_loc
-        (compile_block env thn) in
+        (compile_block (enter_block env) thn) in
     let compiled_els = List.map
         add_dummy_loc
-        (compile_block env els) in
+        (compile_block (enter_block env) els) in
     compiled_cond @
     decode_bool @ [
       Ast.If(ValBlockType (Some Types.I32Type),
@@ -574,8 +591,8 @@ and compile_instr env instr =
     ]
 
   | MWhile(cond, body) ->
-    let compiled_cond = compile_imm env cond in
-    let compiled_body = (compile_block env body) in
+    let compiled_cond = compile_imm (enter_block ~n:2l env) cond in
+    let compiled_body = (compile_block (enter_block ~n:2l env) body) in
     [Ast.Block(ValBlockType (Some Types.I32Type),
        List.map add_dummy_loc
         [Ast.Loop(ValBlockType (Some Types.I32Type),
@@ -588,6 +605,21 @@ and compile_instr env instr =
               [Ast.Drop] @
               compiled_body @
               [Ast.Br (add_dummy_loc @@ Int32.of_int 0)]))])]
+  (* Creates two blocks. Inner block is usual 'try' body, outer block is that + handler body.
+     If try case succeeds, Br 1 jumps to the end of the outer block so just returns result.
+     Fail's within the body map to a branch to the end of the inner block, so run the handler.
+     TODO: Check semantics - usual blocks return a value hence Some type. Handler should discard so is None type?
+           But While loop above has the Loop block with Some type, yet that doesn't take/return anything?? *)
+  | MTry(i, body, handler) ->
+    let body_env = enter_block ~n:2l env in
+    let compiled_body = compile_block {body_env with handler_heights = (i,0l)::body_env.handler_heights} body in
+    let handler_body = compile_block (enter_block env) handler in
+    [Ast.Block(ValBlockType (Some Types.I32Type), (* Outer 'try/with' block *)
+       List.map add_dummy_loc
+        ([Ast.Block(ValBlockType (Some Types.I32Type), (* inner block for body *)
+              List.map add_dummy_loc
+              (compiled_body @ [Ast.Br (add_dummy_loc 1l)]))]  (* try case succeeded, skip handler *)
+        @ handler_body))]
 
   | MCallKnown(func_idx, args) ->
     let compiled_args = List.flatten @@ List.map (compile_imm env) args in
