@@ -314,32 +314,24 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   match op with
   | Add ->
     (* TODO: Removed overflow_safe bit - commented out in first case, removed in rest *)
-    compiled_arg1 @ [
-      Ast.Convert(Values.I64 Ast.IntOp.ExtendSI32);
-    ] @
+    (* Removed all casting etc. for now. That and overflow checking may be needed once values tagged
+       and treated as 31/63 bit ints. *)
+    compiled_arg1 @
     compiled_arg2 @ [
-      Ast.Convert(Values.I64 Ast.IntOp.ExtendSI32);
-      Ast.Binary(Values.I64 Ast.IntOp.Add);
+      Ast.Binary(Values.I32 Ast.IntOp.Add);
     ]
   | Sub ->
-    compiled_arg1 @ [
-      Ast.Convert(Values.I64 Ast.IntOp.ExtendSI32);
-    ] @
+    compiled_arg1 @
     compiled_arg2 @ [
-      Ast.Convert(Values.I64 Ast.IntOp.ExtendSI32);
-      Ast.Binary(Values.I64 Ast.IntOp.Sub);
+      Ast.Binary(Values.I32 Ast.IntOp.Sub);
     ]
   | Mult ->
     (* Untag one of the numbers:
        ((a * 2) / 2) * (b * 2) = (a * b) * 2
     *)
     compiled_arg1 @
-   (* untag_number @  -- May actually be needed due to 31-bit OCaml ints *) [
-      Ast.Convert(Values.I64 Ast.IntOp.ExtendSI32);
-    ] @
     compiled_arg2 @ [
-      Ast.Convert(Values.I64 Ast.IntOp.ExtendSI32);
-      Ast.Binary(Values.I64 Ast.IntOp.Mul);
+      Ast.Binary(Values.I32 Ast.IntOp.Mul);
     ]
   (* TODO: Divide and Modulo *)
   (* Can still occur due to how && and || are compiled when not applied to anything??
@@ -659,15 +651,10 @@ let compute_table_size env {imports; exports; functions} =
 
 (* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
 (* TODO: Understand what all of ths does/is needed for *)
-(* Is it okay for this to conflict with runtime_mod Ident.t variable?? *)
-let import_module_name = "OcamlRuntimeMod"
-(* Can just use the Ident.name name rather than prefixing??
-   Should choose name to avoid possibility of compiling a program with the same name? e.g. OcamlRuntimeMod.ml? *)
-let get_import_name name = "OcamlRuntimeExport" ^ (Ident.name name)
 let compile_imports env ({imports} as prog) =
   let compile_import {mimp_mod; mimp_name; mimp_type} =
-    let module_name = encode_string (import_module_name) in
-    let item_name = encode_string @@ get_import_name mimp_name in
+    let module_name = encode_string (Ident.name runtime_mod) in
+    let item_name = encode_string (Ident.name mimp_name) in
     let idesc = match mimp_type with
       (* TODO: Should this actually be the other case? i.e. line 877 of Grain, not 869.
                Look at what determines ImportGrain vs ImportWasm i.e. which is the runtime environment for Grain *)
@@ -714,6 +701,8 @@ let compile_imports env ({imports} as prog) =
 (* Linearise ensures that only one thing with each name gets exported, so don't need worry about duplicates *)
 let compile_exports env {functions; imports; exports; num_globals} =
   (* TODO: What are these indexes? *)
+  (* `Getter` provides a simple way to access exported varaibles - provides a nullary function that just
+     returns the corresponding global variable. (Function name matches name of variable)*)
   let compile_getter i {ex_name; ex_global_index; ex_getter_index} =
     let exported_name = (*"GRAIN$EXPORT$GET$" ^*) (Ident.name ex_name) in
     let name = encode_string exported_name in
@@ -732,7 +721,7 @@ let compile_exports env {functions; imports; exports; num_globals} =
     let open Wasm.Ast in
     add_dummy_loc { name; edesc } in
   let heap_adjust_idx = env.func_offset + (List.length functions) in
-  let main_idx = heap_adjust_idx + 1 in
+  let main_idx = heap_adjust_idx (* + 1 Likely Heap_top *) in
  (* let heap_adjust_idx = add_dummy_loc @@ Int32.of_int heap_adjust_idx in *)
   let main_idx = add_dummy_loc @@ Int32.of_int main_idx in
   let compiled_lambda_exports = List.mapi compile_lambda_export functions in
@@ -766,14 +755,15 @@ let compile_elems env prog =
     add_dummy_loc {
       index=add_dummy_loc (Int32.zero);
       offset=add_dummy_loc [
-        add_dummy_loc (Ast.GlobalGet(add_dummy_loc @@ Int32.of_int 0)); (* What is stored in index 0?? Can this be fixed? *)
+        (* TODO: Can just be fixed? Believe the first global was used for heap_top *)
+        add_dummy_loc (Ast.Const(const_int32 0)); (* What is stored in index 0?? Can this be fixed? *)
       ];
       init=List.init table_size (fun n -> (add_dummy_loc (Int32.of_int n)));
     };
   ]
 let compile_globals env ({num_globals} as prog) =
-    (* Linked to as above, what is the 1 offset, what goes in index 0? *)
-    (List.init (1 + num_globals) (fun _ -> add_dummy_loc {
+    (* Linked to as above, what is the 1 offset, what goes in index 0? -- Probably 'Main' function *)
+    (List.init ((*1 +*) num_globals) (fun _ -> add_dummy_loc {
          Ast.gtype=Types.GlobalType(Types.I32Type, Types.Mutable);
          Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 0)]);
        })) @
@@ -787,7 +777,8 @@ let compile_globals env ({num_globals} as prog) =
 (* Heap_adjust seems to just move "heap_top" global up by first argument. Seems like heap_top should be
    hidden (not exported) in OCaml runtime, and that heap_adjust should be part of the alloc function *)
 
-(* Currently unclear if this will be needed or not. Why is index -99? *)
+(* Currently unclear if this will be needed or not. Why is index -99?
+   TODO: Look at Wasm spec to work out meaning of index *)
 let compile_main env prog =
   compile_function env
     {
@@ -817,11 +808,25 @@ let reparse_module (module_ : Wasm.Ast.module_) =
 
 (* Leaving out "reparse" function for now - meant so that actual locations of parts of program can be found
    when validation fails. TODO: May want to add this to help with debugging *)
+exception WasmRunnerError of Wasm.Source.region * string * Wasm.Ast.module_
 let validate_module (module_ : Wasm.Ast.module_) =
-  try Valid.check_module module_
+ try
+    Valid.check_module module_
+  with
+  | Wasm.Valid.Invalid(region, msg) ->
+    (* Re-parse module in order to get actual locations *)
+    let reparsed = reparse_module module_ in
+    (try
+       Valid.check_module reparsed
+     with
+     | Wasm.Valid.Invalid(region, msg) ->
+       raise (WasmRunnerError(region, msg, reparsed)));
+    raise (WasmRunnerError(region, Printf.sprintf "WARNING: Did not re-raise after reparse: %s" msg, module_))
+  (*try Valid.check_module module_
   with Wasm.Valid.Invalid(region, msg) ->
     Printf.printf "%s\n" (module_to_string module_);
     failwith "Module validation failed. May want to implement 'reparse' to be able to find failing region of program"
+*)
 
 (* Fold left but with an added integer argument *)
 let rec fold_lefti f e l =
@@ -912,3 +917,13 @@ let compile_wasm_module ?env prog =
 
 
 (* May want to register an exception printer if I have issues debuggging - see Printexc.register_printer *)
+let () =
+  Printexc.register_printer (fun exc ->
+      match exc with
+      | WasmRunnerError(region, str, module_) ->
+        let fmt_module _ m = Wasm.Sexpr.to_string 80 (Wasm.Arrange.module_ m) in
+        let s = Printf.sprintf "WASM Runner Exception at %s: '%s'\n%a\n"
+          (Wasm.Source.string_of_region region) str
+          fmt_module module_ in
+        Some(s)
+      | _ -> None)

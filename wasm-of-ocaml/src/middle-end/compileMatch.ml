@@ -23,7 +23,8 @@ let next_fail_count () =
 (* Inefficient in some places when expr = Compound.Imm (Imm.id x) - creates another identifier bound to the same thing.
    Should be able to remove this when doing common subexpression elimination/dead assignment elimination. *)
 let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_desc with
-  | Tpat_any -> []
+  (* TODO: Even if nothing gets bound, need to ensure expression is evaluated exactly once *)
+  | Tpat_any -> [BEffect expr]
   (* TODO: Bit of a hack to avoid trying to bind an identifier to itself e.g. when param of function = only pattern
            Could likely remove in a cleanup pass, as it won't be causing any issues, just looks odd *)
   | Tpat_var (x, _) ->
