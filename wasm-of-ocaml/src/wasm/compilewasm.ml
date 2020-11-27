@@ -676,11 +676,11 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
 (* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works
    Shouldn't actually import any global costnats, so +2 from grain version removed (grain runtime has 2 globals in it) *)
 let compute_table_size env {imports; exports; functions} =
-  (List.length functions) + ((List.length imports) - (List.length runtime_global_imports))
+  (List.length functions) + (List.length imports) - (List.length runtime_global_imports)
 
 (* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
 (* TODO: Understand what all of ths does/is needed for *)
-let compile_imports env ({imports} as prog) =
+let compile_imports env {imports} =
   let compile_import {mimp_mod; mimp_name; mimp_type} =
     let module_name = encode_string (Ident.name runtime_mod) in
     let item_name = encode_string (Ident.name mimp_name) in
@@ -701,7 +701,7 @@ let compile_imports env ({imports} as prog) =
       item_name;
       idesc;
     } in
-  let table_size = compute_table_size env prog in
+(*  let table_size = compute_table_size env prog in *)
   let imports = List.map compile_import imports in
   (List.append
     imports
@@ -715,6 +715,7 @@ let compile_imports env ({imports} as prog) =
             Types.max=None;
           })));
       };
+  (* NO PARTS OR RUNTIME WRITTEN IN JS, SO DON'T NEED A TABLE TO CALL THEM
       add_dummy_loc {
         Ast.module_name=encode_string (Ident.name runtime_mod);
         Ast.item_name=encode_string "tbl";
@@ -722,7 +723,7 @@ let compile_imports env ({imports} as prog) =
             Types.min=Int32.of_int table_size;
             Types.max=None;
           }, Types.FuncRefType))); (* Actually no choice other than FuncRefType in current Wasm *)
-      };
+      }; *)
     ])
 
 (* Is there any need for naming extensions? Doesn't look like it except to avoid naming something _start etc.
@@ -932,7 +933,11 @@ let compile_wasm_module ?env prog =
     imports;
     exports;
     globals;
-    tables=[];
+    (* No longer importing a table from Wasm so must declare our own - should be able to determine size
+       but can probably just stay on side of caution (Grain runtime used fixed 1024).
+       Doesn't actually require specifying a max?? *)
+    tables=[add_dummy_loc {
+      ttype = TableType({min=Int32.of_int(compute_table_size env prog); max=None}, FuncRefType)}];
     elems;
     types;
     (* TODO: Probably want this to replace 'main'? Need to decide how externally calling into OCaml will work.
