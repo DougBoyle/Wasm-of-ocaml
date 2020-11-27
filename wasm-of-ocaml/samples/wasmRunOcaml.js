@@ -1,7 +1,8 @@
 //const fetch = require("node-fetch");
 var path = require("path");
 
-let filename = "../unit_tests/add.wasm";
+//let filename = "../unit_tests/add.wasm";
+let filename = "../samples/arith.wasm";
 
 let basePath = path.dirname(filename);
 
@@ -20,8 +21,6 @@ const readFile = util.promisify(fs.readFile);
   
   imports = {ocamlRuntime: instance.exports};
   
-  console.log(imports);
-  
   var buffer = await readFile(filename);
   var module = await WebAssembly.compile(buffer);
   var instance = await WebAssembly.instantiate(module, imports);
@@ -30,10 +29,8 @@ const readFile = util.promisify(fs.readFile);
  // const { instance } = await WebAssembly.instantiate(bytes); //, {
   //  env: { log, memory }
 //  });
-    console.log("complete");
-	console.log(instance.exports);
 	instance.exports["OCAML$MAIN"]();
 	console.log(instance.exports.x());
-	
+	console.log(instance.exports.y());
 //  console.log(instance.exports.main(10));
 })();

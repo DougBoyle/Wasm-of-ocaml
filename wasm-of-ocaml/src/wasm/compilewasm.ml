@@ -321,23 +321,18 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
     (* TODO: Removed overflow_safe bit - commented out in first case, removed in rest *)
     (* Removed all casting etc. for now. That and overflow checking may be needed once values tagged
        and treated as 31/63 bit ints. *)
-    compiled_arg1 @
-    compiled_arg2 @ [
-      Ast.Binary(Values.I32 Ast.IntOp.Add);
-    ]
+    compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.Add);]
   | Sub ->
-    compiled_arg1 @
-    compiled_arg2 @ [
-      Ast.Binary(Values.I32 Ast.IntOp.Sub);
-    ]
+    compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.Sub);]
   | Mult ->
     (* Untag one of the numbers:
        ((a * 2) / 2) * (b * 2) = (a * b) * 2
     *)
-    compiled_arg1 @
-    compiled_arg2 @ [
-      Ast.Binary(Values.I32 Ast.IntOp.Mul);
-    ]
+    compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.Mul);]
+  | Div -> (* Both div and rem are signed in OCaml *)
+     compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.DivS);]
+  | Mod -> (* Both div and rem are signed in OCaml *)
+     compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.RemS);]
   (* TODO: Divide and Modulo *)
   (* Can still occur due to how && and || are compiled when not applied to anything??
      i.e. when they are compiled to function abstractions, still use AND/OR rather than rewriting as an if-then-else *)
@@ -384,8 +379,8 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   (* TODO: Neq -- Is it worth removing this and compiling to Not (Eq ...)? *)
   (* TODO: Physical equality - should actually be relatively simple, just compare literal/pointer. *)
   | Compare -> failwith "Compare not yet implemented"
-  (* Append currently being mapped to a linast expression higher up *)
-  | Neq | Min | Max | Eq_phys | Neq_phys | Div | Mod | Append -> failwith "Not yet implemented"
+  (* Append currently being mapped to a linast expression higher up, likewise min/max *)
+  | Neq | Min | Max | Eq_phys | Neq_phys | Append -> failwith "Not yet implemented"
 
 (** Heap allocations. *)
 let round_up (num : int) (multiple : int) : int =

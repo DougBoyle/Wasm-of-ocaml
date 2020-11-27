@@ -11,3 +11,6 @@ let phi n =
       else acc
     in
     if n = 1 then 1 else count_coprime 0 1
+
+let x = gcd 3094 3874 (* 26 *)
+let y = phi 10 (* 4 *)
