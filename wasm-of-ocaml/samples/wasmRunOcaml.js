@@ -32,7 +32,8 @@ const readFile = util.promisify(fs.readFile);
 //  });
     console.log("complete");
 	console.log(instance.exports);
-	
+	instance.exports["OCAML$MAIN"]();
+	console.log(instance.exports.x());
 	
 //  console.log(instance.exports.main(10));
 })();

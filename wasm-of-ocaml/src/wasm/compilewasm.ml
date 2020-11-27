@@ -106,13 +106,15 @@ let wrap_float64 n = add_dummy_loc (Values.F64Value.to_value n)
 
 (** Constant compilation *)
 let rec compile_const c : Wasm.Values.value =
+(* NO TAGS OR INPUT/OUTPUT PROCESSING SO DON'T USE FOR NOW
   let conv_int32 = Int32.(mul (of_int 2)) in
   let conv_int64 = Int64.(mul (of_int 2)) in
+*)
   begin
     match c with
     | MConstLiteral ((MConstLiteral _) as c) -> compile_const c
-    | MConstI32 n -> Values.I32Value.to_value (conv_int32 n)
-    | MConstI64 n -> Values.I64Value.to_value (conv_int64 n)
+    | MConstI32 n -> Values.I32Value.to_value ((*conv_int32*) n)
+    | MConstI64 n -> Values.I64Value.to_value ((*conv_int64*) n)
     | MConstF32 n -> Values.F32Value.to_value (Wasm.F32.of_float n)
     | MConstF64 n -> Values.F64Value.to_value (Wasm.F64.of_float n)
     | MConstLiteral (MConstI32 n) -> Values.I32Value.to_value n
