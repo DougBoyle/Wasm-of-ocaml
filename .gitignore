@@ -10,6 +10,9 @@ wasm-of-ocaml/src/middle-end/ocamltransl.ml
 *.cmxs
 *.cmxa
 
+*.wasm
+*.wat
+
 # ocamlbuild working directory
 _build/
 

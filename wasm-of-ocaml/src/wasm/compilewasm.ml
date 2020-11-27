@@ -522,7 +522,7 @@ let rec compile_store env binds =
       let store_bind = compile_bind ~is_get:false env b in
       let get_bind = compile_bind ~is_get:true env b in
       let compiled_instr = match instr with
-        | MAllocate(MClosure(cdata)) ->
+        | MAllocate(MClosure(cdata)) -> (* TODO: Why special lambda for getting a closure? *)
           allocate_closure env ~lambda:get_bind cdata
         | _ -> compile_instr env instr in
       (compiled_instr @ store_bind) @ acc in
@@ -594,11 +594,37 @@ and compile_instr env instr =
               ([Ast.Const const_false] @
               compiled_cond @
               decode_bool @
-              [Ast.Test(Values.I32 Ast.IntOp.Eqz);
+              [Ast.Test(Values.I32 Ast.IntOp.Eqz); (* TODO: Why the extra test? Checking for NOT true? *)
                Ast.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
               [Ast.Drop] @
               compiled_body @
               [Ast.Br (add_dummy_loc @@ Int32.of_int 0)]))])]
+
+  | MFor(arg, start_expr, direction, end_arg, end_expr, body) ->
+    let compiled_start = compile_imm env start_expr in
+    let compiled_end = compile_imm env end_expr in
+    let compiled_body = (compile_block (enter_block ~n:2l env) body) in
+    compiled_start @ (compile_bind ~is_get:false env arg) @
+    compiled_end @ (compile_bind ~is_get:false env end_arg) @
+    [Ast.Block(ValBlockType (Some Types.I32Type),
+       List.map add_dummy_loc
+        [Ast.Loop(ValBlockType (Some Types.I32Type),
+              List.map add_dummy_loc
+              ((compile_bind ~is_get:true env arg) @
+              (compile_bind ~is_get:true env end_arg) @
+              [Ast.Compare(Values.I32
+                (match direction with Upto -> Ast.IntOp.GtS | Downto -> Ast.IntOp.LtS))] @
+              decode_bool @
+              [Ast.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
+         (*    [Ast.Drop] @ *)
+              compiled_body @
+              (compile_bind ~is_get:true env arg) @
+              [Ast.Const(encoded_const_int32 1);
+               Ast.Binary(Values.I32
+                 (match direction with Upto -> Ast.IntOp.Add | Downto -> Ast.IntOp.Sub));] @
+              (compile_bind ~is_get:false env arg) @ (* TODO: Could use Tee here? Avoiding 'get' at top *)
+              [Ast.Br (add_dummy_loc @@ Int32.of_int 0)]))])]
+
   (* Creates two blocks. Inner block is usual 'try' body, outer block is that + handler body.
      If try case succeeds, Br 1 jumps to the end of the outer block so just returns result.
      Fail's within the body map to a branch to the end of the inner block, so run the handler.

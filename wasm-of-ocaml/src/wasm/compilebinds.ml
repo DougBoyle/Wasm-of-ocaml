@@ -167,9 +167,11 @@ let rec compile_comp env (c : compound_expr) =
     MIf(compile_imm env cond, compile_linast env thn, compile_linast env els)
   | CWhile(cond, body) ->
     MWhile(compile_imm env cond, compile_linast env body)
-  (* TODO: Translate here or at lower step? Should just be able to add the ident to the current stack?
-           Easy to do due to succ/pred unary operators *)
-  | CFor(id, start, finish, dir, body) -> raise (NotImplemented __LOC__)
+  | CFor(id, start, finish, dir, body) ->
+    let start_bind = MLocalBind(Int32.of_int (env.stack_idx)) in
+    let end_bind = MLocalBind(Int32.of_int (env.stack_idx + 1)) in (* Don't re-evaluate limits of loop *)
+    let new_env = {env with binds=Ident.add id start_bind env.binds; stack_idx=env.stack_idx + 2} in
+    MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish, compile_linast new_env body)
   (* TODO: Understnad what Grain used box/unbox and tuples for here. Passing tuple as list of args to function?
   | CPrim1(Box, arg) ->
     MAllocate(MTuple [compile_imm env arg])

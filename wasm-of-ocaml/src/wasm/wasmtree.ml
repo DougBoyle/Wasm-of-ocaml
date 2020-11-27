@@ -131,6 +131,10 @@ type instr =
   | MArityOp of arity_operand * arity_op * immediate
   | MIf of immediate * block * block
   | MWhile of immediate * block
+  (* Ident no longer needed - should be encoded as (2?) local variables to get/set? *)
+  (*   for      x   =  e1              to             (y = )  e2     do    e3  *)
+  (* After being evaluated at start, changing value doesn't change limit of loop, so need to save to var *)
+  | MFor of binding * immediate * Asttypes.direction_flag * binding * immediate * block
   | MTry of int32 * block * block
   (* TODO: Should my IR compile down switches to ifs at this point? *)
  (* | MSwitch of immediate * (int32 * block) list * block *) (* value, branches, default *)

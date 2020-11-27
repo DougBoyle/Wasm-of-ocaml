@@ -171,7 +171,7 @@ let rec count_vars (ast : linast_expr) = match ast.desc with
 and count_vars_comp c =
   match c.desc with
   | CIf(_, t, f) -> max (count_vars t) (count_vars f)
-  | CFor(_, _, _, _, body) -> (count_vars body) + 1
+  | CFor(_, _, _, _, body) -> (count_vars body) + 2 (* 1 for each of start/end value *)
   | CWhile(_, b) -> count_vars b
   | CSwitch(_, cases, default) ->
    let max_case = List.fold_left max 0 (List.map (fun (_, b) -> count_vars b) cases) in
