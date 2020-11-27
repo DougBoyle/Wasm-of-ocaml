@@ -55,6 +55,9 @@ module LinastExpr = struct
   let compound e = mk (LCompound e)
 end
 
+let get_const_constructor_tag = function
+  | Cstr_constant i -> Asttypes.Const_int i (* TODO: Should be an int32 instead? *)
+  | _ -> failwith "Not a constant constructor"
 
 let unify_constructor_tag = function
   | Cstr_constant i -> Int32.shift_left (Int32.of_int i) 1

@@ -196,6 +196,11 @@ type wasm_program = {
 } 
 
 (* Why these rather than just 0/1? Likely due to Grain GC needing to represent things in a certain way, can simplify for mine *)
-(* TODO: Decide what actual values should be *)
+(* TODO: Decide what actual values should be -- Currently using tags so must be 0/1 i.e. LSB not MSB
+         May cause issues when type tagging added - come back to this*)
+let const_true =  MConstLiteral (MConstI32 (Int32.of_int 1))
+let const_false = MConstLiteral (MConstI32 (Int32.of_int 0))
+(*
 let const_true =  MConstLiteral (MConstI32 (Int32.of_int 0xFFFFFFFF))
 let const_false = MConstLiteral (MConstI32 (Int32.of_int 0x7FFFFFFF))
+*)

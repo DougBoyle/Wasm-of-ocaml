@@ -186,10 +186,13 @@ let encode_bool =  [
   Ast.Binary(Values.I32 Ast.IntOp.Or);
 ]
 
-let decode_bool = [
+(* Currently no tags and true/false represented as 0/1, so do nothing for now *)
+let decode_bool = []
+(*
+[
   Ast.Const(const_int32 31);
   Ast.Binary(Values.I32 Ast.IntOp.ShrU);
-]
+] *)
 
 (* Can remove - not encoding integers *)
 let encoded_const_int32 n = const_int32 n

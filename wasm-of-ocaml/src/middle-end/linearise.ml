@@ -71,6 +71,9 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     let (result, result_setup) = translate_imm e2 in
       (result, effect_setup @ [BEffect effect] @ result_setup)
 
+  | Texp_construct (identLoc, desc, []) when desc.cstr_nonconsts = 0 ->
+    (Imm.const (get_const_constructor_tag desc.cstr_tag), [])
+
   | Texp_tuple _ | Texp_construct _ | Texp_record _ | Texp_field _
   | Texp_setfield _ | Texp_ifthenelse _ | Texp_while _ | Texp_for _
   | Texp_function _ | Texp_apply _ | Texp_match _ ->
@@ -145,6 +148,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock 0l args, List.concat setup)
 
+  | Texp_construct (identLoc, desc, []) when desc.cstr_nonconsts = 0 ->
+    (Compound.imm (Imm.const (get_const_constructor_tag desc.cstr_tag)), [])
   | Texp_construct (identLoc, desc, l) ->
     let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock (unify_constructor_tag desc.cstr_tag) args, List.concat setup)

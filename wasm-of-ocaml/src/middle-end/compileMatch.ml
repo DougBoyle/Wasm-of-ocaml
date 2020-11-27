@@ -52,6 +52,10 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
     in let binds = List.concat (List.mapi tuple_element_binds l) in
     (match binds with [] -> [] | _ -> (BLet(id, expr)::binds))
 
+  (* Case when constructor is just treated as an integer *)
+  | Tpat_construct (_, desc, []) when desc.cstr_nonconsts = 0 ->
+    getBindings fail {pat with pat_desc=Tpat_constant(get_const_constructor_tag desc.cstr_tag)} expr
+
   | Tpat_construct (_, {cstr_tag}, pl) ->
     let id = Ident.create_local "construct" in
     let block_imm = Imm.id id in
