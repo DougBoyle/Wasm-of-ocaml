@@ -23,21 +23,11 @@ let translate_ident path = function
     | Path.Pdot(Path.Pident (Ident.Global "Stdlib"), s) -> Primitives.translate_other_prim s
     | _ -> raise (NotImplemented __LOC__))
 
-(*
-let translate_ident = function
-  | Path.Pident id -> id
-  (* All primitives are identified in this way. Checking val_kind = Val_prim p doesn't catch all cases *)
-  | Path.Pdot(Path.Pident (Ident.Global "Stdlib"), s) -> Primitives.translate_prim s
-  | _ -> raise NotSupported
-  *)
-
 let get_id_from_pattern = function
     | {pat_desc=Tpat_var(id, _)} -> id
     | _ -> raise NotSupported
 
-(* TODO: Texp_extension_constructor, Texp_array and Texp_variant all left out initially, may implement later once working.
-         Also going to leave Texp_letop for now - can implement programmatically but again, very niche use so don't do in MVP. *)
-(* Keep refering to translCore to catch special cases of labelled args, primitives, etc. *)
+(* TODO: Texp_extension_constructor, Texp_array and Texp_variant all left out initially, may implement later once working. *)
 (* TODO: Can simplify in some cases and call correct level and just use its result
          e.g. Tuple - make call to translate_compound then just assign that to a variable name. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
@@ -76,7 +66,7 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
 
   | Texp_tuple _ | Texp_construct _ | Texp_record _ | Texp_field _
   | Texp_setfield _ | Texp_ifthenelse _ | Texp_while _ | Texp_for _
-  | Texp_function _ | Texp_apply _ | Texp_match _ ->
+  | Texp_function _ | Texp_apply _ | Texp_match _ | Texp_array _ ->
     let id = Ident.create_local "compound" in
     let (compound, setup) = translate_compound e in
     (Imm.id id, setup @ [BLet(id, compound)])
@@ -153,6 +143,9 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   | Texp_construct (identLoc, desc, l) ->
     let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock (unify_constructor_tag desc.cstr_tag) args, List.concat setup)
+  (* TODO: Add type annotations to the arguments to indicate mutable/immutable (all mut for arrays) *)
+  | Texp_array l -> let (args, setup) = List.split (List.map translate_imm l) in
+    (Compound.makeblock (Int32.of_int (List.length l)) args, List.concat setup)
 
  (* Made easier by fact that Typedtree always puts fields in order, regardless of order in program.
     Hence no need to do sorting or check label descriptions *)

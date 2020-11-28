@@ -326,11 +326,10 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
      compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.DivS);]
   | Mod -> (* Both div and rem are signed in OCaml *)
      compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.RemS);]
-  (* TODO: Divide and Modulo *)
   (* Can still occur due to how && and || are compiled when not applied to anything??
      i.e. when they are compiled to function abstractions, still use AND/OR rather than rewriting as an if-then-else *)
   (* Note - safe to recompile args since compile_imm's only side-effect is generating dummy locations *)
-  | AND ->
+  | AND -> (* TODO: Can just use actual And operation? Side-effect semantics removed higher up *)
     compiled_arg1 @
     swap_set @
     swap_get @
@@ -469,8 +468,6 @@ let compile_data_op env imm op =
   match op with
   | MGet(idx) ->
     let idx_int = Int32.to_int idx in
-    (* Note that we're assuming the type-checker has done its
-       job and this access is not out of bounds. *)
     block @ (* (untag TupleTagType) ::   -- probably not needed *) [
         load ~offset:(4 * (idx_int + 2)) (); (* +2 as blocks start with variant tag; arity; ... *)
       ]
@@ -483,6 +480,43 @@ let compile_data_op env imm op =
     block @ (* (untag (GenericHeapType (Some ADTType))) +@ *) [
       load ~offset:0 ();
     ]
+  | MArrayGet idx ->
+    let get_swap = get_swap env 0 in
+    let set_swap = set_swap env 0 in
+    let index = compile_imm env idx in
+    (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
+    block @ set_swap @ get_swap @ get_swap @ [load ~offset:0 ();] @
+    (* stack is: tag|block|... *)
+    index @ set_swap @ get_swap @
+    [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
+    get_swap @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
+    (* stack is: 0<=index|index<tag|block|... *)
+     [Ast.Binary(Values.I32 Ast.IntOp.And);
+      Ast.If(ValBlockType (Some Types.I32Type), (* TODO: Valid to access things below IF entry? *)
+      (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
+      List.map add_dummy_loc (get_swap @ [
+      Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);
+      Ast.Binary(Values.I32 Ast.IntOp.And); load ~offset:8 ()]),
+      [add_dummy_loc Ast.Unreachable]);]
+  | MArraySet (idx, v) ->
+  let get_swap = get_swap env 0 in
+  let set_swap = set_swap env 0 in
+  let index = compile_imm env idx in
+  let value = compile_imm env v in
+  (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
+  block @ set_swap @ get_swap @ get_swap @ [load ~offset:0 ();] @
+  (* stack is: tag|block|... *)
+  index @ set_swap @ get_swap @
+  [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
+  get_swap @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
+  (* stack is: 0<=index|index<tag|block|... *)
+   [Ast.Binary(Values.I32 Ast.IntOp.And);
+    Ast.If(ValBlockType (Some Types.I32Type),
+    (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
+    List.map add_dummy_loc (get_swap @ [
+    Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);
+    Ast.Binary(Values.I32 Ast.IntOp.And);] @ value @ [store ~offset:8 ()]),
+    [add_dummy_loc Ast.Unreachable]);]
 
 (* TODO: How do backpatches work? What are they achieving that needs to be done in a separate stage?
          Gets done for every 'allocate_closure' so not just about recursive functions (unless being over-cautious) *)

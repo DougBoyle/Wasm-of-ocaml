@@ -185,9 +185,9 @@ let rec compile_comp env (c : compound_expr) =
   | CField (obj, idx) -> MDataOp(MGet(idx), compile_imm env obj)
   | CMakeBlock (tag, args) ->
       MAllocate(MData(tag, List.map (compile_imm env) args))
-  (* TODO: Arrays *)
-  | CArraySet(obj, idx, v) -> raise (NotImplemented __LOC__)
-  | CArrayGet(obj, idx) -> raise (NotImplemented __LOC__)
+  | CArraySet(obj, idx, v) ->
+    MDataOp(MArraySet(compile_imm env idx, compile_imm env v), compile_imm env obj)
+  | CArrayGet(obj, idx) -> MDataOp(MArrayGet(compile_imm env idx), compile_imm env obj)
   (* TODO: Strings/floats *)
   | CGetTag(obj) ->
     MDataOp(MGetTag, compile_imm env obj)

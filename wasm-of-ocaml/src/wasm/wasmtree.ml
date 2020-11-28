@@ -109,15 +109,17 @@ type arity_operand =
   | MLambdaArity
   | MDataArity
 
-
 type arity_op =
   | MGetArity
   | MAssertArity of int32
 
+(* Arrays represented identically but with tag being the length *)
 type data_op =
   | MGet of int32
   | MSet of int32 * immediate
   | MGetTag
+  | MArrayGet of immediate
+  | MArraySet of immediate * immediate
 (* TODO: Arrays *)
 
 type instr =
