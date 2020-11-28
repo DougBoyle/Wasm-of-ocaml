@@ -6,9 +6,6 @@ let filename = "../samples/arith.wasm";
 
 let basePath = path.dirname(filename);
 
-
-const memory = new WebAssembly.Memory({ initial: 1 });
-
 const util = require('util');
 const fs = require("fs");
 const readFile = util.promisify(fs.readFile);

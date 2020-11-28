@@ -31,14 +31,18 @@ let prim_table = Misc.create_hashtable 21 [
 ]
 
 let make_if_fun args setupid setupval cond compound1 compound2 =
-  Compound.mkfun args
+ match args with [] -> failwith "Given empty args"
+ | x::xs ->
+ (* Compound.mkfun args  HAVE TO REWRITE UNTIL TUPLES/CURRIED SORTED OUT *)
+  Compound.mkfun [x]
+  (List.fold_right (fun id expr -> LinastExpr.compound (Compound.mkfun [id] expr)) xs
    (
    LinastExpr.mklet setupid Local setupval
     (LinastExpr.compound
      (Compound.mkif
       cond
       (LinastExpr.compound compound1)
-      (LinastExpr.compound compound2))))
+      (LinastExpr.compound compound2)))))
 
 let app_ident = Ident.create_local "@"
 
@@ -69,20 +73,26 @@ let other_prims = Misc.create_hashtable 4 [
     let (tag_c, hd_c, tl_c) = Compound.gettag l1id, Compound.field l1id 0l, Compound.field l1id 1l in
     let app_c = Compound.app (Imm.id app_ident) [tlid; l2id] in
     let result_block = Compound.makeblock 1l [hdid; appid] in
-    Compound.mkfun [l1; l2]
+   (* Compound.mkfun [l1; l2]  HAVE TO REWRITE UNTIL CURRYING/TUPLES SORTED LOWER DOWN *)
+   Compound.mkfun [l1] (LinastExpr.compound (Compound.mkfun [l2]
     (binds_to_anf [BLet(tag, tag_c)]
       (LinastExpr.compound
         (Compound.mkswitch
           tagid
           [(0l, LinastExpr.compound (Compound.imm l2id));
            (1l, binds_to_anf [BLet(hd, hd_c); BLet(tl, tl_c); BLet(app, app_c)] (LinastExpr.compound result_block))]
-          None))));
+          None))))));
 ]
 
 let bindBinary opId operator =
     let id1, id2 = Ident.create_local "prim", Ident.create_local "prim" in
-    BLet(opId, Compound.mkfun [id1; id2] (LinastExpr.compound (Compound.binary operator (Imm.id id1) (Imm.id id2))))
-  (*    CFunction([id1; id2], LCompound(CBinary(operator, ImmIdent id1, ImmIdent id2))) *)
+    (* TODO: Change to specifying curried/tuple to make this neater (for now just done to make work) *)
+    BLet(opId,
+    Compound.mkfun [id1] (LinastExpr.compound (Compound.mkfun [id2]
+    (LinastExpr.compound (Compound.binary operator (Imm.id id1) (Imm.id id2))))))
+
+(* Compound.mkfun [id1; id2] (LinastExpr.compound (Compound.binary operator (Imm.id id1) (Imm.id id2)))) *)
+
 
 let bindUnary opId operator =
     let id = Ident.create_local "prim" in

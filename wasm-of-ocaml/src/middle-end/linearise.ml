@@ -13,6 +13,8 @@ open LinastUtils
 let rec take n l = if n = 0 then ([], l) else
   match l with [] -> assert false (* Should never happen *) | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
 
+(* Now that constant only constructors are represented as integers, unit = 0l *)
+let unit_value = Imm.const (Asttypes.Const_int 0)
 
 let translate_ident path = function
   | Val_prim p -> Primitives.translate_prim p
@@ -102,8 +104,13 @@ and transl_apply f args =
   in let (ab, ap) = getAbstractionsAndApplications args in
   let (newF, newSetup) = flattenApp f ap in
 
+  (* TODO: Can't currently curry functions in this way, so unroll them *)
   match ab with [] -> (newF, argsetup @ newSetup) (* The usual obvious case *)
-    | _ -> (Compound.mkfun ab (LinastExpr.compound newF), argsetup @ newSetup)
+    | _ ->
+    (List.fold_right
+    (fun id expr -> Compound.mkfun [id] (LinastExpr.compound expr)) ab newF,
+    argsetup @ newSetup)
+  (*  (Compound.mkfun ab (LinastExpr.compound newF), argsetup @ newSetup)  *)
   (* TODO: Check all setup expressions carried through to final return value *)
 
 and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
@@ -177,8 +184,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
 
   | Texp_ifthenelse (e1, e2, e3opt) ->
     let e3_lin = (match e3opt with Some e -> translate_linast e
-      (* TODO: Use a single global unit, or treat as int not block *)
-      | None -> LinastExpr.compound (Compound.makeblock 0l [])) in
+      | None -> LinastExpr.compound (Compound.imm unit_value)) in
     let (e1_imm, e1_setup) = translate_imm e1 in
     let e2_lin = translate_linast e2 in
     (Compound.mkif e1_imm e2_lin e3_lin, e1_setup)
@@ -279,7 +285,7 @@ and translate_prim_app (primDesc : Primitive.description) args =
 
 and translate_function param cases partial =
   (* TODO: Use this first one or not? Current Wasm implementation doesn't allow currying! *)
-   (match cases with [{c_lhs=pat; c_guard=None;
+   ( (* match cases with [{c_lhs=pat; c_guard=None;
     c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
     partial = partial'; }; exp_env; exp_type} as exp}]
     (* Pattern always matches and never binds anything *)
@@ -290,7 +296,7 @@ and translate_function param cases partial =
           ({comp with desc=CFunction(param::args, body)}, setup)
         | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
       )
-  | _ ->
+  | _ -> *)
    let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
    (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound comp)), [])
   )
@@ -355,7 +361,7 @@ let rec getExports (tree, coercion) =
     | _ -> raise NotSupported
 
 let rec translate_structure exported = function
- |  [] -> LinastExpr.compound (Compound.makeblock 0l [])
+ |  [] -> LinastExpr.compound (Compound.imm unit_value)
  | item::items -> (match item.str_desc with
    | Tstr_eval (e, _) -> let (compound, setup) = translate_compound e in
      binds_to_anf setup (LinastExpr.seq compound (translate_structure exported items))

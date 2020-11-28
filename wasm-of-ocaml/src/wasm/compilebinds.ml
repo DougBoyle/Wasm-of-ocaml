@@ -156,13 +156,11 @@ let next_global id =
 (* BULK OF CODE *)
 let rec compile_comp env (c : compound_expr) =
   match c.desc with
-  | CSwitch(arg, branches, default) -> raise (NotImplemented __LOC__)
- (* TODO: Determine what level to handle switches at, see if table in Wasm is useful
-   let compiled_arg = compile_imm env arg in
+  (* Switches left till bottom level to potentially make use of Br_Table *)
+  | CSwitch(arg, branches, default) -> let compiled_arg = compile_imm env arg in
     MSwitch(compiled_arg,
-            List.map (fun (lbl, body) ->
-                (Int32.of_int lbl, compile_anf_expr env body)) branches,
-            [MError(Runtime_errors.SwitchError, [compiled_arg])]) *)
+       List.map (fun (lbl, body) -> (lbl, compile_linast env body)) branches,
+       match default with Some e -> compile_linast env e | None -> [MImmediate (MImmFail (-1l))])
   | CIf(cond, thn, els) ->
     MIf(compile_imm env cond, compile_linast env thn, compile_linast env els)
   | CWhile(cond, body) ->

@@ -43,8 +43,8 @@ type env = {
   handler_heights: (int32 * int32) list;
 }
 
-let enter_block ?(n=1l) ({handler_heights;} as env) =
-  {env with handler_heights = List.map (fun (handler, height) -> (handler, Int32.add n height)) handler_heights}
+let enter_block ?(n=1) ({handler_heights;} as env) =
+  {env with handler_heights = List.map (fun (handler, height) -> (handler, Int32.add (Int32.of_int n) height)) handler_heights}
 
 (* Number of swap variables to allocate *)
 let swap_slots_i32 = [Types.I32Type]
@@ -181,12 +181,16 @@ let get_arity_func_type_idx env arity =
 
 (* Untag should only be needed if GC present (especially untag_number) *)
 (* encode after doing comparison etc. decode before an if/while statement *)
-let encode_bool =  [
+(* Matches Wasm semantics - non-zero = true, zero = false *)
+let encode_bool =  [] (* No tags and true/false are 1/0, so do nothing for now *)
+(*
+[
   Ast.Const(const_int32 31);
   Ast.Binary(Values.I32 Ast.IntOp.Shl);
   Ast.Const(const_false);
   Ast.Binary(Values.I32 Ast.IntOp.Or);
 ]
+*)
 
 (* Currently no tags and true/false represented as 0/1, so do nothing for now *)
 let decode_bool = []
@@ -564,8 +568,29 @@ let rec compile_store env binds =
   let instrs, backpatches = collect_backpatches env process_binds in
   instrs @ (do_backpatches env backpatches)
 
-(* TODO: Look at compile_switch line 700, see if any significant benefit (without extra difficulty) of doing here
-         vs when mapping into wasmtree. *)
+(* TODO: Detect when better to just use nested ifthenelse *)
+and compile_switch env arg branches default =
+  let compile_table labels =
+    let max_label = List.fold_left max 0 labels in
+    let labs_to_branches = List.mapi (fun i l -> (l, i+1)) labels in
+    let default = add_dummy_loc 0l in
+    List.init max_label (fun l -> match List.assoc_opt l labs_to_branches with
+      | Some b -> add_dummy_loc (Int32.of_int b) | None -> default) in
+  let rec build_branches i seen = function
+    (* Base case, do actual arg eval, branch table and default case *)
+    | [] -> [Ast.Block(ValBlockType (Some Types.I32Type),
+    List.map add_dummy_loc ([Ast.Block(ValBlockType (Some Types.I32Type),
+        List.map add_dummy_loc ((compile_imm (enter_block ~n:(i + 2) env) arg) @ (* TODO: Check offsets for enter_block *)
+        [Ast.BrTable (compile_table seen, add_dummy_loc 0l)]))
+        ] @ compile_block (enter_block ~n:(i + 1) env) default))]
+    (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
+    | (l, action)::rest -> [Ast.Block(ValBlockType (Some Types.I32Type),
+     (* TODO: Probably not worth having tags as int32s everywhere if changed to int here.
+              Never going to have 2^30 variants. *)
+      List.map add_dummy_loc ((build_branches (i+1) ((Int32.to_int l)::seen) rest)
+      @ (compile_block (enter_block ~n:(i+1) env) action) @ [Ast.Br(add_dummy_loc (Int32.of_int i))]
+    ))] in
+  build_branches 0 [] branches
 
 and compile_block env block =
   List.flatten (List.map (compile_instr env) block)
@@ -580,8 +605,7 @@ and compile_instr env instr =
   | MDataOp(op, block) -> compile_data_op env block op
   | MUnary(op, arg) -> compile_unary env op arg
   | MBinary(op, arg1, arg2) -> compile_binary env op arg1 arg2
-  (* Decide level to do switches at *)
- (* | MSwitch(arg, branches, default) -> compile_switch env arg branches default  *)
+  | MSwitch(arg, branches, default) -> compile_switch env arg branches default
   | MStore(binds) -> compile_store env binds
   (* TODO: Currying vs tuples - may need to generate many Ast.CallIndirects - take 1 arg at a time?? *)
   | MCallIndirect(func, args) ->
@@ -618,8 +642,8 @@ and compile_instr env instr =
     ]
 
   | MWhile(cond, body) ->
-    let compiled_cond = compile_imm (enter_block ~n:2l env) cond in
-    let compiled_body = (compile_block (enter_block ~n:2l env) body) in
+    let compiled_cond = compile_imm (enter_block ~n:2 env) cond in
+    let compiled_body = (compile_block (enter_block ~n:2 env) body) in
     [Ast.Block(ValBlockType (Some Types.I32Type),
        List.map add_dummy_loc
         [Ast.Loop(ValBlockType (Some Types.I32Type),
@@ -636,7 +660,7 @@ and compile_instr env instr =
   | MFor(arg, start_expr, direction, end_arg, end_expr, body) ->
     let compiled_start = compile_imm env start_expr in
     let compiled_end = compile_imm env end_expr in
-    let compiled_body = (compile_block (enter_block ~n:2l env) body) in
+    let compiled_body = (compile_block (enter_block ~n:2 env) body) in
     compiled_start @ (compile_bind ~is_get:false env arg) @
     compiled_end @ (compile_bind ~is_get:false env end_arg) @
     [Ast.Block(ValBlockType (Some Types.I32Type),
@@ -664,7 +688,7 @@ and compile_instr env instr =
      TODO: Check semantics - usual blocks return a value hence Some type. Handler should discard so is None type?
            But While loop above has the Loop block with Some type, yet that doesn't take/return anything?? *)
   | MTry(i, body, handler) ->
-    let body_env = enter_block ~n:2l env in
+    let body_env = enter_block ~n:2 env in
     let compiled_body = compile_block {body_env with handler_heights = (i,0l)::body_env.handler_heights} body in
     let handler_body = compile_block (enter_block env) handler in
     [Ast.Block(ValBlockType (Some Types.I32Type), (* Outer 'try/with' block *)
@@ -822,8 +846,7 @@ let compile_elems env prog =
     };
   ]
 let compile_globals env ({num_globals} as prog) =
-    (* Linked to as above, what is the 1 offset, what goes in index 0? -- Probably 'Main' function *)
-    (List.init ((*1 +*) num_globals) (fun _ -> add_dummy_loc {
+    (List.init num_globals (fun _ -> add_dummy_loc {
          Ast.gtype=Types.GlobalType(Types.I32Type, Types.Mutable);
          Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 0)]);
        })) @

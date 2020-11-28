@@ -137,8 +137,7 @@ type instr =
   (* After being evaluated at start, changing value doesn't change limit of loop, so need to save to var *)
   | MFor of binding * immediate * Asttypes.direction_flag * binding * immediate * block
   | MTry of int32 * block * block
-  (* TODO: Should my IR compile down switches to ifs at this point? *)
- (* | MSwitch of immediate * (int32 * block) list * block *) (* value, branches, default *)
+  | MSwitch of immediate * (int32 * block) list * block
   | MUnary of unop * immediate
   | MBinary of binop * immediate * immediate
   | MDataOp of data_op * immediate
@@ -199,6 +198,7 @@ type wasm_program = {
 (* Why these rather than just 0/1? Likely due to Grain GC needing to represent things in a certain way, can simplify for mine *)
 (* TODO: Decide what actual values should be -- Currently using tags so must be 0/1 i.e. LSB not MSB
          May cause issues when type tagging added - come back to this*)
+(* Matches values used by IR currently i.e. true -> const 1, false -> const 0 *)
 let const_true =  MConstLiteral (MConstI32 (Int32.of_int 1))
 let const_false = MConstLiteral (MConstI32 (Int32.of_int 0))
 (*
