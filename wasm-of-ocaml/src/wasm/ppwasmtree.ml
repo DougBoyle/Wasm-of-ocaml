@@ -93,6 +93,8 @@ let rec print_instr ppf = function
     | MDataOp (MGet i, imm) -> fprintf ppf "%a.(%lil)" print_imm imm i
     | MDataOp (MSet (i, v), imm) -> fprintf ppf "%a.(%lil) <- %a" print_imm imm i print_imm v
     | MDataOp (MGetTag, imm) -> fprintf ppf "tag %a" print_imm imm
+    | MDataOp (MArrayGet i, imm) -> fprintf ppf "%a.(%a)" print_imm imm print_imm i
+    | MDataOp (MArraySet (i, v), imm) -> fprintf ppf "%a.(%a) <- %a" print_imm imm print_imm i print_imm v
     | MStore binds ->
      let bindings ppf id_arg_list =
       let spc = ref false in
@@ -106,13 +108,13 @@ let rec print_instr ppf = function
     | MTagOp(_, _) | MArityOp(_, _, _) -> failwith "Not expecting to see tag/arity operations"
 
 and print_block ppf (block : instr list) =
-  let print_body ppf body = List.iter (fprintf ppf " %a" print_instr) body in
-  fprintf ppf "@[<2>{@ %a}@]" print_body block
+  let print_body ppf body = List.iter (fprintf ppf "%a " print_instr) body in
+  fprintf ppf "@[<2>{%a}@]" print_body block
 
 (* TODO: Also print stuff like arity/stack space allocated *)
 let print_function ppf {index;body;_} =
   fprintf ppf "@[func(%li) %a@]" index print_block body
 
 let print_program ppf {functions;imports;exports;main_body;_} =
-  List.iter (print_function ppf) functions;
-  fprintf ppf " @[main %a@]" print_block main_body
+  let print_funs ppf funs = List.iter (fprintf ppf "%a " print_function) funs in
+  fprintf ppf " @[%a main %a@]" print_funs functions print_block main_body

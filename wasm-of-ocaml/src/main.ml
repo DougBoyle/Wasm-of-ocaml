@@ -14,7 +14,7 @@ let main () =
     let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
     (* For comparison *)
   (*  let lambdaProgram = Translmod.transl_implementation filename (tree, coercions) in *)
-    Pplinast.print_ast Format.std_formatter ir; Format.print_newline();
+    Pplinast.print_ast Format.std_formatter ir; Format.print_newline();  Format.print_newline();
   (*  Printf.printf "\nLambda:\n";
     Printlambda.program Format.std_formatter lambdaProgram; Format.print_newline(); *)
     let wasm_ast = Compilebinds.transl_program ir in

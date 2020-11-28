@@ -266,6 +266,16 @@ let set_swap ?ty:(typ=Types.I32Type) env idx =
     compile_bind ~is_get:false env (MSwapBind(Int32.of_int (idx + swap_i64_offset)))
   | _ -> raise Not_found
 
+let tee_swap ?ty:(typ=Types.I32Type) env idx =
+ match typ with
+  | Types.I32Type ->
+    if idx > (List.length swap_slots_i32) then raise Not_found else
+    [Ast.LocalTee(add_dummy_loc (Int32.of_int (env.num_args + idx + swap_i32_offset)))]
+  | Types.I64Type ->
+    if idx > (List.length swap_slots_i64) then raise Not_found else
+    [Ast.LocalTee(add_dummy_loc (Int32.of_int (env.num_args + idx + swap_i64_offset)))]
+  | _ -> raise Not_found
+
 let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   match i with
   | MImmConst c -> [Ast.Const(add_dummy_loc @@ compile_const c)]
@@ -302,13 +312,11 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   let compiled_arg1 = compile_imm env arg1 in
   let compiled_arg2 = compile_imm env arg2 in
   let swap_get = get_swap ~ty:Types.I32Type env 0 in
-  let swap_set = set_swap ~ty:Types.I32Type env 0 in
-
+  let swap_tee = tee_swap ~ty:Types.I32Type env 0 in
   (*
   TODO: Not thinking about overflows/31-bit integers initially.
         Work out if overflow_safe needed or not for OCaml
   *)
-
   match op with
   | Add ->
     (* TODO: Removed overflow_safe bit - commented out in first case, removed in rest *)
@@ -331,8 +339,7 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   (* Note - safe to recompile args since compile_imm's only side-effect is generating dummy locations *)
   | AND -> (* TODO: Can just use actual And operation? Side-effect semantics removed higher up *)
     compiled_arg1 @
-    swap_set @
-    swap_get @
+    swap_tee @
     decode_bool @ [ (* TODO: 'If' blocks introduce a label too, delay compiling arg1/2?? *)
       Ast.If(ValBlockType (Some Types.I32Type),
              List.map add_dummy_loc (compile_imm (enter_block env) arg2), (* Recompile with updated trap handlers *)
@@ -340,8 +347,7 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
     ]
   | OR ->
     compiled_arg1 @
-    swap_set @
-    swap_get @
+    swap_tee @
     decode_bool @ [
       Ast.If(ValBlockType (Some Types.I32Type),
              List.map add_dummy_loc swap_get,
@@ -394,14 +400,14 @@ let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) 
   let num_free_vars = List.length variables in
   let closure_size = num_free_vars + 3 in
   let get_swap = get_swap env 0 in
-  let set_swap = set_swap env 0 in
+  let tee_swap = tee_swap env 0 in
   let access_lambda = Option.value ~default:(get_swap @ [
       Ast.Const(const_int32 (4 * round_allocation_size closure_size));
       Ast.Binary(Values.I32 Ast.IntOp.Sub);
     ]) lambda in
   env.backpatches := (access_lambda, closure_data)::!(env.backpatches);
   (* ToS (grows ->) : heap_ptr; num_free_vars; ptr; (reloc_base + func_idx + offset); ptr; arity  *)
-  (heap_allocate env closure_size) @ set_swap @ get_swap @ [
+  (heap_allocate env closure_size) @ tee_swap @ [
     Ast.Const(const_int32 num_free_vars);
   ] @ get_swap @ [
  (*   Ast.GlobalGet(var_of_ext_global env runtime_mod reloc_base);     No modules so should be known at compile time *)
@@ -430,14 +436,14 @@ let allocate_data env vtag elts =
    *)
   let num_elts = List.length elts in
   let get_swap = get_swap env 0 in
-  let set_swap = set_swap env 0 in
+  let tee_swap = tee_swap env 0 in
   let compile_elt idx elt =
     get_swap @
     (compile_imm env elt) @ [
       store ~offset:(4 * (idx + 2)) (); (* Would be +5 but not including value type/module/type tags *)
     ] in
    (* Would be num_elts + 5 except not including 3 tags *)
-  (heap_allocate env (num_elts + 2)) @ set_swap @ get_swap
+  (heap_allocate env (num_elts + 2)) @ tee_swap
  (*   +@ [
     Ast.Const(const_int32 (tag_val_of_heap_tag_type ADTType));
     store ~offset:0 ();
@@ -482,44 +488,45 @@ let compile_data_op env imm op =
     ]
   | MArrayGet idx ->
     let get_swap = get_swap env 0 in
-    let set_swap = set_swap env 0 in
+    let tee_swap = tee_swap env 0 in
     let index = compile_imm env idx in
+    let typeidx = Int32.of_int(get_arity_func_type_idx env 1) in
     (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-    block @ set_swap @ get_swap @ get_swap @ [load ~offset:0 ();] @
+    block @ tee_swap @ get_swap @ [load ~offset:0 ();] @
     (* stack is: tag|block|... *)
-    index @ set_swap @ get_swap @
+    index @ tee_swap @
     [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
     get_swap @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
     (* stack is: 0<=index|index<tag|block|... *)
      [Ast.Binary(Values.I32 Ast.IntOp.And);
-      Ast.If(ValBlockType (Some Types.I32Type), (* TODO: Valid to access things below IF entry? *)
+      Ast.If(VarBlockType (add_dummy_loc typeidx), (* TODO: Valid to access things below IF entry? *)
       (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
       List.map add_dummy_loc (get_swap @ [
       Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);
-      Ast.Binary(Values.I32 Ast.IntOp.And); load ~offset:8 ()]),
+      Ast.Binary(Values.I32 Ast.IntOp.Add); load ~offset:8 ()]),
       [add_dummy_loc Ast.Unreachable]);]
+
   | MArraySet (idx, v) ->
   let get_swap = get_swap env 0 in
-  let set_swap = set_swap env 0 in
+  let tee_swap = tee_swap env 0 in
   let index = compile_imm env idx in
-  let value = compile_imm env v in
+  let value = compile_imm (enter_block env) v in
+  let typeidx = Int32.of_int(get_arity_func_type_idx env 1) in
   (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-  block @ set_swap @ get_swap @ get_swap @ [load ~offset:0 ();] @
+  block @ tee_swap @ get_swap @ [load ~offset:0 ();] @
   (* stack is: tag|block|... *)
-  index @ set_swap @ get_swap @
+  index @ tee_swap @
   [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
   get_swap @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
   (* stack is: 0<=index|index<tag|block|... *)
    [Ast.Binary(Values.I32 Ast.IntOp.And);
-    Ast.If(ValBlockType (Some Types.I32Type),
+    Ast.If(VarBlockType (add_dummy_loc typeidx),
     (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
     List.map add_dummy_loc (get_swap @ [
-    Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);
-    Ast.Binary(Values.I32 Ast.IntOp.And);] @ value @ [store ~offset:8 ()]),
+    Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);   (* Array store returns unit *)
+    Ast.Binary(Values.I32 Ast.IntOp.Add);] @ value @ [store ~offset:8 (); Ast.Const const_false]),
     [add_dummy_loc Ast.Unreachable]);]
 
-(* TODO: How do backpatches work? What are they achieving that needs to be done in a separate stage?
-         Gets done for every 'allocate_closure' so not just about recursive functions (unless being over-cautious) *)
 (* What is this doing? Appears to just call f on the given env, but with backpatches reset *)
 let collect_backpatches env f =
   let nested_backpatches = ref [] in
@@ -582,12 +589,11 @@ and compile_instr env instr =
     let compiled_args = List.flatten (List.map (compile_imm env) args) in
     let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env (1 + List.length args))) in
     let get_swap = get_swap env 0 in
-    let set_swap = set_swap env 0 in
+    let tee_swap = tee_swap env 0 in
     let all_args =
       compiled_func @
     (*  untag LambdaTagType @  -- Probably need, but ignoring tags for now *)
-      set_swap @
-      get_swap @
+      tee_swap @
       compiled_args in
 
     all_args @
