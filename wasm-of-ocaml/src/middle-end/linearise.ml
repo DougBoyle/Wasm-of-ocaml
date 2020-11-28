@@ -207,6 +207,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     (Compound.mkfor param start finish dir expr, start_setup @ finish_setup)
 
   (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
+  (* Rather than special case for currying, could add a special case for tuples. *)
   | Texp_function { param; cases; partial; } ->
     translate_function param cases partial
   (*  (match cases with [{c_lhs=pat; c_guard=None;

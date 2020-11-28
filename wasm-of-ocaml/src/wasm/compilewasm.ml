@@ -240,14 +240,7 @@ let compile_bind ~is_get (env : env) (b : binding) : Wasm.Ast.instr' list =
       (* Closure is always arg 0? *)
       (Ast.LocalGet(add_dummy_loc Int32.zero))::
       [load ~offset:(4 * (3 + Int32.to_int i)) ()]
-  | MImport(i) ->
-    begin
-      if not(is_get) then
-        failwith "Internal error: attempted to emit instruction which would mutate an import"
-    end;
-    (* Adjust for runtime functions *)
-    let slot = add_dummy_loc ((* env.import_offset ++  should be fixed *) i) in
-    [Ast.GlobalGet(slot)]
+ (* MImport case never needed *)
 
 let get_swap ?ty:(typ=Types.I32Type) env idx =
   match typ with

@@ -18,6 +18,7 @@ let main () =
   (*  Printf.printf "\nLambda:\n";
     Printlambda.program Format.std_formatter lambdaProgram; Format.print_newline(); *)
     let wasm_ast = Compilebinds.transl_program ir in
+    Ppwasmtree.print_program Format.std_formatter wasm_ast; Format.print_newline();
     let wasm = Compilewasm.compile_wasm_module wasm_ast in
     let binary = Wasm.Encode.encode wasm in
     let f = open_out_bin output_file in

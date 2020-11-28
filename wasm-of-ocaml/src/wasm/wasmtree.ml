@@ -78,7 +78,6 @@ type binding =
   | MClosureBind of int32
   (* SwapBinds use local memory for a couple registers, due to inflexibility of a stack machine *)
   | MSwapBind of int32 (* Used like a register would be *)
-  | MImport of int32 (* Index into list of imports -- not needed? All handled by being slightly higher level than wasm for now? *)
 
 type immediate =
   | MImmConst of constant
@@ -87,7 +86,7 @@ type immediate =
 
 type closure_data = {
   func_idx: int32;
-  arity: int32;
+  arity: int32; (* TODO: Just an annotation, not actually useful information? *)
   variables: immediate list; (* How are these used? *)
 } 
 
