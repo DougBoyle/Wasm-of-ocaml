@@ -23,8 +23,8 @@ let next_fail_count () =
 (* Inefficient in some places when expr = Compound.Imm (Imm.id x) - creates another identifier bound to the same thing.
    Should be able to remove this when doing common subexpression elimination/dead assignment elimination. *)
 let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_desc with
-  (* TODO: Even if nothing gets bound, need to ensure expression is evaluated exactly once *)
-  | Tpat_any -> [BEffect expr]
+  (* Even if nothing gets bound, need to ensure expression is evaluated exactly once *)
+  | Tpat_any -> [BEffect expr] (* TODO: Don't both if expr is an ident or some other non-effect expr *)
   (* TODO: Bit of a hack to avoid trying to bind an identifier to itself e.g. when param of function = only pattern
            Could likely remove in a cleanup pass, as it won't be causing any issues, just looks odd *)
   | Tpat_var (x, _) ->
@@ -38,7 +38,7 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
     [BLet(id, expr); BLet(testid, test_result);
     BEffect(Compound.mkif
       (Imm.id testid)
-      (LinastExpr.compound (Compound.makeblock 0l []))   (* Test passed - do nothing TODO: Use a global unit value *)
+      (LinastExpr.compound (Compound.imm unit_value))   (* Test passed - do nothing TODO: Use a global unit value *)
       (LinastExpr.compound (Compound.imm (Imm.fail fail))))] (* Test failed - trap/next pattern *)
   | Tpat_tuple l ->
     let id = Ident.create_local "tuple" in
@@ -81,7 +81,7 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
     BLet(testid, test_result);
     BEffect(Compound.mkif
       (Imm.id testid)
-      (LinastExpr.compound (Compound.makeblock 0l []))   (* Test passed - do nothing TODO: Use a global unit value *)
+      (LinastExpr.compound (Compound.imm unit_value))   (* Test passed - do nothing TODO: Use a global unit value *)
       (LinastExpr.compound (Compound.imm (Imm.fail fail)))); (* Test failed - trap/next pattern *)
     ]  @ sub_binds
 
@@ -107,8 +107,8 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
     let second_binds = getBindings fail p2 expr' in
     (* TODO: Annoying that we have to put a dummy 'unit' at the end of each case. May need an extra term to avoid this *)
     let compound = Compound.matchtry new_fail
-      (binds_to_anf first_binds (LinastExpr.compound (Compound.makeblock 0l []))) (* Have to put dummy unit at end of tree *)
-      (binds_to_anf second_binds (LinastExpr.compound (Compound.makeblock 0l [])))
+      (binds_to_anf first_binds (LinastExpr.compound (Compound.imm unit_value))) (* Have to put dummy unit at end of tree *)
+      (binds_to_anf second_binds (LinastExpr.compound (Compound.imm unit_value)))
     in [BLet(id, expr); BEffect compound]
 
 

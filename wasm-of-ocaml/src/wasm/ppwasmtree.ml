@@ -86,6 +86,20 @@ let rec print_instr ppf = function
          print_bind arg1 print_imm start
          (match dir with Upto -> "to" | Downto -> "downto")
          print_imm finish print_block body
+    | MSwitch(arg, cases, default) ->
+        let switch ppf cases =
+          let spc = ref false in
+          List.iter
+            (fun (n, e) ->
+              if !spc then fprintf ppf "@ " else spc := true;
+              fprintf ppf "@[<hv 1>case %li:@ %a@]" n print_block e)
+            cases ;
+           if !spc then fprintf ppf "@ " else spc := true;
+              fprintf ppf "@[<hv 1>default:@ %a@]" print_block default
+           in
+        fprintf ppf
+         "@[<1>(switch %a@ @[<v 0>%a@])@]"
+         print_imm arg switch cases
     | MTry(i, body, handle) ->
       fprintf ppf "@[<2>(try@ %a@;<1 -1>with (%li)@ %a)@]" print_block body i print_block handle
     | MUnary (op, imm) -> fprintf ppf "(%a %a)" unary op print_imm imm
@@ -108,13 +122,22 @@ let rec print_instr ppf = function
     | MTagOp(_, _) | MArityOp(_, _, _) -> failwith "Not expecting to see tag/arity operations"
 
 and print_block ppf (block : instr list) =
-  let print_body ppf body = List.iter (fprintf ppf "%a " print_instr) body in
-  fprintf ppf "@[<2>{%a}@]" print_body block
-
-(* TODO: Also print stuff like arity/stack space allocated *)
-let print_function ppf {index;body;_} =
-  fprintf ppf "@[func(%li) %a@]" index print_block body
+    let print_body ppf instrs =
+        let spc = ref false in
+        List.iter
+          (fun instr ->
+            if !spc then fprintf ppf "@ " else spc := true;
+            fprintf ppf "@[<2>%a@]" print_instr instr)
+          instrs in
+      fprintf ppf  "@[<2>(@[<hv 1>%a@])@ @]" print_body block
 
 let print_program ppf {functions;imports;exports;main_body;_} =
-  let print_funs ppf funs = List.iter (fprintf ppf "%a " print_function) funs in
-  fprintf ppf " @[%a main %a@]" print_funs functions print_block main_body
+  let print_functions ppf funs =
+          let spc = ref false in
+          List.iter
+            (fun {index;arity;body;_} ->
+              if !spc then fprintf ppf "@ " else spc := true;
+              fprintf ppf "@[<2>func(%li)@ (%li args) %a@]" index arity print_block body)
+            funs in
+        fprintf ppf
+          "@[<2>(@[<hv>%a@])@ main@ %a@]" print_functions functions print_block main_body

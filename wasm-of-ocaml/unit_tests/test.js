@@ -65,7 +65,7 @@ if (process.argv.length > 2){
 			  } catch (err) {
 				  if (err instanceof WebAssembly.RuntimeError){
 					console.log('\x1b[92m%s\x1b[0m', filename + " passed");
-					break;
+					continue;
 				  } else{
 					 console.log("ERROR: Some other error occured during execution");
 					 throw(err);

@@ -7,3 +7,4 @@ array_lowbounds !
 op y=11
 prims z=1
 matchfail !
+datatype y=6

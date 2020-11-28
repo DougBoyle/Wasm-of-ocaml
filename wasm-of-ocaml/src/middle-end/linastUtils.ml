@@ -55,6 +55,9 @@ module LinastExpr = struct
   let compound e = mk (LCompound e)
 end
 
+(* Now that constant only constructors are represented as integers, unit = 0l *)
+let unit_value = Imm.const (Asttypes.Const_int 0)
+
 let get_const_constructor_tag = function
   | Cstr_constant i -> Asttypes.Const_int i (* TODO: Should be an int32 instead? *)
   | _ -> failwith "Not a constant constructor"

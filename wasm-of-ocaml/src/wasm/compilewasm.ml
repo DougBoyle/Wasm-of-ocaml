@@ -569,6 +569,7 @@ let rec compile_store env binds =
   instrs @ (do_backpatches env backpatches)
 
 (* TODO: Detect when better to just use nested ifthenelse *)
+(* Rewriting Grain version to put one "value" block at top, rest nonetype *)
 and compile_switch env arg branches default =
   let compile_table labels =
     let max_label = List.fold_left max 0 labels in
@@ -578,19 +579,19 @@ and compile_switch env arg branches default =
       | Some b -> add_dummy_loc (Int32.of_int b) | None -> default) in
   let rec build_branches i seen = function
     (* Base case, do actual arg eval, branch table and default case *)
-    | [] -> [Ast.Block(ValBlockType (Some Types.I32Type),
-    List.map add_dummy_loc ([Ast.Block(ValBlockType (Some Types.I32Type),
+    | [] ->
+     [Ast.Block(ValBlockType None, (* Only left by branch table *)
         List.map add_dummy_loc ((compile_imm (enter_block ~n:(i + 2) env) arg) @ (* TODO: Check offsets for enter_block *)
-        [Ast.BrTable (compile_table seen, add_dummy_loc 0l)]))
-        ] @ compile_block (enter_block ~n:(i + 1) env) default))]
+        [Ast.BrTable (compile_table seen, add_dummy_loc 0l)]))]
+        @ (compile_block (enter_block ~n:(i + 1) env) default) @ [Ast.Br(add_dummy_loc (Int32.of_int i))]
     (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
-    | (l, action)::rest -> [Ast.Block(ValBlockType (Some Types.I32Type),
+    | (l, action)::rest -> (Ast.Block(ValBlockType None,
      (* TODO: Probably not worth having tags as int32s everywhere if changed to int here.
               Never going to have 2^30 variants. *)
-      List.map add_dummy_loc ((build_branches (i+1) ((Int32.to_int l)::seen) rest)
-      @ (compile_block (enter_block ~n:(i+1) env) action) @ [Ast.Br(add_dummy_loc (Int32.of_int i))]
-    ))] in
-  build_branches 0 [] branches
+      List.map add_dummy_loc ((build_branches (i+1) ((Int32.to_int l)::seen) rest))))
+      :: (compile_block (enter_block ~n:(i+1) env) action) @ [Ast.Br(add_dummy_loc (Int32.of_int i))] in
+  [Ast.Block(ValBlockType (Some Types.I32Type), List.map add_dummy_loc (build_branches 0 [] branches))]
+
 
 and compile_block env block =
   List.flatten (List.map (compile_instr env) block)
@@ -691,9 +692,9 @@ and compile_instr env instr =
     let body_env = enter_block ~n:2 env in
     let compiled_body = compile_block {body_env with handler_heights = (i,0l)::body_env.handler_heights} body in
     let handler_body = compile_block (enter_block env) handler in
-    [Ast.Block(ValBlockType (Some Types.I32Type), (* Outer 'try/with' block *)
+    [Ast.Block(ValBlockType (Some Types.I32Type), (* Outer 'try/with' block, returns result *)
        List.map add_dummy_loc
-        ([Ast.Block(ValBlockType (Some Types.I32Type), (* inner block for body - What should blocktype be?*)
+        ([Ast.Block(ValBlockType None, (* inner block for body - only left by fail *)
               List.map add_dummy_loc
               (compiled_body @ [Ast.Br (add_dummy_loc 1l)]))]  (* try case succeeded, skip handler *)
         @ handler_body))]

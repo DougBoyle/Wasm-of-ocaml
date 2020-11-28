@@ -13,9 +13,6 @@ open LinastUtils
 let rec take n l = if n = 0 then ([], l) else
   match l with [] -> assert false (* Should never happen *) | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
 
-(* Now that constant only constructors are represented as integers, unit = 0l *)
-let unit_value = Imm.const (Asttypes.Const_int 0)
-
 let translate_ident path = function
   | Val_prim p -> Primitives.translate_prim p
   (* May need to handle some identifiers which point directly to runtime functions e.g. Stdlib!.min
