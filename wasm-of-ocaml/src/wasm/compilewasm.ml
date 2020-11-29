@@ -496,39 +496,36 @@ let compile_data_op env imm op =
     let get_swap = get_swap env 0 in
     let tee_swap = tee_swap env 0 in
     let index = compile_imm env idx in
-    let typeidx = Int32.of_int(get_arity_func_type_idx env 1) in
     (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-    block @ tee_swap @ get_swap @ [load ~offset:0 ();] @
+    block @ tee_swap @ [load ~offset:0 ();] @
     (* stack is: tag|block|... *)
-    index @ tee_swap @
+    index @
     [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
-    get_swap @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
+    index @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
     (* stack is: 0<=index|index<tag|block|... *)
      [Ast.Binary(Values.I32 Ast.IntOp.And);
-      Ast.If(VarBlockType (add_dummy_loc typeidx), (* TODO: Valid to access things below IF entry? *)
+      Ast.If(ValBlockType (Some Types.I32Type),
       (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
-      List.map add_dummy_loc (get_swap @ [
+      List.map add_dummy_loc (get_swap @ index @ [
       Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);
       Ast.Binary(Values.I32 Ast.IntOp.Add); load ~offset:8 ()]),
       [add_dummy_loc Ast.Unreachable]);]
-
   | MArraySet (idx, v) ->
   let get_swap = get_swap env 0 in
   let tee_swap = tee_swap env 0 in
   let index = compile_imm env idx in
   let value = compile_imm (enter_block env) v in
-  let typeidx = Int32.of_int(get_arity_func_type_idx env 1) in
   (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-  block @ tee_swap @ get_swap @ [load ~offset:0 ();] @
+  block @ tee_swap @ [load ~offset:0 ();] @
   (* stack is: tag|block|... *)
-  index @ tee_swap @
+  index @
   [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
-  get_swap @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
+  index @ [Ast.Const(wrap_int32 0l); Ast.Compare(Values.I32 Ast.IntOp.GeS);] @ (* index >= 0 *)
   (* stack is: 0<=index|index<tag|block|... *)
    [Ast.Binary(Values.I32 Ast.IntOp.And);
-    Ast.If(VarBlockType (add_dummy_loc typeidx),
+    Ast.If(ValBlockType (Some Types.I32Type),
     (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
-    List.map add_dummy_loc (get_swap @ [
+    List.map add_dummy_loc (get_swap @ index @ [
     Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);   (* Array store returns unit *)
     Ast.Binary(Values.I32 Ast.IntOp.Add);] @ value @ [store ~offset:8 (); Ast.Const const_false]),
     [add_dummy_loc Ast.Unreachable]);]

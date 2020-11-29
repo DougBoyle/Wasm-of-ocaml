@@ -22,7 +22,8 @@ let main () =
     let wasm = Compilewasm.compile_wasm_module wasm_ast in
     let binary = Wasm.Encode.encode wasm in
     let f = open_out_bin output_file in
-    output_string f binary; close_out f; Printf.printf "SUCCESS\n"
+    output_string f binary; close_out f  (*; Printf.printf "SUCCESS\n";
+    Printf.fprintf stdout "%s\n" (Wasm.Sexpr.to_string 80 (Wasm.Arrange.module_ wasm)) *)
   with x -> Location.report_exception Format.err_formatter x
 
 let _ = Arg.parse []
