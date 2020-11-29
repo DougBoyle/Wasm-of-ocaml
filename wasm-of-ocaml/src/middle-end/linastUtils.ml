@@ -62,9 +62,10 @@ let get_const_constructor_tag = function
   | Cstr_constant i -> Asttypes.Const_int i (* TODO: Should be an int32 instead? *)
   | _ -> failwith "Not a constant constructor"
 
-let unify_constructor_tag = function
-  | Cstr_constant i -> Int32.shift_left (Int32.of_int i) 1
-  | Cstr_block i -> Int32.logor (Int32.shift_left (Int32.of_int i) 1) 1l
+(* Assign constant/block constructor tags to disjoint, contiguous values *)
+let unify_constructor_tag desc = match desc.cstr_tag with
+  | Cstr_constant i -> Int32.of_int i
+  | Cstr_block i -> Int32.of_int (i + desc.cstr_consts)
   | _ -> raise NotSupported
 
 type linast_setup =

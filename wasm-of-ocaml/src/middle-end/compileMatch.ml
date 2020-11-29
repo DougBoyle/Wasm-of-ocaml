@@ -56,7 +56,7 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
   | Tpat_construct (_, desc, []) when desc.cstr_nonconsts = 0 ->
     getBindings fail {pat with pat_desc=Tpat_constant(get_const_constructor_tag desc.cstr_tag)} expr
 
-  | Tpat_construct (_, {cstr_tag}, pl) ->
+  | Tpat_construct (_, cstr_desc, pl) ->
     let id = Ident.create_local "construct" in
     let block_imm = Imm.id id in
 
@@ -64,7 +64,7 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
     let tag_id = Ident.create_local "construct_tag" in
     let tag_expr = Compound.gettag block_imm in
     (* Note that this puts an int32 constant in the tree, instead of the usual const_int - other integers aren't converted *)
-    let test_result = Compound.binary Eq (Imm.const (Const_int32 (unify_constructor_tag cstr_tag))) (Imm.id tag_id) in
+    let test_result = Compound.binary Eq (Imm.const (Const_int32 (unify_constructor_tag cstr_desc))) (Imm.id tag_id) in
     let testid = Ident.create_local "isequal" in
 
     (* If tag matches - bind subcomponents *)

@@ -78,7 +78,7 @@ let other_prims = Misc.create_hashtable 4 [
     (binds_to_anf [BLet(tag, tag_c)]
       (LinastExpr.compound
         (Compound.mkswitch
-          tagid
+          tagid (* NOTE: Cases dependent on how constructor tags are encoded *)
           [(0l, LinastExpr.compound (Compound.imm l2id));
            (1l, binds_to_anf [BLet(hd, hd_c); BLet(tl, tl_c); BLet(app, app_c)] (LinastExpr.compound result_block))]
           None))))));

@@ -18,28 +18,14 @@ if (process.argv.length > 2){
   var instance = await WebAssembly.instantiate(module);
   
   imports = {ocamlRuntime: instance.exports};
-  
-  var buffer = await readFile(process.argv[2]);
-  var module = await WebAssembly.compile(buffer);
-  var instance = await WebAssembly.instantiate(module, imports);
- // const response = await fetch('http://localhost:3000/wasm-files/fib.wasm');
- // const bytes = await response.arrayBuffer();
- // const { instance } = await WebAssembly.instantiate(bytes); //, {
-  //  env: { log, memory }
-//  });
   try {
-	instance.exports["OCAML$MAIN"]();
+	  var buffer = await readFile(process.argv[2]);
+	  var module = await WebAssembly.compile(buffer);
+	  var instance = await WebAssembly.instantiate(module, imports);
+	  instance.exports["OCAML$MAIN"]();
   } catch (err) {
-	  if (err instanceof WebAssembly.RuntimeError){
-		console.log("Trapped");  
-	  } else{
-		 console.log("ERROR: Some other error occured during execution");
-		 throw(err);
-	  }
+    console.log(err);
   }
-//	console.log(instance.exports.x());
-//	console.log(instance.exports.y());
-//  console.log(instance.exports.main(10));
 })();
 } else {
 (async () => {
@@ -82,7 +68,17 @@ if (process.argv.length > 2){
 			  var buffer = await readFile(filename + ".wasm");
 			  var module = await WebAssembly.compile(buffer);
 			  var instance = await WebAssembly.instantiate(module, imports);
-			  instance.exports["OCAML$MAIN"]();
+			  try {
+				instance.exports["OCAML$MAIN"]();
+			  } catch (err) {
+				  if (err instanceof WebAssembly.RuntimeError){
+					console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Trap occured");
+					continue;
+				  } else{
+					 console.log("ERROR: Some other error occured during execution");
+					 throw(err);
+				  }
+			  }
 			  var passed = true;
 			  for (const check of output){
 				  var id = check.split("=")[0];
@@ -99,27 +95,12 @@ if (process.argv.length > 2){
 			  }
 		  }
 	  } catch(err) {
+	  	  if (err instanceof TypeError){
+	  	  	console.log("\x1b[91m%s\x1b[0m", "Check results entry for " + filename + ". Identifier not recognised as an export.")
+		  }
 		  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Exception occured");
+		  console.log(err);
 	  }
   }
- /* 
-  var buffer = await readFile('./runtime.wasm');
-  var module = await WebAssembly.compile(buffer);
-  var instance = await WebAssembly.instantiate(module);
-  
-  imports = {ocamlRuntime: instance.exports};
-  
-  var buffer = await readFile(filename);
-  var module = await WebAssembly.compile(buffer);
-  var instance = await WebAssembly.instantiate(module, imports);
- // const response = await fetch('http://localhost:3000/wasm-files/fib.wasm');
- // const bytes = await response.arrayBuffer();
- // const { instance } = await WebAssembly.instantiate(bytes); //, {
-  //  env: { log, memory }
-//  });
-	instance.exports["OCAML$MAIN"]();
-	console.log(instance.exports.x());
-	console.log(instance.exports.y());
-//  console.log(instance.exports.main(10));*/
 })();
 }

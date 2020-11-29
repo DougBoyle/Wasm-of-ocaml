@@ -95,9 +95,10 @@ let compile_imm env (i : imm_expr) =
 (* TODO: Understnad all of this (particularly later part) *)
 let compile_function env args body : closure_data =
   let used_var_set = free_vars Ident.Set.empty body in
+  (* TODO: Should ignore global variables, shouldn't go into closure (can use find_id?) *)
   let free_var_set = Ident.Set.diff used_var_set (Ident.Set.of_list args) in
   let free_vars = Ident.Set.elements free_var_set in
-  (* ClosureBind represents variables accessed by looking up in closure environment *)
+ (* ClosureBind represents variables accessed by looking up in closure environment *)
   let free_binds = Utils.fold_lefti (fun acc closure_idx var ->
       Ident.add var (MClosureBind(Int32.of_int closure_idx)) acc)
       Ident.empty free_vars in
@@ -193,8 +194,10 @@ let rec compile_comp env (c : compound_expr) =
   | CMatchTry (i, body1, body2) ->
    MTry(i, compile_linast env body1, compile_linast env body2)
   | CFunction(args, body) -> (* TODO: Resolve mismatch of args!! Just have functions take 1 arg for now (tuples later) *)
+    if List.length args > 1 then Printf.printf "TOO MANY ARGS\n";
     MAllocate(MClosure(compile_function env args body))
-  (* TODO: Currying vs tuple mismatch - likely want to do many Function calls (can expand lower down) *)
+  (* TODO: Currying vs tuple mismatch - likely want to do many Function calls (can expand lower down)
+           NEED CURRYING ANNOTATION *)
   | CApp(f, args) ->
     (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Yes, for abs/min/max later *)
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args)

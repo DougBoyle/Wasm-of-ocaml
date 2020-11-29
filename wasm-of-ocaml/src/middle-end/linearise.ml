@@ -146,7 +146,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     (Compound.imm (Imm.const (get_const_constructor_tag desc.cstr_tag)), [])
   | Texp_construct (identLoc, desc, l) ->
     let (args, setup) = List.split (List.map translate_imm l) in
-    (Compound.makeblock (unify_constructor_tag desc.cstr_tag) args, List.concat setup)
+    (Compound.makeblock (unify_constructor_tag desc) args, List.concat setup)
   (* TODO: Add type annotations to the arguments to indicate mutable/immutable (all mut for arrays) *)
   | Texp_array l -> let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock (Int32.of_int (List.length l)) args, List.concat setup)

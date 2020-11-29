@@ -389,6 +389,7 @@ let round_up (num : int) (multiple : int) : int =
   multiple * (((num - 1) / multiple) + 1)
 
 (** Rounds the given number of words to be aligned correctly - TODO: Why is alignment necessary? *)
+(* Makes it a multiple of 16 (Since amount allocated is then actually 4*that to store 32-bit values)? Why? *)
 let round_allocation_size (num_words : int) : int =
   round_up num_words 4
 
@@ -399,12 +400,13 @@ let heap_allocate env (num_words : int) =
 (* Not sure check_memory needed *)
 (* Not doing strings initially, so can leave out allocate_string/buf_to_ints *)
 
-
+(* TODO: Functions allocated by MStore and MAllocate get free vars filled in separately, MStore is more complex process *)
 let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) =
   let num_free_vars = List.length variables in
   let closure_size = num_free_vars + 3 in
   let get_swap = get_swap env 0 in
   let tee_swap = tee_swap env 0 in
+  (* TODO: Purpose of this? For a recursive function maybe, putting itself into the allocated closure? *)
   let access_lambda = Option.value ~default:(get_swap @ [
       Ast.Const(const_int32 (4 * round_allocation_size closure_size));
       Ast.Binary(Values.I32 Ast.IntOp.Sub);
@@ -420,11 +422,11 @@ let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) 
   ] @ get_swap @ [
     Ast.Const(add_dummy_loc (Values.I32Value.to_value arity));
    (* take pairs off stack, putting arity, function index and number of free vars into closure object *)
-   (* TODO: How is possibility of partial application handled, or is arity based on expanded out tuples? *)
     store ~offset:0 ();
     store ~offset:4 ();
     store ~offset:8 ();
-  ] @ get_swap
+  ]
+   @ get_swap
   (*  @ [
     Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType); (* Apply the Lambda tag - may actually be needed *)
     Ast.Binary(Values.I32 Ast.IntOp.Or);
@@ -535,7 +537,8 @@ let compile_data_op env imm op =
 let collect_backpatches env f =
   let nested_backpatches = ref [] in
   let res = f {env with backpatches=nested_backpatches} in
-  res, !nested_backpatches
+  (* TODO: Work out if original ones wanted or not *)
+  res, (*!(env.backpatches) @*) (!nested_backpatches)
 
 (* Mutually recursive functions, once closures created, need to associate each variable for one of the other functions
    (or themself) with that closure. So go through and put a pointer to each needed closure in each of the closures. *)
@@ -548,6 +551,7 @@ let do_backpatches env backpatches =
         Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType);
         Ast.Binary(Values.I32 Ast.IntOp.Xor);
       ] *) @ set_swap in
+    (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
       get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 3)) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
@@ -560,7 +564,9 @@ let rec compile_store env binds =
       let store_bind = compile_bind ~is_get:false env b in
       let get_bind = compile_bind ~is_get:true env b in
       let compiled_instr = match instr with
-        | MAllocate(MClosure(cdata)) -> (* TODO: Why special lambda for getting a closure? *)
+        | MAllocate(MClosure(cdata)) ->
+          (* Special lambda specified since several mutually recursive functions could be getting defined,
+             access each one by the identifier it is bound to. *)
           allocate_closure env ~lambda:get_bind cdata
         | _ -> compile_instr env instr in
       (compiled_instr @ store_bind) @ acc in
@@ -575,7 +581,8 @@ and compile_switch env arg branches default =
     let max_label = List.fold_left max 0 labels in
     let labs_to_branches = List.mapi (fun i l -> (l, i+1)) labels in
     let default = add_dummy_loc 0l in
-    List.init max_label (fun l -> match List.assoc_opt l labs_to_branches with
+    (* +1 since List.init n creates cases for 0 up to (n-1) *)
+    List.init (max_label + 1) (fun l -> match List.assoc_opt l labs_to_branches with
       | Some b -> add_dummy_loc (Int32.of_int b) | None -> default) in
   let rec build_branches i seen = function
     (* Base case, do actual arg eval, branch table and default case *)
@@ -597,19 +604,41 @@ and compile_block env block =
   List.flatten (List.map (compile_instr env) block)
 
 (* THE CENTRAL FUNCTION USING ALL THE THINGS ABOVE *)
-(* TODO: Go through and understand how each case works *)
 and compile_instr env instr =
   match instr with
   | MDrop -> [Ast.Drop]
   | MImmediate(imm) -> compile_imm env imm
-  | MAllocate(alloc) -> compile_allocation env alloc
+  | MAllocate(alloc) -> (* New - currying appeared to not work before *)
+  let new_backpatches = ref [] in
+  let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in
+  let do_backpatch (lam, {func_idx;variables}) =
+      let get_swap = get_swap env 0 in
+      let tee_swap = tee_swap env 0 in
+      (* TODO: Should skip if nothing to backpatch? *)
+      let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
+        get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 3)) ();] in
+      tee_swap @ (List.flatten (List.mapi backpatch_var variables)) in
+    (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
+    instrs @ (List.flatten (List.map do_backpatch (!new_backpatches)))
+
   | MDataOp(op, block) -> compile_data_op env block op
   | MUnary(op, arg) -> compile_unary env op arg
   | MBinary(op, arg1, arg2) -> compile_binary env op arg1 arg2
   | MSwitch(arg, branches, default) -> compile_switch env arg branches default
-  | MStore(binds) -> compile_store env binds
+  | MStore(binds) -> compile_store env binds (* TODO: Difference MAllocate and MStore - alloc for compound, store for toplevel *)
   (* TODO: Currying vs tuples - may need to generate many Ast.CallIndirects - take 1 arg at a time?? *)
+  (* Need CURRYING/TUPLE options to make this more efficient. Effectively unrolling nested MCallIndirects *)
   | MCallIndirect(func, args) ->
+    let compiled_func = compile_imm env func in
+    let get_swap = get_swap env 0 in
+    let tee_swap = tee_swap env 0 in
+    List.fold_left
+    (fun f arg -> let compiled_arg = compile_imm env arg in
+      (* Arity fixed due to never handling tuple arg/result specially. TODO: Make tuples special *)
+      let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
+      f @ tee_swap @ compiled_arg @ get_swap @ [load ~offset:4 (); Ast.CallIndirect(ftype);])
+    compiled_func args
+  (*
     let compiled_func = compile_imm env func in
     let compiled_args = List.flatten (List.map (compile_imm env) args) in
     let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env (1 + List.length args))) in
@@ -621,12 +650,12 @@ and compile_instr env instr =
       tee_swap @
       compiled_args in
 
-    all_args @
+    all_args @               --- closure; args; fun_ptr_from_closure
     get_swap @ [
       load ~offset:4 ();
       Ast.CallIndirect(ftype);
     ]
-
+   *)
   | MIf(cond, thn, els) ->
     let compiled_cond = compile_imm env cond in
     let compiled_thn = List.map
