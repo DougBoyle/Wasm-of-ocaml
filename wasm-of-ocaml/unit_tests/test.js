@@ -5,7 +5,7 @@ const fs = require("fs");
 const readFile = util.promisify(fs.readFile);
 const exec = util.promisify(require('child_process').exec);
 
-let fileList = "./results.txt";
+let fileList = __dirname + "/results.txt";
 
 // process.argv is a list of the command line arguments
 
@@ -13,7 +13,7 @@ let fileList = "./results.txt";
 
 if (process.argv.length > 2){
 (async () => {
-  var buffer = await readFile('../samples/runtime.wasm');
+  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
   var module = await WebAssembly.compile(buffer);
   var instance = await WebAssembly.instantiate(module);
   
@@ -36,13 +36,13 @@ if (process.argv.length > 2){
 	  try {
 		  var output = line.slice(1);
 		  if (line[line.length - 1] == "!"){
-			  await exec("../main.byte " + filename + ".ml");
-			  var buffer = await readFile('../samples/runtime.wasm');
+			  await exec(__dirname + "/../main.byte " + filename + ".ml");
+			  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
 			  var module = await WebAssembly.compile(buffer);
 			  var instance = await WebAssembly.instantiate(module);
 			  
 			  var imports = {ocamlRuntime: instance.exports};
-			  var buffer = await readFile(filename + ".wasm");
+			  var buffer = await readFile(__dirname + "/" + filename + ".wasm");
 			  var module = await WebAssembly.compile(buffer);
 			  // TODO: Add extra try/catch wrapper to catch the trap we are expecting to see?
 			  var instance = await WebAssembly.instantiate(module, imports);
@@ -59,13 +59,13 @@ if (process.argv.length > 2){
 			  }
 			  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Did not trap");
 		  } else {
-			  await exec("../main.byte " + filename + ".ml");
-			  var buffer = await readFile('../samples/runtime.wasm');
+			  await exec(__dirname + "/../main.byte " + filename + ".ml");
+			  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
 			  var module = await WebAssembly.compile(buffer);
 			  var instance = await WebAssembly.instantiate(module);
 			  
 			  var imports = {ocamlRuntime: instance.exports};
-			  var buffer = await readFile(filename + ".wasm");
+			  var buffer = await readFile(__dirname + "/" + filename + ".wasm");
 			  var module = await WebAssembly.compile(buffer);
 			  var instance = await WebAssembly.instantiate(module, imports);
 			  try {
