@@ -524,7 +524,7 @@ let do_backpatches env backpatches =
     let get_swap = get_swap env 0 in
     let set_swap = set_swap env 0 in
     (* Put lam in the swap register *)
-    let preamble = lam (* @ [   -- Leaving out tags for now - likely needed for Lambdas!
+    let preamble = lam @ (untag Closure) (* @ [   -- Leaving out tags for now - likely needed for Lambdas!
         Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType);
         Ast.Binary(Values.I32 Ast.IntOp.Xor);
       ] *) @ set_swap in
@@ -594,7 +594,8 @@ and compile_instr env instr =
       (* TODO: Should skip if nothing to backpatch? *)
       let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
         get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 3)) ();] in
-      tee_swap @ (List.flatten (List.mapi backpatch_var variables)) in
+      (* Takes tag off, puts vars in, puts tag back on. TODO: Reduce number of times tag added/removed *)
+      (untag Closure) @ tee_swap @ (List.flatten (List.mapi backpatch_var variables)) @ (untag Closure) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
     instrs @ (List.flatten (List.map do_backpatch (!new_backpatches)))
 
