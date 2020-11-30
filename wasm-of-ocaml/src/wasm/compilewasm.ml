@@ -58,18 +58,15 @@ let swap_slots = List.append swap_slots_i32 swap_slots_i64
 (* Primitives still not translated to idents at this stage - aids constant propagation if I want to do at this level *)
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let alloc_ident = Ident.create_persistent "alloc"
+let compare_ident = Ident.create_persistent "compare"
 (* TODO: Add runtime functions for compare, equals, etc. *)
 
 
 (* global_imports should just be empty hence redundant - runtime should only have functions in it *)
 let runtime_global_imports = []
 let runtime_function_imports = [
-  {
-    mimp_mod=runtime_mod;
-    mimp_name=alloc_ident;
-    mimp_type=MFuncImport([I32Type], [I32Type]);
-    mimp_setup=MSetupNone;
-  };]
+  {mimp_mod=runtime_mod; mimp_name=alloc_ident; mimp_type=MFuncImport([I32Type], [I32Type]); mimp_setup=MSetupNone;};
+  {mimp_mod=runtime_mod; mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); mimp_setup=MSetupNone;};]
 let runtime_imports = runtime_global_imports @ runtime_function_imports
 
 let init_env () = {
@@ -148,6 +145,7 @@ let lookup_ext_func env modname itemname =
 let var_of_ext_func env modname itemname =
   add_dummy_loc @@ lookup_ext_func env modname itemname
 let call_alloc env = Ast.Call(var_of_ext_func env runtime_mod alloc_ident)
+let call_compare env = Ast.Call(var_of_ext_func env runtime_mod compare_ident)
 
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =
@@ -343,25 +341,20 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
     ]
   (* TODO: Rewrite to call runtime compare function to do more general 'a * 'a comparison *)
   | GT ->
-    compiled_arg1 @ compiled_arg2 @ [
-      Ast.Compare(Values.I32 Ast.IntOp.GtS)
-    ] @ encode_num
+    compiled_arg1 @ compiled_arg2 @
+    [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.GtS)] @ encode_num
   | GTE ->
-    compiled_arg1 @ compiled_arg2 @ [
-      Ast.Compare(Values.I32 Ast.IntOp.GeS)
-    ] @ encode_num
+    compiled_arg1 @ compiled_arg2 @
+    [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.GeS)] @ encode_num
   | LT ->
-    compiled_arg1 @ compiled_arg2 @ [
-      Ast.Compare(Values.I32 Ast.IntOp.LtS)
-    ] @ encode_num
+    compiled_arg1 @ compiled_arg2 @
+    [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.LtS)] @ encode_num
   | LTE ->
-    compiled_arg1 @ compiled_arg2 @ [
-      Ast.Compare(Values.I32 Ast.IntOp.LeS)
-    ] @ encode_num
+    compiled_arg1 @ compiled_arg2 @
+    [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.LeS)] @ encode_num
   | Eq ->
-    compiled_arg1 @ compiled_arg2 @ [
-      Ast.Compare(Values.I32 Ast.IntOp.Eq)
-    ] @ encode_num
+    compiled_arg1 @ compiled_arg2 @
+    [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
   (* TODO: Neq -- Is it worth removing this and compiling to Not (Eq ...)? *)
   (* TODO: Physical equality - should actually be relatively simple, just compare literal/pointer. *)
   | Compare -> failwith "Compare not yet implemented"

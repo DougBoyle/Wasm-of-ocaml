@@ -11,6 +11,6 @@ datatype y=6
 curry a=17
 // dependent on encoding of true/false
 bool a=0
-compare a=1 b=0 c=1
+compare x=1 a=1 b=0 c=1
 ../samples/arith x=26 y=4
 ../samples/trees x=15
