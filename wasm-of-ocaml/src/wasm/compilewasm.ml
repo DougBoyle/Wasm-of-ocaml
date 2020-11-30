@@ -104,28 +104,23 @@ let wrap_int64 n = add_dummy_loc (Values.I64Value.to_value n)
 let wrap_float32 n = add_dummy_loc (Values.F32Value.to_value n)
 let wrap_float64 n = add_dummy_loc (Values.F64Value.to_value n)
 
+(* TODO: Work out which of these actually needed *)
+(* For integers taken out of wasmtree - all tags/ints need doubling (but not memory offsets) *)
+let encoded_int n = n * 2
+let encoded_int32 n = Int32.mul 2l n
+let encoded_const_int n = const_int32 (encoded_int n)
+let encoded_const_int32 n = wrap_int32 (encoded_int32 n)
 (** Constant compilation *)
-let rec compile_const c : Wasm.Values.value =
-(* NO TAGS OR INPUT/OUTPUT PROCESSING SO DON'T USE FOR NOW
-  let conv_int32 = Int32.(mul (of_int 2)) in
-  let conv_int64 = Int64.(mul (of_int 2)) in
-*)
-  begin
+let rec compile_const c : Wasm.Values.value Wasm.Source.phrase =
     match c with
-    | MConstLiteral ((MConstLiteral _) as c) -> compile_const c
-    | MConstI32 n -> Values.I32Value.to_value ((*conv_int32*) n)
-    | MConstI64 n -> Values.I64Value.to_value ((*conv_int64*) n)
-    | MConstF32 n -> Values.F32Value.to_value (Wasm.F32.of_float n)
-    | MConstF64 n -> Values.F64Value.to_value (Wasm.F64.of_float n)
-    | MConstLiteral (MConstI32 n) -> Values.I32Value.to_value n
-    | MConstLiteral (MConstI64 n) -> Values.I64Value.to_value n
-    | MConstLiteral (MConstF32 n) -> Values.F32Value.to_value (Wasm.F32.of_float n)
-    | MConstLiteral (MConstF64 n) -> Values.F64Value.to_value (Wasm.F64.of_float n)
-  end
+    | MConstI32 n -> encoded_const_int32 n
+    | MConstI64 n -> wrap_int64 (Int64.mul 2L n)
+    | MConstF32 n -> wrap_float32 (Wasm.F32.of_float n)
+    | MConstF64 n -> wrap_float64 (Wasm.F64.of_float n)
 
 (* Translate constants to WASM. Override names from wasmtree to be wasm phrases (values with regions) *)
-let const_true = add_dummy_loc (compile_const const_true)
-let const_false = add_dummy_loc (compile_const const_false)
+let const_true = compile_const const_true
+let const_false = compile_const const_false
 
 (* WebAssembly helpers *)
 (* These instructions get helpers due to their verbosity *)
@@ -179,29 +174,15 @@ let get_arity_func_type_idx env arity =
     List.length !(env.func_types) - 1
   | Some((i, _)) -> i
 
-(* Untag should only be needed if GC present (especially untag_number) *)
-(* encode after doing comparison etc. decode before an if/while statement *)
-(* Matches Wasm semantics - non-zero = true, zero = false *)
-let encode_bool =  [] (* No tags and true/false are 1/0, so do nothing for now *)
-(*
-[
-  Ast.Const(const_int32 31);
-  Ast.Binary(Values.I32 Ast.IntOp.Shl);
-  Ast.Const(const_false);
-  Ast.Binary(Values.I32 Ast.IntOp.Or);
+(* Needed so that OCaml equals function can tell if something is an int/data on heap/closure.
+   Bools are just ints so tag_num and untag_num also work for bools *)
+let encode_num = [Ast.Const(const_int32 1); Ast.Binary(Values.I32 Ast.IntOp.Shl)]
+let decode_num = [Ast.Const(const_int32 1); Ast.Binary(Values.I32 Ast.IntOp.ShrS)]
+
+let untag tag = [
+  Ast.Const(const_int32 (tag_of_type tag));
+  Ast.Binary(Values.I32 Ast.IntOp.Xor);
 ]
-*)
-
-(* Currently no tags and true/false represented as 0/1, so do nothing for now *)
-let decode_bool = []
-(*
-[
-  Ast.Const(const_int32 31);
-  Ast.Binary(Values.I32 Ast.IntOp.ShrU);
-] *)
-
-(* Can remove - not encoding integers *)
-let encoded_const_int32 n = const_int32 n
 
 (* Wasm package changed from GetLocal to LocalGet (likewise for the rest) since Grain's version *)
 let compile_bind ~is_get (env : env) (b : binding) : Wasm.Ast.instr' list =
@@ -282,7 +263,7 @@ let tee_swap ?ty:(typ=Types.I32Type) env idx =
 
 let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   match i with
-  | MImmConst c -> [Ast.Const(add_dummy_loc @@ compile_const c)]
+  | MImmConst c -> [Ast.Const(compile_const c)]
   | MImmBinding b -> compile_bind ~is_get:true env b
   | MImmFail j -> (match j with
     | -1l -> [Ast.Unreachable] (* trap *)
@@ -297,21 +278,23 @@ let compile_unary env op arg : Wasm.Ast.instr' list =
   let compiled_arg = compile_imm env arg in
   match op with
   | UnAdd -> [] (* Does nothing *)
-  | UnNeg -> (Ast.Const(encoded_const_int32 0)) :: compiled_arg @ [Ast.Binary(Values.I32 Ast.IntOp.Sub)]
+  | UnNeg -> (Ast.Const(encoded_const_int 0)) :: compiled_arg @ [Ast.Binary(Values.I32 Ast.IntOp.Sub)]
   | Not -> compiled_arg @ [
-      Ast.Const(const_int32 0x80000000);
+      Ast.Const(const_true); (* Flip the bit encoded as true/false *)
       Ast.Binary(Values.I32 Ast.IntOp.Xor);
     ]
   | Succ -> compiled_arg @ [
-      Ast.Const(encoded_const_int32 1);
+      Ast.Const(encoded_const_int 1);
       Ast.Binary(Values.I32 Ast.IntOp.Add);
     ]
   | Pred -> compiled_arg @ [
-      Ast.Const(encoded_const_int32 1);
+      Ast.Const(encoded_const_int 1);
       Ast.Binary(Values.I32 Ast.IntOp.Sub);
     ]
+  (* Currently implemented as a lambda term *)
   | Abs -> failwith "Not yet implemented - come back to later"
 
+(* Assumes all operations are on integers, can't reuse for floats *)
 let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   let compiled_arg1 = compile_imm env arg1 in
   let compiled_arg2 = compile_imm env arg2 in
@@ -333,26 +316,27 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
     (* Untag one of the numbers:
        ((a * 2) / 2) * (b * 2) = (a * b) * 2
     *)
-    compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.Mul);]
+    compiled_arg1 @ decode_num @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.Mul);]
   | Div -> (* Both div and rem are signed in OCaml *)
-     compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.DivS);]
+    (* (a * 2) / ((b * 2)/2) = (a * b) * 2 *)
+     compiled_arg1 @ compiled_arg2 @ decode_num @ [Ast.Binary(Values.I32 Ast.IntOp.DivS);]
   | Mod -> (* Both div and rem are signed in OCaml *)
      compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.RemS);]
   (* Can still occur due to how && and || are compiled when not applied to anything??
      i.e. when they are compiled to function abstractions, still use AND/OR rather than rewriting as an if-then-else *)
   (* Note - safe to recompile args since compile_imm's only side-effect is generating dummy locations *)
-  | AND -> (* TODO: Can just use actual And operation? Side-effect semantics removed higher up *)
+  | AND -> (* TODO: Can just use actual And operation? Side-effect semantics removed higher up. This just avoids encoding after *)
     compiled_arg1 @
     swap_tee @
-    decode_bool @ [ (* TODO: 'If' blocks introduce a label too, delay compiling arg1/2?? *)
+    decode_num @ [
       Ast.If(ValBlockType (Some Types.I32Type),
              List.map add_dummy_loc (compile_imm (enter_block env) arg2), (* Recompile with updated trap handlers *)
-             List.map add_dummy_loc swap_get)  (* swap_get replaced with compiled_arg1 - may cause some duplication *)
+             List.map add_dummy_loc swap_get)
     ]
   | OR ->
     compiled_arg1 @
     swap_tee @
-    decode_bool @ [
+    decode_num @ [
       Ast.If(ValBlockType (Some Types.I32Type),
              List.map add_dummy_loc swap_get,
              List.map add_dummy_loc (compile_imm (enter_block env) arg2))
@@ -361,23 +345,23 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   | GT ->
     compiled_arg1 @ compiled_arg2 @ [
       Ast.Compare(Values.I32 Ast.IntOp.GtS)
-    ] @ encode_bool
+    ] @ encode_num
   | GTE ->
     compiled_arg1 @ compiled_arg2 @ [
       Ast.Compare(Values.I32 Ast.IntOp.GeS)
-    ] @ encode_bool
+    ] @ encode_num
   | LT ->
     compiled_arg1 @ compiled_arg2 @ [
       Ast.Compare(Values.I32 Ast.IntOp.LtS)
-    ] @ encode_bool
+    ] @ encode_num
   | LTE ->
     compiled_arg1 @ compiled_arg2 @ [
       Ast.Compare(Values.I32 Ast.IntOp.LeS)
-    ] @ encode_bool
+    ] @ encode_num
   | Eq ->
     compiled_arg1 @ compiled_arg2 @ [
       Ast.Compare(Values.I32 Ast.IntOp.Eq)
-    ] @ encode_bool
+    ] @ encode_num
   (* TODO: Neq -- Is it worth removing this and compiling to Not (Eq ...)? *)
   (* TODO: Physical equality - should actually be relatively simple, just compare literal/pointer. *)
   | Compare -> failwith "Compare not yet implemented"
@@ -389,9 +373,9 @@ let round_up (num : int) (multiple : int) : int =
   multiple * (((num - 1) / multiple) + 1)
 
 (** Rounds the given number of words to be aligned correctly - TODO: Why is alignment necessary? *)
-(* Makes it a multiple of 16 (Since amount allocated is then actually 4*that to store 32-bit values)? Why? *)
+(* Tagging of pointers relies on bottom 2 bits only. Already guarenteed by storing 32-bit values (below) so nothing needed *)
 let round_allocation_size (num_words : int) : int =
-  round_up num_words 4
+ (* round_up num_words 4 *) num_words
 
 let heap_allocate env (num_words : int) =
   let words_to_allocate = round_allocation_size num_words in
@@ -426,11 +410,9 @@ let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) 
     store ~offset:4 ();
     store ~offset:8 ();
   ]
-   @ get_swap
-  (*  @ [
-    Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType); (* Apply the Lambda tag - may actually be needed *)
-    Ast.Binary(Values.I32 Ast.IntOp.Or);
-  ]  *)
+   @ get_swap @ [
+    Ast.Const(const_int32 (tag_of_type Closure)); (* Apply the Lambda tag *)
+    Ast.Binary(Values.I32 Ast.IntOp.Or);]
 
 let allocate_data env vtag elts =
   (* Grain compiler to-do: We don't really need to store the arity here. Could move this to module-static info *)
@@ -458,16 +440,14 @@ let allocate_data env vtag elts =
     store ~offset:0 ();
   ] @ get_swap @ (compile_imm env ttag) @ [
     store ~offset:4 ();
-  ] @ get_swap *) (* @ (const_int32 vtag) *) @ [Ast.Const(wrap_int32 vtag);
+  ] @ get_swap *) (* @ (const_int32 vtag) *) @ [Ast.Const(encoded_const_int32 vtag);
     store ~offset:0 ();
   ] @ get_swap @ [
     Ast.Const(const_int32 num_elts);
     store ~offset:4 ();
   ] @ (List.flatten @@ List.mapi compile_elt elts) @ get_swap
-   (* @ [
-    Ast.Const(const_int32 @@ tag_val_of_tag_type (GenericHeapType (Some ADTType)));
-    Ast.Binary(Values.I32 Ast.IntOp.Or);
-  ] *)
+   @ [Ast.Const(const_int32 (tag_of_type Data));
+    Ast.Binary(Values.I32 Ast.IntOp.Or);]
 
 let compile_allocation env alloc_type =
   match alloc_type with
@@ -480,16 +460,16 @@ let compile_data_op env imm op =
   match op with
   | MGet(idx) ->
     let idx_int = Int32.to_int idx in
-    block @ (* (untag TupleTagType) ::   -- probably not needed *) [
+    block @ (untag Data) @ [
         load ~offset:(4 * (idx_int + 2)) (); (* +2 as blocks start with variant tag; arity; ... *)
       ]
   | MSet(idx, imm) ->
     let idx_int = Int32.to_int idx in
-    block @ (* (untag TupleTagType) @ *) (compile_imm env imm) @ [
+    block @ (untag Data) @ (compile_imm env imm) @ [
         store ~offset:(4 * (idx_int + 2)) ();
       ] @ (compile_imm env imm) (* Why do we put the value on the stack again after? *)
-  | MGetTag ->
-    block @ (* (untag (GenericHeapType (Some ADTType))) +@ *) [
+  | MGetTag -> (* Not divided by 2 unless actually used in a switch *)
+    block @ (untag Data) @ [
       load ~offset:0 ();
     ]
   | MArrayGet idx ->
@@ -497,7 +477,7 @@ let compile_data_op env imm op =
     let tee_swap = tee_swap env 0 in
     let index = compile_imm env idx in
     (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-    block @ tee_swap @ [load ~offset:0 ();] @
+    block @ (untag Data) @ tee_swap @ [load ~offset:0 ();] @
     (* stack is: tag|block|... *)
     index @
     [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
@@ -506,7 +486,7 @@ let compile_data_op env imm op =
      [Ast.Binary(Values.I32 Ast.IntOp.And);
       Ast.If(ValBlockType (Some Types.I32Type),
       (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
-      List.map add_dummy_loc (get_swap @ index @ [
+      List.map add_dummy_loc (get_swap @ index @ decode_num @ [
       Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);
       Ast.Binary(Values.I32 Ast.IntOp.Add); load ~offset:8 ()]),
       [add_dummy_loc Ast.Unreachable]);]
@@ -516,7 +496,7 @@ let compile_data_op env imm op =
   let index = compile_imm env idx in
   let value = compile_imm (enter_block env) v in
   (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-  block @ tee_swap @ [load ~offset:0 ();] @
+  block @ (untag Data) @ tee_swap @ [load ~offset:0 ();] @
   (* stack is: tag|block|... *)
   index @
   [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
@@ -525,7 +505,7 @@ let compile_data_op env imm op =
    [Ast.Binary(Values.I32 Ast.IntOp.And);
     Ast.If(ValBlockType (Some Types.I32Type),
     (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
-    List.map add_dummy_loc (get_swap @ index @ [
+    List.map add_dummy_loc (get_swap @ index @ decode_num @ [
     Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);   (* Array store returns unit *)
     Ast.Binary(Values.I32 Ast.IntOp.Add);] @ value @ [store ~offset:8 (); Ast.Const const_false]),
     [add_dummy_loc Ast.Unreachable]);]
@@ -535,7 +515,7 @@ let collect_backpatches env f =
   let nested_backpatches = ref [] in
   let res = f {env with backpatches=nested_backpatches} in
   (* TODO: Work out if original ones wanted or not *)
-  res, (*!(env.backpatches) @*) (!nested_backpatches)
+  res, !nested_backpatches
 
 (* Mutually recursive functions, once closures created, need to associate each variable for one of the other functions
    (or themself) with that closure. So go through and put a pointer to each needed closure in each of the closures. *)
@@ -585,8 +565,8 @@ and compile_switch env arg branches default =
     (* Base case, do actual arg eval, branch table and default case *)
     | [] ->
      [Ast.Block(ValBlockType None, (* Only left by branch table *)
-        List.map add_dummy_loc ((compile_imm (enter_block ~n:(i + 2) env) arg) @ (* TODO: Check offsets for enter_block *)
-        [Ast.BrTable (compile_table seen, add_dummy_loc 0l)]))]
+        List.map add_dummy_loc ((compile_imm (enter_block ~n:(i + 2) env) arg) @
+        decode_num @ [Ast.BrTable (compile_table seen, add_dummy_loc 0l)]))]
         @ (compile_block (enter_block ~n:(i + 1) env) default) @ [Ast.Br(add_dummy_loc (Int32.of_int i))]
     (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
     | (l, action)::rest -> (Ast.Block(ValBlockType None,
@@ -633,7 +613,7 @@ and compile_instr env instr =
     (fun f arg -> let compiled_arg = compile_imm env arg in
       (* Arity fixed due to never handling tuple arg/result specially. TODO: Make tuples special *)
       let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
-      f @ tee_swap @ compiled_arg @ get_swap @ [load ~offset:4 (); Ast.CallIndirect(ftype);])
+      f @ (untag Closure) @ tee_swap @ compiled_arg @ get_swap @ [load ~offset:4 (); Ast.CallIndirect(ftype);])
     compiled_func args
   (*
     let compiled_func = compile_imm env func in
@@ -662,7 +642,8 @@ and compile_instr env instr =
         add_dummy_loc
         (compile_block (enter_block env) els) in
     compiled_cond @
-    decode_bool @ [
+    (* TODO: Can remove decode steps here since 2=1=true and 0=false *)
+    decode_num @ [
       Ast.If(ValBlockType (Some Types.I32Type),
              compiled_thn,
              compiled_els);
@@ -677,7 +658,7 @@ and compile_instr env instr =
               List.map add_dummy_loc
               ([Ast.Const const_false] @
               compiled_cond @
-              decode_bool @
+              decode_num @
               [Ast.Test(Values.I32 Ast.IntOp.Eqz); (* TODO: Why the extra test? Checking for NOT true? *)
                Ast.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
               [Ast.Drop] @
@@ -698,12 +679,12 @@ and compile_instr env instr =
               (compile_bind ~is_get:true env end_arg) @
               [Ast.Compare(Values.I32
                 (match direction with Upto -> Ast.IntOp.GtS | Downto -> Ast.IntOp.LtS))] @
-              decode_bool @
+              decode_num @
               [Ast.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
          (*    [Ast.Drop] @ *)
               compiled_body @
               (compile_bind ~is_get:true env arg) @
-              [Ast.Const(encoded_const_int32 1);
+              [Ast.Const(encoded_const_int 1); (* For loop actually takes steps of 2 due to encoding *)
                Ast.Binary(Values.I32
                  (match direction with Upto -> Ast.IntOp.Add | Downto -> Ast.IntOp.Sub));] @
               (compile_bind ~is_get:false env arg) @ (* TODO: Could use Tee here? Avoiding 'get' at top *)
@@ -725,6 +706,7 @@ and compile_instr env instr =
               (compiled_body @ [Ast.Br (add_dummy_loc 1l)]))]  (* try case succeeded, skip handler *)
         @ handler_body))]
 
+  (* Not actually used? *)
   | MCallKnown(func_idx, args) ->
     let compiled_args = List.flatten @@ List.map (compile_imm env) args in
     compiled_args @ [
@@ -810,6 +792,7 @@ let compile_imports env {imports} =
 (* Is there any need for naming extensions? Doesn't look like it except to avoid naming something _start etc.
    For now assume that never happens - convenience of being able to use actual names vs *)
 (* Linearise ensures that only one thing with each name gets exported, so don't need worry about duplicates *)
+(* TODO: Modify getter functions to do decode? Or just do in runtime/JS caller *)
 let compile_exports env {functions; imports; exports; num_globals} =
   (* TODO: What are these indexes? *)
   (* `Getter` provides a simple way to access exported varaibles - provides a nullary function that just

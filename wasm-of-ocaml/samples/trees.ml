@@ -9,3 +9,5 @@ let rec completeBinaryTree x = function
 let rec countNodes = function
   | Leaf -> 1
   | Node(_, l, r) -> 1 + (countNodes l) + (countNodes r)
+
+let x = countNodes (completeBinaryTree 0 3)

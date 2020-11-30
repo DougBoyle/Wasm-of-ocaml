@@ -66,8 +66,6 @@ type constant =
   | MConstI64 of int64
   | MConstF32 of float
   | MConstF64 of float
-  | MConstLiteral of constant (* Special case for things which should not be encoded -- encoding may not be necessary anyway *)
-
 
 type binding =
   (* Args (function arguments) and Local (free variables) and swap (register memory) all correspond to local memory *)
@@ -199,9 +197,11 @@ type wasm_program = {
 (* TODO: Decide what actual values should be -- Currently using tags so must be 0/1 i.e. LSB not MSB
          May cause issues when type tagging added - come back to this*)
 (* Matches values used by IR currently i.e. true -> const 1, false -> const 0 *)
-let const_true =  MConstLiteral (MConstI32 (Int32.of_int 1))
-let const_false = MConstLiteral (MConstI32 (Int32.of_int 0))
-(*
-let const_true =  MConstLiteral (MConstI32 (Int32.of_int 0xFFFFFFFF))
-let const_false = MConstLiteral (MConstI32 (Int32.of_int 0x7FFFFFFF))
-*)
+let const_true =  MConstI32 (Int32.of_int 1)
+let const_false = MConstI32 (Int32.of_int 0)
+
+type type_tag = Number | Data | Closure
+let tag_of_type = function
+  | Number -> 0
+  | Data -> 1
+  | Closure -> 3

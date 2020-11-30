@@ -12,7 +12,6 @@ let rec print_const ppf = function
   | MConstI64 n -> fprintf ppf "%LiL" n
   | MConstF32 f -> fprintf ppf "%f" f
   | MConstF64 f -> fprintf ppf "%f" f
-  | MConstLiteral c -> fprintf ppf "Literal %a" print_const c
 
 let binary ppf = function
   | Eq -> fprintf ppf "="
