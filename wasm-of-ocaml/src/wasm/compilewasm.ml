@@ -113,13 +113,12 @@ let load
   Load({ty; align; sz; offset=Int32.of_int offset;})
 
 (* Finds the function number each runtime import was bound to during setup *)
-let lookup_ext_func env modname itemname =
- (* Ident.find_same itemname (Ident.find_same modname (env.imported_funcs)) *)
- Hashtbl.find imported_funcs itemname
-let var_of_ext_func env modname itemname =
-  add_dummy_loc @@ lookup_ext_func env modname itemname
-let call_alloc env = Ast.Call(var_of_ext_func env runtime_mod alloc_ident)
-let call_compare env = Ast.Call(var_of_ext_func env runtime_mod compare_ident)
+let lookup_runtime_func env itemname =
+  Hashtbl.find imported_funcs itemname
+let var_of_runtime_func env itemname =
+  add_dummy_loc @@ lookup_runtime_func env itemname
+let call_alloc env = Ast.Call(var_of_runtime_func env alloc_ident)
+let call_compare env = Ast.Call(var_of_runtime_func env compare_ident)
 
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =
@@ -329,11 +328,18 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   | Eq ->
     compiled_arg1 @ compiled_arg2 @
     [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
+  | Neq -> (* TODO: Could optimise to use Select? *)
+     compiled_arg1 @ compiled_arg2 @
+     [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num @
+     [Ast.Const(const_true); Ast.Binary(Values.I32 Ast.IntOp.Xor);] (* Flip the bit encoded as true/false *)
   (* TODO: Neq -- Is it worth removing this and compiling to Not (Eq ...)? *)
   (* TODO: Physical equality - should actually be relatively simple, just compare literal/pointer. *)
-  | Compare -> failwith "Compare not yet implemented"
+  | Compare -> compiled_arg1 @ compiled_arg2 @ [call_compare env;] @ encode_num
+  | Eq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
+  | Neq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num @
+    [Ast.Const(const_true); Ast.Binary(Values.I32 Ast.IntOp.Xor);] (* Flip the bit encoded as true/false *)
   (* Append currently being mapped to a linast expression higher up, likewise min/max *)
-  | Neq | Min | Max | Eq_phys | Neq_phys | Append -> failwith "Not yet implemented"
+  | Min | Max  | Append -> failwith "Not yet implemented"
 
 (** Heap allocations. *)
 let round_up (num : int) (multiple : int) : int =
@@ -702,7 +708,6 @@ let compile_imports env () =
       item_name;
       idesc;
     } in
-(*  let table_size = compute_table_size env prog in *)
   let imports = List.map compile_import runtime_imports in
   (List.append
     imports
@@ -744,8 +749,7 @@ let compile_exports env {functions; exports; num_globals} =
     let open Wasm.Ast in
     add_dummy_loc { name; edesc } in
   let heap_adjust_idx = env.func_offset + (List.length functions) in
-  let main_idx = heap_adjust_idx (* + 1 Likely Heap_top *) in
- (* let heap_adjust_idx = add_dummy_loc @@ Int32.of_int heap_adjust_idx in *)
+  let main_idx = heap_adjust_idx in
   let main_idx = add_dummy_loc @@ Int32.of_int main_idx in
   let compiled_lambda_exports = List.mapi compile_lambda_export functions in
   let compiled_exports = List.mapi compile_getter exports in
@@ -783,9 +787,6 @@ let compile_globals env ({num_globals} as prog) =
         Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 (compute_table_size env prog))]);
       }
     ]
-
-(* Heap_adjust seems to just move "heap_top" global up by first argument. Seems like heap_top should be
-   hidden (not exported) in OCaml runtime, and that heap_adjust should be part of the alloc function *)
 
 (* Currently unclear if this will be needed or not. Why is index -99?
    TODO: Look at Wasm spec to work out meaning of index *)
@@ -832,11 +833,6 @@ let validate_module (module_ : Wasm.Ast.module_) =
      | Wasm.Valid.Invalid(region, msg) ->
        raise (WasmRunnerError(region, msg, reparsed)));
     raise (WasmRunnerError(region, Printf.sprintf "WARNING: Did not re-raise after reparse: %s" msg, module_))
-  (*try Valid.check_module module_
-  with Wasm.Valid.Invalid(region, msg) ->
-    Printf.printf "%s\n" (module_to_string module_);
-    failwith "Module validation failed. May want to implement 'reparse' to be able to find failing region of program"
-*)
 
 (* Fold left but with an added integer argument *)
 let rec fold_lefti f e l =
@@ -846,6 +842,7 @@ let rec fold_lefti f e l =
 let prepare env prog =
   let import_offset = List.length runtime_imports in
   List.iteri (fun idx {mimp_name; mimp_type;} -> Hashtbl.add imported_funcs mimp_name (Int32.of_int idx)) runtime_imports;
+  (* TODO: Why does number of imports affect both the global and func offset? *)
   let global_offset = import_offset in
   let func_offset = global_offset in
   {
