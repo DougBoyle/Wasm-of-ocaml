@@ -98,7 +98,7 @@ let rec compile_const c : Wasm.Values.value Wasm.Source.phrase =
 
 (* Translate constants to WASM. Override names from wasmtree to be wasm phrases (values with regions) *)
 let const_true = compile_const const_true
-let const_false = compile_const const_false
+let const_false = compile_const const_false (* also equals unit i.e. () *)
 
 (* WebAssembly helpers *)
 (* These instructions get helpers due to their verbosity *)
@@ -620,13 +620,13 @@ and compile_instr env instr =
        List.map add_dummy_loc
         [Ast.Loop(ValBlockType (Some Types.I32Type),
               List.map add_dummy_loc
-              ((compile_bind ~is_get:true env arg) @
+              ([Ast.Const const_false] @ (* Return unit value when loop fails *)
+              (compile_bind ~is_get:true env arg) @
               (compile_bind ~is_get:true env end_arg) @
               [Ast.Compare(Values.I32
                 (match direction with Upto -> Ast.IntOp.GtS | Downto -> Ast.IntOp.LtS))] @
               decode_num @
               [Ast.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
-         (*    [Ast.Drop] @ *)
               compiled_body @
               (compile_bind ~is_get:true env arg) @
               [Ast.Const(encoded_const_int 1); (* For loop actually takes steps of 2 due to encoding *)
