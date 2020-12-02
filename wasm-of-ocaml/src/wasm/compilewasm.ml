@@ -16,18 +16,11 @@ type env = {
   num_args: int;
   func_offset: int;
   global_offset: int;
-(*  import_global_offset: int;
-  import_func_offset: int;  -- unclear how much knowledge about imports will be needed
-                               Since OCaml runtime should only contain functions, import_offest covers both above *)
-  import_offset: int;  (* Should be able to set to just the number of functions in OCaml runtime *)
-
- (* func_types: Wasm.Types.func_type BatDeque.t ref;   Don't include need for double-ended queue currently *)
+  (*  OCaml runtime should only contain functions, so don't need to track globals *)
+  import_offset: int;
  func_types : Wasm.Types.func_type list ref;
-
-
   (* Allocated closures which need backpatching *)
   backpatches: (Wasm.Ast.instr' (* Concatlist.t  *) list * closure_data) list ref;
-  imported_funcs: (int32 Ident.tbl) Ident.tbl;
   (* Number of blocks to jump through to reach each handler in scope.
      Possibly better choices to use than lists but never mind. *)
   handler_heights: (int32 * int32) list;
@@ -55,7 +48,7 @@ let runtime_imports = [
   { mimp_name=alloc_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
   { mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };]
 
-let imported_funcs = Ident.empty
+let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length runtime_imports)
 
 let init_env = {
   num_args=0;
@@ -64,7 +57,6 @@ let init_env = {
   import_offset=0;
   func_types=ref [];
   backpatches=ref [];
-  imported_funcs=Ident.empty;
   handler_heights = [];
 }
 
@@ -122,7 +114,8 @@ let load
 
 (* Finds the function number each runtime import was bound to during setup *)
 let lookup_ext_func env modname itemname =
-  Ident.find_same itemname (Ident.find_same modname (env.imported_funcs))
+ (* Ident.find_same itemname (Ident.find_same modname (env.imported_funcs)) *)
+ Hashtbl.find imported_funcs itemname
 let var_of_ext_func env modname itemname =
   add_dummy_loc @@ lookup_ext_func env modname itemname
 let call_alloc env = Ast.Call(var_of_ext_func env runtime_mod alloc_ident)
@@ -850,39 +843,13 @@ let rec fold_lefti f e l =
   fst (List.fold_left (fun (e, i) x -> (f e i x, i+1)) (e, 0) l)
 
 (* Sets up 'env' with all the imported components and adds them to 'prog', ready to start actual compilation *)
-(* Should be able to simplify as all imports are just OCaml runtime *)
 let prepare env prog =
-  let process_import ?dynamic_offset:(dynamic_offset=0) ?is_runtime_import:(is_runtime_import=false)
-      (* Import module should be fixed - just OCaml runtime. Every import should be a is_runtime_import? *)
-      (acc_env) idx {mimp_name; mimp_type;} =
-    let rt_idx = if is_runtime_import then idx + dynamic_offset else idx in
-    (* TODO: Only module is the runtime, should be able to replace with adding it once and ignoring after that *)
-    let register tbl =
-      let tbl = begin
-        try (* Ident tbl find_same has no optional/find_all_same version, so need to wrap in try/catch to test if present *)
-          ignore (Ident.find_same runtime_mod tbl); tbl
-        with
-          Not_found -> Ident.add runtime_mod Ident.empty tbl
-      end in
-      Ident.add runtime_mod (Ident.add mimp_name (Int32.of_int rt_idx) (Ident.find_same runtime_mod tbl)) tbl
-    in
-    (* Don't expect to actually need imported_globals (OCaml runtime should only have funcs, no constants) so have
-       removed the use of imported_globals - see Grain 1074 if actually needed *)
-    let imported_funcs = begin
-      match mimp_type with
-      | MFuncImport _ ->
-        (register acc_env.imported_funcs)
-      | MGlobalImport _ -> failwith "No global imports expected, just functions"
-    end in
-    {acc_env with imported_funcs} in
-  (* TODO: All of these should be fixed values based on the structure of the runtime
-           runtime_imports is defined at very top of program. *)
   let import_offset = List.length runtime_imports in
-  let new_env = Utils.fold_lefti (process_import ~is_runtime_import:true) env runtime_imports in
-  let global_offset = import_offset in (* replaced impor_global_offset - should be the same thing? *)
+  List.iteri (fun idx {mimp_name; mimp_type;} -> Hashtbl.add imported_funcs mimp_name (Int32.of_int idx)) runtime_imports;
+  let global_offset = import_offset in
   let func_offset = global_offset in
   {
-    new_env with
+    env with
     import_offset;
     global_offset;
     func_offset;
