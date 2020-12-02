@@ -1,5 +1,5 @@
 // filename var1=val1 ... varn=valn OR 'filename !' to indicate it should trap. Current just support ints
-add x=3
+add x=3 y=2 z=-2
 // Getting "expected valid block signature" error, even though main succeeds?
 array y=5 z=11
 array_highbounds !

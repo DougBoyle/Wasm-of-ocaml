@@ -4,24 +4,15 @@ open Wasm
 (* Grain uses deque package: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatDeque.html
    and similar lists: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatList.html *)
 
-(* Add parts as they appear needed, don't include whole 1100 line file at once *)
-
 (* Associate a dummy location to a value - Wasm.Ast.instr = instr' Source.phrase so every part needs location *)
 let add_dummy_loc (x : 'a) : 'a Source.phrase = Source.(x @@ no_region)
 
 (* Needed as Wasm Ast represents module names (e.g. in import list) as "name" type, which is actually int list *)
 let encode_string : string -> int list = Utf8.decode
 
-(* TODO: Add something similar to func_types but tracking the distance to each handler block for fails. *)
-(* try e1 with i -> e2   gets compiled as:
-   `block Try: (block Handle: e1; branch to end of Try); e2` - fail compiled to a branch to end of Handle block
-   Hence successful execution skips to end of try block whereas fails jump into the try block
-   Both should be 0 arity blocks?
-   Any fail -1 gets converted to a trap, fail i does lookup to get correct index (needs maintaining between blocks)
-*)
+(* Not implementing module language so number of imports is entirely specified by the runtime implementation.
+   Also only contains functions so doesn't affect the indexing of globals. *)
 type env = {
-  (* (* Pointer to top of heap (needed until GC is implemented) *)
-  heap_top: Wasm.Ast.var; -- likely GC related *)
   num_args: int;
   func_offset: int;
   global_offset: int;
@@ -59,8 +50,6 @@ let swap_slots = List.append swap_slots_i32 swap_slots_i64
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let alloc_ident = Ident.create_persistent "alloc"
 let compare_ident = Ident.create_persistent "compare"
-(* TODO: Add runtime functions for compare, equals, etc. *)
-
 
 (* global_imports should just be empty hence redundant - runtime should only have functions in it *)
 let runtime_global_imports = []
@@ -222,7 +211,7 @@ let compile_bind ~is_get (env : env) (b : binding) : Wasm.Ast.instr' list =
     end;
       (* Closure is always arg 0? *)
       (Ast.LocalGet(add_dummy_loc Int32.zero))::
-      [load ~offset:(4 * (3 + Int32.to_int i)) ()]
+      [load ~offset:(4 * (1 + Int32.to_int i)) ()]
  (* MImport case never needed *)
 
 let get_swap ?ty:(typ=Types.I32Type) env idx =
@@ -365,55 +354,34 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
 let round_up (num : int) (multiple : int) : int =
   multiple * (((num - 1) / multiple) + 1)
 
-(** Rounds the given number of words to be aligned correctly - TODO: Why is alignment necessary? *)
-(* Tagging of pointers relies on bottom 2 bits only. Already guarenteed by storing 32-bit values (below) so nothing needed *)
-let round_allocation_size (num_words : int) : int =
- (* round_up num_words 4 *) num_words
-
 let heap_allocate env (num_words : int) =
-  let words_to_allocate = round_allocation_size num_words in
-  [Ast.Const(const_int32 (4 * words_to_allocate)); call_alloc env;]
+  [Ast.Const(const_int32 (4 * num_words)); call_alloc env;]
 
 (* Not sure check_memory needed *)
 (* Not doing strings initially, so can leave out allocate_string/buf_to_ints *)
 
 (* TODO: Functions allocated by MStore and MAllocate get free vars filled in separately, MStore is more complex process *)
+(* Closure represented in memory as [function index, free vars...] *)
 let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) =
   let num_free_vars = List.length variables in
-  let closure_size = num_free_vars + 3 in
+  let closure_size = num_free_vars + 1 in
   let get_swap = get_swap env 0 in
   let tee_swap = tee_swap env 0 in
   (* TODO: Purpose of this? For a recursive function maybe, putting itself into the allocated closure? *)
   let access_lambda = Option.value ~default:(get_swap @ [
-      Ast.Const(const_int32 (4 * round_allocation_size closure_size));
+      Ast.Const(const_int32 (4 * closure_size));
       Ast.Binary(Values.I32 Ast.IntOp.Sub);
     ]) lambda in
   env.backpatches := (access_lambda, closure_data)::!(env.backpatches);
-  (* ToS (grows ->) : heap_ptr; num_free_vars; ptr; (reloc_base + func_idx + offset); ptr; arity  *)
-  (heap_allocate env closure_size) @ tee_swap @ [
-    Ast.Const(const_int32 num_free_vars);
-  ] @ get_swap @ [
- (*   Ast.GlobalGet(var_of_ext_global env runtime_mod reloc_base);     No modules so should be known at compile time *)
-    Ast.Const(wrap_int32 (Int32.(add func_idx (of_int env.func_offset))));
- (*   Ast.Binary(Values.I32 Ast.IntOp.Add);  *)
-  ] @ get_swap @ [
-    Ast.Const(add_dummy_loc (Values.I32Value.to_value arity));
-   (* take pairs off stack, putting arity, function index and number of free vars into closure object *)
-    store ~offset:0 ();
-    store ~offset:4 ();
-    store ~offset:8 ();
-  ]
+  (heap_allocate env closure_size) @ tee_swap @
+  [Ast.Const(wrap_int32 (Int32.(add func_idx (of_int env.func_offset)))); store ();]
    @ get_swap @ [
     Ast.Const(const_int32 (tag_of_type Closure)); (* Apply the Lambda tag *)
     Ast.Binary(Values.I32 Ast.IntOp.Or);]
 
 let allocate_data env vtag elts =
-  (* Grain compiler to-do: We don't really need to store the arity here. Could move this to module-static info *)
   (* Heap memory layout of ADT types:
-     TODO: How many of these are actually needed? Certainly not module_tag
-           Leave out value type tag for now - likely only needed for garbage collection
-           Leave out type tag - type checking should ensure its never actually needed
-    [ <value type tag>, (*<module_tag>*), <type_tag>, <variant_tag>, <arity>, elts ... ]
+    [ <variant_tag>, <arity>, elts ... ]
    *)
   let num_elts = List.length elts in
   let get_swap = get_swap env 0 in
@@ -421,19 +389,10 @@ let allocate_data env vtag elts =
   let compile_elt idx elt =
     get_swap @
     (compile_imm env elt) @ [
-      store ~offset:(4 * (idx + 2)) (); (* Would be +5 but not including value type/module/type tags *)
+      store ~offset:(4 * (idx + 2)) ();
     ] in
-   (* Would be num_elts + 5 except not including 3 tags *)
-  (heap_allocate env (num_elts + 2)) @ tee_swap
- (*   +@ [
-    Ast.Const(const_int32 (tag_val_of_heap_tag_type ADTType));
-    store ~offset:0 ();
-  ] @ get_swap @ [
-    Ast.GetGlobal(var_of_ext_global env runtime_mod module_runtime_id);
-    store ~offset:0 ();
-  ] @ get_swap @ (compile_imm env ttag) @ [
-    store ~offset:4 ();
-  ] @ get_swap *) (* @ (const_int32 vtag) *) @ [Ast.Const(encoded_const_int32 vtag);
+  (heap_allocate env (num_elts + 2)) @ tee_swap @
+  [Ast.Const(encoded_const_int32 vtag);
     store ~offset:0 ();
   ] @ get_swap @ [
     Ast.Const(const_int32 num_elts);
@@ -523,7 +482,7 @@ let do_backpatches env backpatches =
       ] *) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
-      get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 3)) ();] in
+      get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 1)) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
   (List.flatten (List.map do_backpatch backpatches))
 
@@ -586,7 +545,7 @@ and compile_instr env instr =
       let tee_swap = tee_swap env 0 in
       (* TODO: Should skip if nothing to backpatch? *)
       let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
-        get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 3)) ();] in
+        get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 1)) ();] in
       (* Takes tag off, puts vars in, puts tag back on. TODO: Reduce number of times tag added/removed *)
       (untag Closure) @ tee_swap @ (List.flatten (List.mapi backpatch_var variables)) @ (untag Closure) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
@@ -607,7 +566,7 @@ and compile_instr env instr =
     (fun f arg -> let compiled_arg = compile_imm env arg in
       (* Arity fixed due to never handling tuple arg/result specially. TODO: Make tuples special *)
       let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
-      f @ (untag Closure) @ tee_swap @ compiled_arg @ get_swap @ [load ~offset:4 (); Ast.CallIndirect(ftype);])
+      f @ (untag Closure) @ tee_swap @ compiled_arg @ get_swap @ [load (); Ast.CallIndirect(ftype);])
     compiled_func args
   (*
     let compiled_func = compile_imm env func in
@@ -623,7 +582,7 @@ and compile_instr env instr =
 
     all_args @               --- closure; args; fun_ptr_from_closure
     get_swap @ [
-      load ~offset:4 ();
+      load ();
       Ast.CallIndirect(ftype);
     ]
    *)
@@ -843,8 +802,7 @@ let compile_elems env prog =
     add_dummy_loc {
       index=add_dummy_loc (Int32.zero);
       offset=add_dummy_loc [
-        (* TODO: Can just be fixed? Believe the first global was used for heap_top *)
-        add_dummy_loc (Ast.Const(const_int32 0)); (* What is stored in index 0?? Can this be fixed? *)
+        add_dummy_loc (Ast.Const(const_int32 0));
       ];
       init=List.init table_size (fun n -> (add_dummy_loc (Int32.of_int n)));
     };
