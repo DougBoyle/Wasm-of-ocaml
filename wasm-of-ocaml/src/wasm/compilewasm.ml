@@ -27,8 +27,7 @@ type env = {
 
   (* Allocated closures which need backpatching *)
   backpatches: (Wasm.Ast.instr' (* Concatlist.t  *) list * closure_data) list ref;
-  imported_funcs: (int32 Ident.tbl) Ident.tbl;  (* TODO: May not be necessary if imports fixed to just the OCaml runtime parts *)
-  (* imported_globals: (int32 Ident.tbl) Ident.tbl;  *)
+  imported_funcs: (int32 Ident.tbl) Ident.tbl;
   (* Number of blocks to jump through to reach each handler in scope.
      Possibly better choices to use than lists but never mind. *)
   handler_heights: (int32 * int32) list;
@@ -51,32 +50,25 @@ let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let alloc_ident = Ident.create_persistent "alloc"
 let compare_ident = Ident.create_persistent "compare"
 
-(* global_imports should just be empty hence redundant - runtime should only have functions in it *)
-let runtime_global_imports = []
-let runtime_function_imports = [
-  {mimp_mod=runtime_mod; mimp_name=alloc_ident; mimp_type=MFuncImport([I32Type], [I32Type]); mimp_setup=MSetupNone;};
-  {mimp_mod=runtime_mod; mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); mimp_setup=MSetupNone;};]
-let runtime_imports = runtime_global_imports @ runtime_function_imports
+(* Runtime should only import functions, no globals, so only need to track offset due to functions *)
+let runtime_imports = [
+  { mimp_name=alloc_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
+  { mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };]
 
-let init_env () = {
-  (* heap_top=add_dummy_loc (Int32.of_int (List.length runtime_global_imports)); -- Shouldn't need to be visible *)
+let imported_funcs = Ident.empty
+
+let init_env = {
   num_args=0;
   func_offset=0;
-  global_offset=0; (* TODO: GrainRuntime has reloc_base and module_runtime_id - shouldn't need either hence 0 not 2 *)
- (* import_global_offset=0;  Should only need 1 offset, no constants
-  import_func_offset=0; *)
+  global_offset=0;
   import_offset=0;
   func_types=ref [];
   backpatches=ref [];
   imported_funcs=Ident.empty;
-  (* imported_globals=Ident.empty;  Shouldn't be any *)
   handler_heights = [];
 }
 
 (* TODO: Support strings *)
-(* TODO: Encoded int n = n*2 -- Shouldn't be necessary due to no GC
-         IS AFFECTED BY FACT OCAML EXPECTS 31-BIT INTEGERS, NOT 32 - COME BACK TO ONCE WORKING, OVERFLOWS ARE RARE
-*)
 
 let const_int32 n = add_dummy_loc (Values.I32Value.to_value (Int32.of_int n))
 let const_int64 n = add_dummy_loc (Values.I64Value.to_value (Int64.of_int n))
@@ -128,7 +120,7 @@ let load
   let open Wasm.Ast in
   Load({ty; align; sz; offset=Int32.of_int offset;})
 
-(* Unclear if global vars/lookups needed (rather than just func) *)
+(* Finds the function number each runtime import was bound to during setup *)
 let lookup_ext_func env modname itemname =
   Ident.find_same itemname (Ident.find_same modname (env.imported_funcs))
 let var_of_ext_func env modname itemname =
@@ -691,13 +683,13 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
 
 (* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works
    Shouldn't actually import any global costnats, so +2 from grain version removed (grain runtime has 2 globals in it) *)
-let compute_table_size env {imports; exports; functions} =
-  (List.length functions) + (List.length imports) - (List.length runtime_global_imports)
+let compute_table_size env {functions} =
+  (List.length functions) + (List.length runtime_imports)
 
 (* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
 (* TODO: Understand what all of ths does/is needed for *)
-let compile_imports env {imports} =
-  let compile_import {mimp_mod; mimp_name; mimp_type} =
+let compile_imports env () =
+  let compile_import {mimp_name; mimp_type} =
     let module_name = encode_string (Ident.name runtime_mod) in
     let item_name = encode_string (Ident.name mimp_name) in
     let idesc = match mimp_type with
@@ -718,7 +710,7 @@ let compile_imports env {imports} =
       idesc;
     } in
 (*  let table_size = compute_table_size env prog in *)
-  let imports = List.map compile_import imports in
+  let imports = List.map compile_import runtime_imports in
   (List.append
     imports
     (* Single memory/table required by a Wasm module -- imported rather than created itself? *)
@@ -731,22 +723,13 @@ let compile_imports env {imports} =
             Types.max=None;
           })));
       };
-  (* NO PARTS OR RUNTIME WRITTEN IN JS, SO DON'T NEED A TABLE TO CALL THEM
-      add_dummy_loc {
-        Ast.module_name=encode_string (Ident.name runtime_mod);
-        Ast.item_name=encode_string "tbl";
-        Ast.idesc=add_dummy_loc (Ast.TableImport (Types.TableType({
-            Types.min=Int32.of_int table_size;
-            Types.max=None;
-          }, Types.FuncRefType))); (* Actually no choice other than FuncRefType in current Wasm *)
-      }; *)
     ])
 
 (* Is there any need for naming extensions? Doesn't look like it except to avoid naming something _start etc.
    For now assume that never happens - convenience of being able to use actual names vs *)
 (* Linearise ensures that only one thing with each name gets exported, so don't need worry about duplicates *)
 (* TODO: Modify getter functions to do decode? Or just do in runtime/JS caller *)
-let compile_exports env {functions; imports; exports; num_globals} =
+let compile_exports env {functions; exports; num_globals} =
   (* TODO: What are these indexes? *)
   (* `Getter` provides a simple way to access exported varaibles - provides a nullary function that just
      returns the corresponding global variable. (Function name matches name of variable)*)
@@ -776,21 +759,10 @@ let compile_exports env {functions; imports; exports; num_globals} =
      compiled_lambda_exports @
         compiled_exports @
         [
-        (* -- Unclear why anything other than maybe a main function (if issues with shifting 31/32-bit ints) needed
-          add_dummy_loc {
-            Ast.name=encode_string "GRAIN$HEAP_ADJUST";
-            Ast.edesc=add_dummy_loc (Ast.FuncExport heap_adjust_idx);
-          };*)
           add_dummy_loc {
             Ast.name=encode_string "OCAML$MAIN";
             Ast.edesc=add_dummy_loc (Ast.FuncExport main_idx);
           };
-          (*
-          add_dummy_loc {
-            Ast.name=encode_string (Ident.name table_size);
-            (* We add one here because of heap top *)
-            Ast.edesc=add_dummy_loc (Ast.GlobalExport (add_dummy_loc @@ Int32.of_int (num_globals + 1 + (List.length runtime_global_imports))));
-          }; *)
         ]
 
 let compile_elems env prog =
@@ -879,20 +851,20 @@ let rec fold_lefti f e l =
 
 (* Sets up 'env' with all the imported components and adds them to 'prog', ready to start actual compilation *)
 (* Should be able to simplify as all imports are just OCaml runtime *)
-let prepare env ({imports} as prog) =
+let prepare env prog =
   let process_import ?dynamic_offset:(dynamic_offset=0) ?is_runtime_import:(is_runtime_import=false)
       (* Import module should be fixed - just OCaml runtime. Every import should be a is_runtime_import? *)
-      (acc_env) idx {mimp_mod; mimp_name; mimp_type;} =
+      (acc_env) idx {mimp_name; mimp_type;} =
     let rt_idx = if is_runtime_import then idx + dynamic_offset else idx in
     (* TODO: Only module is the runtime, should be able to replace with adding it once and ignoring after that *)
     let register tbl =
       let tbl = begin
         try (* Ident tbl find_same has no optional/find_all_same version, so need to wrap in try/catch to test if present *)
-          ignore (Ident.find_same mimp_mod tbl); tbl
+          ignore (Ident.find_same runtime_mod tbl); tbl
         with
-          Not_found -> Ident.add mimp_mod Ident.empty tbl
+          Not_found -> Ident.add runtime_mod Ident.empty tbl
       end in
-      Ident.add mimp_mod (Ident.add mimp_name (Int32.of_int rt_idx) (Ident.find_same mimp_mod tbl)) tbl
+      Ident.add runtime_mod (Ident.add mimp_name (Int32.of_int rt_idx) (Ident.find_same runtime_mod tbl)) tbl
     in
     (* Don't expect to actually need imported_globals (OCaml runtime should only have funcs, no constants) so have
        removed the use of imported_globals - see Grain 1074 if actually needed *)
@@ -906,40 +878,26 @@ let prepare env ({imports} as prog) =
   (* TODO: All of these should be fixed values based on the structure of the runtime
            runtime_imports is defined at very top of program. *)
   let import_offset = List.length runtime_imports in
- (* Should be redundant as to only have function imports, hence only 1 offset needed (check import_offset used everywhere)
-  let import_func_offset = List.length runtime_function_imports in
-  let import_global_offset = import_offset + (List.length imports) in  *)
-  (* Shouldn't actually be any 'new_imports' *)
-(*  let new_imports = runtime_imports @ imports in *)
-  let new_env = Utils.fold_lefti (process_import ~is_runtime_import:true) env runtime_global_imports in
-  let new_env = Utils.fold_lefti (process_import ~is_runtime_import:true) new_env runtime_function_imports in
-  let new_env = Utils.fold_lefti (process_import ~dynamic_offset:import_offset) new_env imports in
+  let new_env = Utils.fold_lefti (process_import ~is_runtime_import:true) env runtime_imports in
   let global_offset = import_offset in (* replaced impor_global_offset - should be the same thing? *)
-  let func_offset = global_offset - (List.length runtime_global_imports) in
+  let func_offset = global_offset in
   {
     new_env with
     import_offset;
-  (*  import_func_offset; -- only importing
-    import_global_offset; *)
     global_offset;
     func_offset;
   }, { (* Grain version (line 1080) seemed to recalculate various bits. All imports are from runtime so shouldn't need to *)
     prog with
-    imports=runtime_imports;
     num_globals=prog.num_globals + import_offset;
   }
 
-let compile_wasm_module ?env prog =
+let compile_wasm_module prog =
   let open Wasm.Ast in
-  let env = match env with
-    | None -> init_env ()
-    | Some(e) -> e in
-  let env, prog = prepare env prog in
+  let env, prog = prepare init_env prog in
   let funcs = compile_functions env prog in
-  let imports = compile_imports env prog in
+  let imports = compile_imports env () in
   let exports = compile_exports env prog in
   let globals = compile_globals env prog in
- (* let tables = compile_tables env prog in -- Grain version always left this empty - work out what it is/should be *)
   let elems = compile_elems env prog in
   let types = List.map add_dummy_loc (!(env.func_types)) in
   let ret = add_dummy_loc {
@@ -948,9 +906,7 @@ let compile_wasm_module ?env prog =
     imports;
     exports;
     globals;
-    (* No longer importing a table from Wasm so must declare our own - should be able to determine size
-       but can probably just stay on side of caution (Grain runtime used fixed 1024).
-       Doesn't actually require specifying a max?? *)
+    (* Create a function table large enough to hold pointers to each function in the program *)
     tables=[add_dummy_loc {
       ttype = TableType({min=Int32.of_int(compute_table_size env prog); max=None}, FuncRefType)}];
     elems;

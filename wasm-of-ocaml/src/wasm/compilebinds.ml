@@ -252,20 +252,15 @@ let compile_remaining_worklist () =
     {index=Int32.of_int index; arity=Int32.of_int arity; body; stack_size;}::funcs in
   List.rev (fold_left_worklist compile_one [])
 
-(* lift_imports left out as Linast doesn't specify any imports currently. Only imports are the standard
-   runtime ones which are implicit at this stage and always included.
-   May change when abs/min/max implemented in runtime, but will still be very fixed i.e. just check if used or not *)
-(* lift_imports creates a list of 'setups' - are these relevant/needed? May want to check what it does carefully *)
-
 let transl_program (program : linast_expr) : wasm_program =
-  let imports, setups, env = [], [], initial_env (* lift_imports initial__env anf_prog.imports *) in
+  let env = initial_env in
   let main_body_stack_size = count_vars program in
-  let main_body = setups @ (compile_linast env program) in
+  let main_body = compile_linast env program in
   let exports = global_exports() in
   let functions = compile_remaining_worklist() in
   {
     functions;
-    imports;
+  (*  imports=[]; *) (* Will be populated by runtime functions *)
     exports;
     main_body;
     main_body_stack_size;

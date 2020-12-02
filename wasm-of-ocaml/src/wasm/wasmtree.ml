@@ -142,33 +142,18 @@ type instr =
   | MStore of (binding * instr) list (* Items in the same list have their backpatching delayed until the end of that list *)
   | MDrop (* Ignore the result of the last expression. Used for sequences. *)
 
-and block = instr list 
+and block = instr list
 
 (* No modules so how much are these needed (for now, may extend later) *)
 type import_type =
   | MFuncImport of asmtype list * asmtype list
   | MGlobalImport of asmtype
 
-(* Not needed, all imports are part of the runtime *)
-(*
-type import_kind =
-  | MImportWasm
-  | MImportGrain
-*)
-
-type import_setup =
-  | MCallGetter
-  | MWrap of int32
-  | MSetupNone
-
-(* Again, imports fixed and exports limited, are these actually needed? *)
+(* Used to represent the runtime imports *)
 type import = {
-  mimp_mod: Ident.t;
   mimp_name: Ident.t;
   mimp_type: import_type;
- (* mimp_kind: import_kind; *)
-  mimp_setup: import_setup;
-} 
+}
 
 type export = {
   ex_name: Ident.t;
@@ -185,7 +170,6 @@ type wasm_function = {
 
 type wasm_program = {
   functions: wasm_function list;
-  imports: import list;
   exports: export list;
   main_body: block;
   main_body_stack_size: int;

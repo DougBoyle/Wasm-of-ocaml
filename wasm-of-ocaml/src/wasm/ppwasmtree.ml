@@ -130,7 +130,7 @@ and print_block ppf (block : instr list) =
           instrs in
       fprintf ppf  "@[<2>(@[<hv 1>%a@])@ @]" print_body block
 
-let print_program ppf {functions;imports;exports;main_body;_} =
+let print_program ppf {functions;exports;main_body;_} =
   let print_functions ppf funs =
           let spc = ref false in
           List.iter
