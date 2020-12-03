@@ -126,9 +126,9 @@ let include_guard fail expr = function
      setup @ [BLet(id, comp)]) (* May as well just pass it in as an immediate? *)
 
 
-(* Texp_function is value case list,
-   Texp_match is computation case list. Likely want some central 'compile' function and two interface functions.
-   Also need to handle merging curried texp_functions into one. *)
+(* First improvement should be to handle constructors at the start of several of the first patterns.
+   Not entirely simple as this can still generate OR patterns (usually done as extra matrix rows) when 2
+   patterns have the same constructor at their heads. Hence leave till matrix approach properly implemented *)
 
 (* Just do most naive approach initially, optimise/do grouping once I have something that works at least.
    Can decide based on time available/how bad the initial output is. *)

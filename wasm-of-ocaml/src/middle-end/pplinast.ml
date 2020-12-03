@@ -84,7 +84,7 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
       fprintf ppf "@[<2>(makeblock %li%a)@]" i print_imms imms
     | CGetTag imm -> fprintf ppf "tag %a" print_imm imm
     | CIf (imm, ast1, ast2) -> fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" print_imm imm print_ast ast1 print_ast ast2
-    | CWhile (imm, ast) -> fprintf ppf "@[<2>(while@ %a@ %a)@]" print_imm imm print_ast ast
+    | CWhile (cond, body) -> fprintf ppf "@[<2>(while@ %a@ %a)@]" print_ast cond print_ast body
     | CFor (id, start, finish, dir, ast) ->
     fprintf ppf "@[<2>(for %a@ %a@ %s@ %a@ %a)@]"
            Ident.print id print_imm start

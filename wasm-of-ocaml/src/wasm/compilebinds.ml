@@ -165,7 +165,7 @@ let rec compile_comp env (c : compound_expr) =
   | CIf(cond, thn, els) ->
     MIf(compile_imm env cond, compile_linast env thn, compile_linast env els)
   | CWhile(cond, body) ->
-    MWhile(compile_imm env cond, compile_linast env body)
+    MWhile(compile_linast env cond, compile_linast env body)
   | CFor(id, start, finish, dir, body) ->
     let start_bind = MLocalBind(Int32.of_int (env.stack_idx)) in
     let end_bind = MLocalBind(Int32.of_int (env.stack_idx + 1)) in (* Don't re-evaluate limits of loop *)

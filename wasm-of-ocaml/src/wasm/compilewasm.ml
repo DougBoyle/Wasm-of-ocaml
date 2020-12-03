@@ -594,7 +594,7 @@ and compile_instr env instr =
     ]
 
   | MWhile(cond, body) ->
-    let compiled_cond = compile_imm (enter_block ~n:2 env) cond in
+    let compiled_cond = compile_block (enter_block ~n:2 env) cond in
     let compiled_body = (compile_block (enter_block ~n:2 env) body) in
     [Ast.Block(ValBlockType (Some Types.I32Type),
        List.map add_dummy_loc
@@ -624,7 +624,6 @@ and compile_instr env instr =
               (compile_bind ~is_get:true env end_arg) @
               [Ast.Compare(Values.I32
                 (match direction with Upto -> Ast.IntOp.GtS | Downto -> Ast.IntOp.LtS))] @
-              decode_num @
               [Ast.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
               compiled_body @
               (compile_bind ~is_get:true env arg) @

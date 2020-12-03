@@ -1,2 +1,6 @@
-let _ = for x = 1 to 10 do () done
-let _ = for x = 10 downto 1 do () done
+(* Refs not implemented from stdlib so have to do explicitly *)
+type 'a ref = {mutable content : 'a}
+let x = {content = 0}
+let _ = for i = 1 to 10 do x.content <- x.content + i done
+let _ = for i = 10 downto 1 do x.content <- x.content - 1 done
+let y = x.content

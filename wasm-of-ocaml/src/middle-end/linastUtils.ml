@@ -115,15 +115,13 @@ let rec free_vars env (e : linast_expr) =
     Ident.Set.union free_binds (free_vars with_names body)
 
 and free_vars_comp env (c : compound_expr) = match c.desc with
-  | CFunction(args, body) ->
-    free_vars (Ident.Set.union env (Ident.Set.of_list args)) body
+  | CFunction(args, body) -> free_vars (Ident.Set.union env (Ident.Set.of_list args)) body
   | CIf(cond, thn, els) ->
     Ident.Set.union (free_vars_imm env cond) (Ident.Set.union (free_vars env thn) (free_vars env els))
   | CFor(id, arg1, arg2, _, body) ->
     Ident.Set.union (free_vars (Ident.Set.add id env) body)
     (Ident.Set.union (free_vars_imm env arg1) (free_vars_imm env arg2))
-  | CWhile(cond, body) ->
-    Ident.Set.union (free_vars_imm env cond) (free_vars env body)
+  | CWhile(cond, body) -> Ident.Set.union (free_vars env cond) (free_vars env body)
   | CSwitch(arg, branches, default) ->
     let branch_vars = List.fold_left (fun acc (_, b) -> Ident.Set.union (free_vars env b) acc)
       (free_vars_imm env arg)
@@ -179,7 +177,7 @@ and count_vars_comp c =
   match c.desc with
   | CIf(_, t, f) -> max (count_vars t) (count_vars f)
   | CFor(_, _, _, _, body) -> (count_vars body) + 2 (* 1 for each of start/end value *)
-  | CWhile(_, b) -> count_vars b
+  | CWhile(cond, body) -> (count_vars cond) + (count_vars body)
   | CSwitch(_, cases, default) ->
    let max_case = List.fold_left max 0 (List.map (fun (_, b) -> count_vars b) cases) in
    (match default with None -> max_case | Some c -> max max_case (count_vars c))

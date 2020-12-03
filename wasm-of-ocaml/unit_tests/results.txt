@@ -12,5 +12,7 @@ curry a=17
 // dependent on encoding of true/false
 bool a=0
 compare x=1 a=1 b=0 c=1
+for y=45
+while y=16
 ../samples/arith x=26 y=4
 ../samples/trees x=15

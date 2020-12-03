@@ -192,9 +192,9 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     (result, effect_setup @ (BEffect effect)::result_setup)
 
   | Texp_while (e1, e2) ->
-      let (test, test_setup) = translate_imm e1 in
+      let test = translate_linast e1 in
       let loop = translate_linast e2 in
-      (Compound.mkwhile test loop, test_setup)
+      (Compound.mkwhile test loop, [])
   (* Translcore in OCaml doesn't use the second pattern arg, just annotation information *)
   | Texp_for (param, _, start, finish, dir, e) ->
     let (start, start_setup) = translate_imm start in

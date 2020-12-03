@@ -129,7 +129,7 @@ type instr =
   | MTagOp of tag_op * (* tag_type * *) immediate
   | MArityOp of arity_operand * arity_op * immediate
   | MIf of immediate * block * block
-  | MWhile of immediate * block
+  | MWhile of block * block
   (* Ident no longer needed - should be encoded as (2?) local variables to get/set? *)
   (*   for      x   =  e1              to             (y = )  e2     do    e3  *)
   (* After being evaluated at start, changing value doesn't change limit of loop, so need to save to var *)

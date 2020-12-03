@@ -73,7 +73,7 @@ type compound_expr_desc =
   (* In OCaml, true/false are constant blocks 1/0 respectively, mapped to 2/0 by my program, so need to be careful when
      translating down to Wasm later. *)
   | CIf of imm_expr * linast_expr * linast_expr
-  | CWhile of imm_expr * linast_expr
+  | CWhile of linast_expr * linast_expr
   (* for i = e1 direction e2 do linast_expr - variable will be modified by local get/set *)
   | CFor of Ident.t * imm_expr * imm_expr * direction_flag * linast_expr
   (* No stringswitch for now - Wasm doesn't have strings so may not implement any string manipulation until later *)
