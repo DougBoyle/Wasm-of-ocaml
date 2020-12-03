@@ -1,18 +1,18 @@
 // filename var1=val1 ... varn=valn OR 'filename !' to indicate it should trap. Current just support ints
-out/add x=3 y=2 z=-2
+add x=3 y=2 z=-2
 // Getting "expected valid block signature" error, even though main succeeds?
-out/array y=5 z=11
-out/array_highbounds !
-out/array_lowbounds !
-out/op y=11
-out/prims z=1
-out/matchfail !
-out/datatype y=6
-out/curry a=17
+array y=5 z=11
+array_highbounds !
+array_lowbounds !
+op y=11
+prims z=1
+matchfail !
+datatype y=6
+curry a=17
 // dependent on encoding of true/false
-out/bool a=0
-out/compare x=1 a=1 b=0 c=1
-out/for y=45
-out/while y=16
+bool a=0
+compare x=1 a=1 b=0 c=1
+for y=45
+while y=16
 ../samples/arith x=26 y=4
 ../samples/trees x=15

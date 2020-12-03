@@ -97,20 +97,20 @@ let const_false = compile_const const_false (* also equals unit i.e. () *)
 let store
     ?ty:(ty=Wasm.Types.I32Type)
     ?align:(align=2)
-    ?offset:(offset=0)
+    ?offset:(offset=0l)
     ?sz:(sz=None)
     () =
   let open Wasm.Ast in
-  Store({ty; align; sz; offset=Int32.of_int offset;})
+  Store({ty; align; sz; offset;})
 
 let load
     ?ty:(ty=Wasm.Types.I32Type)
     ?align:(align=2)
-    ?offset:(offset=0)
+    ?offset:(offset=0l)
     ?sz:(sz=None)
     () =
   let open Wasm.Ast in
-  Load({ty; align; sz; offset=Int32.of_int offset;})
+  Load({ty; align; sz; offset;})
 
 (* Finds the function number each runtime import was bound to during setup *)
 let lookup_runtime_func env itemname =
@@ -195,7 +195,7 @@ let compile_bind ~is_get (env : env) (b : binding) : Wasm.Ast.instr' list =
     end;
       (* Closure is always arg 0? *)
       (Ast.LocalGet(add_dummy_loc Int32.zero))::
-      [load ~offset:(4 * (1 + Int32.to_int i)) ()]
+      [load ~offset:(Int32.mul 4l (Int32.add 1l i)) ()]
  (* MImport case never needed *)
 
 let get_swap ?ty:(typ=Types.I32Type) env idx =
@@ -380,14 +380,14 @@ let allocate_data env vtag elts =
   let compile_elt idx elt =
     get_swap @
     (compile_imm env elt) @ [
-      store ~offset:(4 * (idx + 2)) ();
+      store ~offset:(Int32.of_int(4 * (idx + 2))) ();
     ] in
   (heap_allocate env (num_elts + 2)) @ tee_swap @
   [Ast.Const(encoded_const_int32 vtag);
-    store ~offset:0 ();
+    store ~offset:0l ();
   ] @ get_swap @ [
     Ast.Const(const_int32 num_elts);
-    store ~offset:4 ();
+    store ~offset:4l ();
   ] @ (List.flatten @@ List.mapi compile_elt elts) @ get_swap
    @ [Ast.Const(const_int32 (tag_of_type Data));
     Ast.Binary(Values.I32 Ast.IntOp.Or);]
@@ -402,25 +402,23 @@ let compile_data_op env imm op =
   let block = compile_imm env imm in
   match op with
   | MGet(idx) ->
-    let idx_int = Int32.to_int idx in
     block @ (untag Data) @ [
-        load ~offset:(4 * (idx_int + 2)) (); (* +2 as blocks start with variant tag; arity; ... *)
+        load ~offset:(Int32.mul 4l (Int32.add idx 2l)) (); (* +2 as blocks start with variant tag; arity; ... *)
       ]
   | MSet(idx, imm) ->
-    let idx_int = Int32.to_int idx in
     block @ (untag Data) @ (compile_imm env imm) @ [
-        store ~offset:(4 * (idx_int + 2)) ();
+        store ~offset:(Int32.mul 4l (Int32.add idx 2l)) ();
       ] @ (compile_imm env imm) (* Why do we put the value on the stack again after? *)
   | MGetTag -> (* Not divided by 2 unless actually used in a switch *)
     block @ (untag Data) @ [
-      load ~offset:0 ();
+      load ~offset:0l ();
     ]
   | MArrayGet idx ->
     let get_swap = get_swap env 0 in
     let tee_swap = tee_swap env 0 in
     let index = compile_imm env idx in
     (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-    block @ (untag Data) @ tee_swap @ [load ~offset:0 ();] @
+    block @ (untag Data) @ tee_swap @ [load ~offset:0l ();] @
     (* stack is: tag|block|... *)
     index @
     [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
@@ -431,7 +429,7 @@ let compile_data_op env imm op =
       (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
       List.map add_dummy_loc (get_swap @ index @ decode_num @ [
       Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);
-      Ast.Binary(Values.I32 Ast.IntOp.Add); load ~offset:8 ()]),
+      Ast.Binary(Values.I32 Ast.IntOp.Add); load ~offset:8l ()]),
       [add_dummy_loc Ast.Unreachable]);]
   | MArraySet (idx, v) ->
   let get_swap = get_swap env 0 in
@@ -439,7 +437,7 @@ let compile_data_op env imm op =
   let index = compile_imm env idx in
   let value = compile_imm (enter_block env) v in
   (* Currently written to only use 1 swap register, may be easier/efficient with 2? *)
-  block @ (untag Data) @ tee_swap @ [load ~offset:0 ();] @
+  block @ (untag Data) @ tee_swap @ [load ~offset:0l ();] @
   (* stack is: tag|block|... *)
   index @
   [Ast.Compare(Values.I32 Ast.IntOp.GtS);] @ (* number of element > index *)
@@ -450,7 +448,7 @@ let compile_data_op env imm op =
     (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
     List.map add_dummy_loc (get_swap @ index @ decode_num @ [
     Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);   (* Array store returns unit *)
-    Ast.Binary(Values.I32 Ast.IntOp.Add);] @ value @ [store ~offset:8 (); Ast.Const const_false]),
+    Ast.Binary(Values.I32 Ast.IntOp.Add);] @ value @ [store ~offset:8l (); Ast.Const const_false]),
     [add_dummy_loc Ast.Unreachable]);]
 
 (* What is this doing? Appears to just call f on the given env, but with backpatches reset *)
@@ -473,7 +471,7 @@ let do_backpatches env backpatches =
       ] *) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
-      get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 1)) ();] in
+      get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
   (List.flatten (List.map do_backpatch backpatches))
 
@@ -536,7 +534,7 @@ and compile_instr env instr =
       let tee_swap = tee_swap env 0 in
       (* TODO: Should skip if nothing to backpatch? *)
       let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
-        get_swap @ (compile_imm env var) @ [store ~offset:(4 * (idx + 1)) ();] in
+        get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
       (* Takes tag off, puts vars in, puts tag back on. TODO: Reduce number of times tag added/removed *)
       (untag Closure) @ tee_swap @ (List.flatten (List.mapi backpatch_var variables)) @ (untag Closure) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
@@ -557,7 +555,7 @@ and compile_instr env instr =
     (fun f arg -> let compiled_arg = compile_imm env arg in
       (* Arity fixed due to never handling tuple arg/result specially. TODO: Make tuples special *)
       let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
-      f @ (untag Closure) @ tee_swap @ compiled_arg @ get_swap @ [load (); Ast.CallIndirect(ftype);])
+      f @ (untag Closure) @ tee_swap @ compiled_arg @ get_swap @ [load ~offset:0l (); Ast.CallIndirect(ftype);])
     compiled_func args
   (*
     let compiled_func = compile_imm env func in
@@ -733,12 +731,11 @@ let compile_exports env {functions; exports; num_globals} =
   let compile_getter i {ex_name; ex_global_index; ex_getter_index} =
     let exported_name = (*"GRAIN$EXPORT$GET$" ^*) (Ident.name ex_name) in
     let name = encode_string exported_name in
-    let fidx = (Int32.to_int ex_getter_index) + env.func_offset (* Is func_offset necessary? *) in
     let export =
       let open Wasm.Ast in
       add_dummy_loc {
         name;
-        edesc=add_dummy_loc (Ast.FuncExport (add_dummy_loc @@ Int32.of_int fidx));
+        edesc=add_dummy_loc (Ast.FuncExport (add_dummy_loc (Int32.add (Int32.of_int env.func_offset) ex_getter_index)));
       } in
     export
   in

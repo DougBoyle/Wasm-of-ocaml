@@ -9,5 +9,4 @@ wasm:
 	ocamlbuild -pkg wasm -Is $(dirs) compilebinds.byte
 unittest:
 	make all
-	for f in unit_tests/*.ml; do ./main.byte $$f -d unit_tests/out || exit; done
 	node unit_tests/test.js

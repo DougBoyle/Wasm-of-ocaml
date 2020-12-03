@@ -33,16 +33,18 @@ if (process.argv.length > 2){
   for (const f of files){
 	  var line = f.trim().split(" ");
 	  var filename = line[0];
+	  var basename = filename.split("/");
+	  basename = basename[basename.length - 1];
 	  try {
+		  await exec(__dirname + "/../main.byte -d " + __dirname + "/out " + __dirname + "/" + filename + ".ml");
 		  var output = line.slice(1);
 		  if (line[line.length - 1] == "!"){
-			  await exec(__dirname + "/../main.byte " + filename + ".ml");
 			  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
 			  var module = await WebAssembly.compile(buffer);
 			  var instance = await WebAssembly.instantiate(module);
 			  
 			  var imports = {ocamlRuntime: instance.exports};
-			  var buffer = await readFile(__dirname + "/" + filename + ".wasm");
+			  var buffer = await readFile(__dirname + "/out/" + basename + ".wasm");
 			  var module = await WebAssembly.compile(buffer);
 			  // TODO: Add extra try/catch wrapper to catch the trap we are expecting to see?
 			  var instance = await WebAssembly.instantiate(module, imports);
@@ -59,13 +61,12 @@ if (process.argv.length > 2){
 			  }
 			  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Did not trap");
 		  } else {
-			  await exec(__dirname + "/../main.byte " + filename + ".ml");
 			  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
 			  var module = await WebAssembly.compile(buffer);
 			  var instance = await WebAssembly.instantiate(module);
 			  
 			  var imports = {ocamlRuntime: instance.exports};
-			  var buffer = await readFile(__dirname + "/" + filename + ".wasm");
+			  var buffer = await readFile(__dirname + "/out/" + basename + ".wasm");
 			  var module = await WebAssembly.compile(buffer);
 			  var instance = await WebAssembly.instantiate(module, imports);
 			  try {
@@ -99,7 +100,7 @@ if (process.argv.length > 2){
 	  	  	console.log("\x1b[91m%s\x1b[0m", "Check results entry for " + filename + ". Identifier not recognised as an export.")
 		  }
 		  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Exception occured");
-		  console.log(err);
+		  throw err;
 	  }
   }
 })();
