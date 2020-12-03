@@ -1,5 +1,3 @@
-//const fetch = require("node-fetch");
-var path = require("path");
 const util = require('util');
 const fs = require("fs");
 const readFile = util.promisify(fs.readFile);
