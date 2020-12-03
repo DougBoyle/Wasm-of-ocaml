@@ -79,7 +79,7 @@ let rec print_instr ppf = function
     | MAllocate alloc -> print_alloc ppf alloc
     | MIf (cond, thn, els) ->
       fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" print_imm cond print_block thn print_block els
-    | MWhile (cond, block) -> fprintf ppf "@[<2>(while@ %a@ %a)@]" print_imm cond print_block block
+    | MWhile (cond, block) -> fprintf ppf "@[<2>(while@ %a@ %a)@]" print_block cond print_block block
     | MFor(arg1, start, dir, _, finish, body) ->
      fprintf ppf "@[<2>(for %a@ %a@ %s@ %a@ %a)@]"
          print_bind arg1 print_imm start
