@@ -25,7 +25,7 @@ if (process.argv.length > 2){
 
 	  console.log(instance.exports);
 	  var f = jsruntime.get_global(instance, "phi");
-	  console.log(jsruntime.decode_int(jsruntime.call_closure(instance, mem, f, [jsruntime.encode_int(10)])));
+	  console.log(jsruntime.decode_int(jsruntime.call_closure(instance, mem, f, [jsruntime.encode_int(100)])));
 
   } catch (err) {
     console.log(err);
