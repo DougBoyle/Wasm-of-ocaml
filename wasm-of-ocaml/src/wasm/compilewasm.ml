@@ -12,12 +12,14 @@ let encode_string : string -> int list = Utf8.decode
 
 (* Not implementing module language so number of imports is entirely specified by the runtime implementation.
    Also only contains functions so doesn't affect the indexing of globals. *)
+(* Since only imports are the runtime functions (no variables from other modules), all imports are functions
+   so also don't need to put them into global variables, can just track the function index offset and nothing else. *)
 type env = {
   num_args: int;
   func_offset: int;
   global_offset: int;
   (*  OCaml runtime should only contain functions, so don't need to track globals *)
-  import_offset: int;
+  (* No modules so only imports are from runtime functions, don't need to remember offset of imports *)
  func_types : Wasm.Types.func_type list ref;
   (* Allocated closures which need backpatching *)
   backpatches: (Wasm.Ast.instr' (* Concatlist.t  *) list * closure_data) list ref;
@@ -54,7 +56,6 @@ let init_env = {
   num_args=0;
   func_offset=0;
   global_offset=0;
-  import_offset=0;
   func_types=ref [];
   backpatches=ref [];
   handler_heights = [];
@@ -330,8 +331,7 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
     [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
   | Neq -> (* TODO: Could optimise to use Select? *)
      compiled_arg1 @ compiled_arg2 @
-     [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num @
-     [Ast.Const(const_true); Ast.Binary(Values.I32 Ast.IntOp.Xor);] (* Flip the bit encoded as true/false *)
+     [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.GtU)] @ encode_num
   (* TODO: Neq -- Is it worth removing this and compiling to Not (Eq ...)? *)
   (* TODO: Physical equality - should actually be relatively simple, just compare literal/pointer. *)
   | Compare -> compiled_arg1 @ compiled_arg2 @ [call_compare env;] @ encode_num
@@ -465,10 +465,7 @@ let do_backpatches env backpatches =
     let get_swap = get_swap env 0 in
     let set_swap = set_swap env 0 in
     (* Put lam in the swap register *)
-    let preamble = lam @ (untag Closure) (* @ [   -- Leaving out tags for now - likely needed for Lambdas!
-        Ast.Const(const_int32 @@ tag_val_of_tag_type LambdaTagType);
-        Ast.Binary(Values.I32 Ast.IntOp.Xor);
-      ] *) @ set_swap in
+    let preamble = lam @ (untag Closure) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
       get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
@@ -684,7 +681,7 @@ let compute_table_size env {functions} =
 
 (* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
 (* TODO: Understand what all of ths does/is needed for *)
-let compile_imports env () =
+let compile_imports env =
   let compile_import {mimp_name; mimp_type} =
     let module_name = encode_string (Ident.name runtime_mod) in
     let item_name = encode_string (Ident.name mimp_name) in
@@ -739,15 +736,20 @@ let compile_exports env {functions; exports; num_globals} =
       } in
     export
   in
+  (* Exports every function in the program, allows partially applied functions to be returned.
+     Runtime functions not exported so integer used for name is offset to align with function index.
+     i.e. export "i" is function i. No clashes as variable names can't start with digits *)
   let compile_lambda_export i _ =
-    let name = encode_string ((* "GRAIN$LAM_" ^  -- also not needed? *) (string_of_int i)) in
+    let name = encode_string ((* "GRAIN$LAM_" ^  -- also not needed? *) (string_of_int (i + env.func_offset))) in
     let edesc = add_dummy_loc (Ast.FuncExport(add_dummy_loc @@ Int32.of_int (i + env.func_offset))) in
     let open Wasm.Ast in
     add_dummy_loc { name; edesc } in
   let heap_adjust_idx = env.func_offset + (List.length functions) in
   let main_idx = heap_adjust_idx in
-  let main_idx = add_dummy_loc @@ Int32.of_int main_idx in
+  let main_idx = add_dummy_loc (Int32.of_int main_idx) in
+  (* Make each function visible outside of module *)
   let compiled_lambda_exports = List.mapi compile_lambda_export functions in
+  (* Export the varaibles/functions declared in the program using their actual names *)
   let compiled_exports = List.mapi compile_getter exports in
      compiled_lambda_exports @
         compiled_exports @
@@ -772,17 +774,11 @@ let compile_elems env prog =
       init=List.init table_size (fun n -> (add_dummy_loc (Int32.of_int n)));
     };
   ]
-let compile_globals env ({num_globals} as prog) =
+let compile_globals env {num_globals} =
     (List.init num_globals (fun _ -> add_dummy_loc {
          Ast.gtype=Types.GlobalType(Types.I32Type, Types.Mutable);
          Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 0)]);
-       })) @
-    [  (* TODO: Why do we add the table size as the bottom item of the list?? *)
-      add_dummy_loc {
-        Ast.gtype=Types.GlobalType(Types.I32Type, Types.Immutable);
-        Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 (compute_table_size env prog))]);
-      }
-    ]
+       })) (* No need to store the table size, externally use the exported functions, not the table *)
 
 (* Currently unclear if this will be needed or not. Why is index -99?
    TODO: Look at Wasm spec to work out meaning of index *)
@@ -834,28 +830,16 @@ let validate_module (module_ : Wasm.Ast.module_) =
 let rec fold_lefti f e l =
   fst (List.fold_left (fun (e, i) x -> (f e i x, i+1)) (e, 0) l)
 
-(* Sets up 'env' with all the imported components and adds them to 'prog', ready to start actual compilation *)
-let prepare env prog =
-  let import_offset = List.length runtime_imports in
+(* Sets up 'env' with all the imported runtime functions *)
+let prepare env =
   List.iteri (fun idx {mimp_name; mimp_type;} -> Hashtbl.add imported_funcs mimp_name (Int32.of_int idx)) runtime_imports;
-  (* TODO: Why does number of imports affect both the global and func offset? *)
-  let global_offset = import_offset in
-  let func_offset = global_offset in
-  {
-    env with
-    import_offset;
-    global_offset;
-    func_offset;
-  }, { (* Grain version (line 1080) seemed to recalculate various bits. All imports are from runtime so shouldn't need to *)
-    prog with
-    num_globals=prog.num_globals + import_offset;
-  }
+  {env with func_offset=List.length runtime_imports;}
 
 let compile_wasm_module prog =
   let open Wasm.Ast in
-  let env, prog = prepare init_env prog in
+  let env = prepare init_env in
   let funcs = compile_functions env prog in
-  let imports = compile_imports env () in
+  let imports = compile_imports env in
   let exports = compile_exports env prog in
   let globals = compile_globals env prog in
   let elems = compile_elems env prog in
@@ -871,18 +855,14 @@ let compile_wasm_module prog =
       ttype = TableType({min=Int32.of_int(compute_table_size env prog); max=None}, FuncRefType)}];
     elems;
     types;
-    (* TODO: Probably want this to replace 'main'? Need to decide how externally calling into OCaml will work.
-             Could add an extra function to runtime to map js ints to ocaml ints once tags added (shift to 31-bits),
-              then call that from js. *)
+    (* We don't set start to be the main function since start must have type () -> (), but OCaml programs
+       can evaluate to a value e.g. '10' is a valid program. *)
     start=None;
   } in
   validate_module ret;
   ret
 
-
-
-(* May want to register an exception printer if I have issues debuggging - see Printexc.register_printer *)
-let () =
+let _ = (* Registers an exception printer to print out module if an exception occurs *)
   Printexc.register_printer (fun exc ->
       match exc with
       | WasmRunnerError(region, str, module_) ->

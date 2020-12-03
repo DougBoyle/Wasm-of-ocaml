@@ -46,7 +46,6 @@ if (process.argv.length > 2){
 			  var imports = {ocamlRuntime: instance.exports};
 			  var buffer = await readFile(__dirname + "/out/" + basename + ".wasm");
 			  var module = await WebAssembly.compile(buffer);
-			  // TODO: Add extra try/catch wrapper to catch the trap we are expecting to see?
 			  var instance = await WebAssembly.instantiate(module, imports);
 			  try {
 				instance.exports["OCAML$MAIN"]();
