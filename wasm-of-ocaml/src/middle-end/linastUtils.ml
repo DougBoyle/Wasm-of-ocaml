@@ -154,8 +154,7 @@ and free_vars_imm env (i : imm_expr) = match i.desc with
 (* Just needs the maximum since same 'env' (contains most recent stack index) is passed to compilation
    of both sides e.g. Seq(hd, tl). tl doesn't use anything added to scope in hd so can just overwrite.
    Makes semantics of the handle case difficult, need to know how variables have previously been bound
-   when going to compile handle case, likely by using references as a 'cheat' to scoping in this case.
-   TODO: Is it justifiable given how odd the semantics/reasoning is? *)
+   when going to compile handle case, likely by using references as a 'cheat' to scoping in this case.  *)
 (* Like a very basic form of register colouring! *)
 (* Assumption that all vars can use the same type of local variable - is this true/relevant? *)
 let rec count_vars (ast : linast_expr) = match ast.desc with
@@ -168,11 +167,6 @@ let rec count_vars (ast : linast_expr) = match ast.desc with
    | LSeq(comp, linast) -> max (count_vars_comp comp) (count_vars linast)
    | LCompound c -> count_vars_comp c
 
-(* TODO: Don't believe CApp case needs to be considered, just cases which constain a linastexpr (so bind stuff)
-   Can ignore CFunction since its bindings won't actually be evaluated (function gets lifted in actual wasm)
-   CMatchTry can be smarter by tracking which points actually lead to a fail, but for now can just be cautious
-   and take sum - safe to over-estimate number needed.
-   *)
 and count_vars_comp c =
   match c.desc with
   | CIf(_, t, f) -> max (count_vars t) (count_vars f)

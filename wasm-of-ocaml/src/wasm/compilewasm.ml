@@ -780,13 +780,11 @@ let compile_globals env {num_globals} =
          Ast.value=(add_dummy_loc [add_dummy_loc @@ Ast.Const(const_int32 0)]);
        })) (* No need to store the table size, externally use the exported functions, not the table *)
 
-(* Currently unclear if this will be needed or not. Why is index -99?
-   TODO: Look at Wasm spec to work out meaning of index *)
 let compile_main env prog =
   compile_function env
     {
-      index=Int32.of_int (-99);
-      arity=Int32.zero;
+      index=Int32.of_int (-99); (* Not needed at this level, used in previous stage to assign function indices *)
+      arity=Int32.zero; (* This means local.get/set aren't wrong due to no args at start of locals *)
       body=prog.main_body; (* top part of program put into its own function. Main effectively acts as _start? *)
       stack_size=prog.main_body_stack_size;
     }

@@ -34,8 +34,9 @@ let global_exports () = let tbl = !global_table in
   Ident.fold_all
   (fun ex_name (ex_global_index, ex_getter_index) acc -> {ex_name; ex_global_index; ex_getter_index}::acc) tbl []
 
-let next_global_indexes id = (* According to Grain - some issue with 'hygiene'? *)
-  (* No find_opt so using find_all and checking for the empty list *)
+(* Each global also gets a function to get it *)
+(* TODO: Replace functions with direct access - can just export globals themselves *)
+let next_global_indexes id =
   match Ident.find_all (Ident.name id) (!global_table) with
     | [(_, (ret, ret_get))] -> Int32.to_int ret, Int32.to_int ret_get
     | [] -> (* TODO: Why these steps? How come globals seem to be accessed indirectly all the time? *)
@@ -110,6 +111,9 @@ let compile_function env args body : closure_data =
       free_binds new_args in
   let idx = next_lift() in (* TODO: What is this used for - gets put into the work_item - function body being compiled? *)
   let arity = List.length new_args in
+  (* Number of vars declared in body hence number of locals added.
+     ASSERTION: At least as large as final stack_idx when compiling.
+                If larger, just get unused slots. If too small, get out of bounds local accesses. *)
   let stack_size = count_vars body in
   let func_env = {
     env with
@@ -207,7 +211,8 @@ let rec compile_comp env (c : compound_expr) =
     MCallKnown(builtin_idx, List.map (compile_imm env) args) *)
   | CImm i -> MImmediate(compile_imm env i)
 
-and compile_linast env expr = match expr.desc with
+and compile_linast env expr =
+ match expr.desc with
  | LSeq(hd, tl) -> (compile_comp env hd)::MDrop::(compile_linast env tl)
  | LLetRec(binds, body) ->
    let get_loc idx ((id, global, _) as bind) =
@@ -216,7 +221,8 @@ and compile_linast env expr = match expr.desc with
      | Local -> (MLocalBind(Int32.of_int (env.stack_idx + idx)), bind) in
    let binds_with_locs = List.mapi get_loc binds in
    let new_env = List.fold_left (fun acc (new_loc, (id, _, _)) -> (* - Should use global field?? *)
-       (* Why does stack idx increase regardless - surely should only go up for non-globals? Just being cautious?? *)
+       (* Cautious/simple approach - may end up using more stack variables than necessary.
+          This is unrelated to free vars. Determines the number of local slots to include in a function *)
        {acc with binds=Ident.add id new_loc acc.binds; stack_idx=acc.stack_idx + 1})
        env binds_with_locs in
        let wasm_binds = List.fold_left (fun acc (loc, (_, _, rhs)) ->
@@ -227,9 +233,10 @@ and compile_linast env expr = match expr.desc with
    let location = (match global with (* As above but only 1 element *)
      | Global -> MGlobalBind(Int32.of_int (next_global id))
      | Local -> MLocalBind(Int32.of_int (env.stack_idx))) in
-   (* Could split whole thing into global/local case to avoid adding empty space to stack? *)
-   let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx + 1} in
-   let wasm_binds = [(location, (compile_comp new_env bind))] in
+   (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
+   let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
+    match global with Local -> 1 | Global -> 0} in
+   let wasm_binds = [(location, (compile_comp env bind))] in
    MStore(wasm_binds) :: (compile_linast new_env body)
  | LCompound c -> [compile_comp env c]
 

@@ -130,13 +130,14 @@ and print_block ppf (block : instr list) =
           instrs in
       fprintf ppf  "@[<2>(@[<hv 1>%a@])@ @]" print_body block
 
-let print_program ppf {functions;exports;main_body;_} =
+let print_program ppf {functions;exports;main_body;main_body_stack_size} =
   let print_functions ppf funs =
           let spc = ref false in
           List.iter
-            (fun {index;arity;body;_} ->
+            (fun {index;arity;body;stack_size} ->
               if !spc then fprintf ppf "@ " else spc := true;
-              fprintf ppf "@[<2>func(%li)@ (%li args) %a@]" index arity print_block body)
+              fprintf ppf "@[<2>func(%li)@ (%li args, %d locals) %a@.@]" index arity stack_size print_block body)
             funs in
         fprintf ppf
-          "@[<2>(@[<hv>%a@])@ main@ %a@]" print_functions functions print_block main_body
+          "@[<2>%a@[<hv>main(%d locals) %a@]@]"
+          print_functions functions main_body_stack_size print_block main_body
