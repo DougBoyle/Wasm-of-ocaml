@@ -1,13 +1,38 @@
 (module
   (type $0 (func (result i32)))
-  (memory (export "mem") 1)
+  (memory (export "mem") 1) ;; initially just a 1 page memory i.e. 64KB. Can use up to 4GB in Wasm (32-bit)
   (global $heap_top (mut i32) (i32.const 0))
   (func $alloc (export "alloc") (param $n i32) (result i32)
-    global.get $heap_top
+    (local $difference i32)
+    global.get $heap_top ;; returned value
 	global.get $heap_top
 	local.get $n
 	i32.add
-	global.set $heap_top
+	global.set $heap_top ;; store updated heap_top
+
+    global.get $heap_top
+	memory.size
+	i32.const 65536 ;; page size
+	i32.mul
+    i32.gt_u
+    if
+      global.get $heap_top
+      i32.const 65536
+      i32.div_u
+      memory.size
+      i32.sub
+      i32.const 1
+      i32.add
+      memory.grow
+
+      i32.const -1
+      i32.eq ;; check memory grow succeeded
+      if
+        unreachable
+      else
+      end
+    else ;; memory not exceeded, do nothing
+    end
   )
   (func $compare (export "compare") (param $v1 i32) (param $v2 i32) (result i32)
     (local $x i32) (local $arity i32) (local $i i32)

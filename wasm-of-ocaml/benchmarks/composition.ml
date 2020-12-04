@@ -8,7 +8,6 @@ TODO: Due to memory constraints, iteration on existing structures is far better 
 (* Small functions: permutations of [0 .. n-1] *)
 
 (* Minimal "random" number gen *)
-
 let a = 214013
 let c = 2531011
 let m = 65536
@@ -48,8 +47,8 @@ let rec map f = function
   | [] -> []
   | x::xs -> (f x)::(map f xs)
 
-
-let make_perms : int -> (int -> int) list * (int list -> int list -> unit) list =
+(* Was originally defined on arrays, now defined on lists *)
+let make_perms (* : int -> (int -> int) list * (int list -> int list -> unit) list *) =
   (* Create a random list of transformations - No random module, have to just pick a number! *)
   let rec random_perm ((p_f, p_v) as acc) i =
     if i <= 0 then acc else
@@ -59,20 +58,22 @@ let make_perms : int -> (int -> int) list * (int list -> int list -> unit) list 
         else if c = 1 then reverse (rand n) (rand n)
         else (* c = 2 *) splice (rand n) (rand n) (rand n) in
       (* Corresponding array transformer *)
-      let p_vec w v =
-        for i = 0 to length v - 1 do () (* THIS IS AN ARRAY OPERATION, ACTUALLY NEED ARRAY w.(i) <- p v.(i) *) done in
+      let p_vec v =
+        map p v in
       random_perm (p :: p_f, p_vec :: p_v) (i - 1) in
   random_perm ([], [])
 
 let () =
-  let ncomp = 30 in
+  let ncomp = 100 in
   let p_f, p_v = make_perms ncomp in
+  (* Goes through performing a large collection of list manipulations.
+     Huge memory allocation due to using lists, array version not currently possible. *)
   let v = init n (fun k -> k) in
   let do_f () =
     let f = fold_left (fun f f0 -> (fun k -> f0(f k))) (fun k -> k) p_f in
     map f v
   and do_v () =
-    fold_left (fun (w,v) f -> f w v; (v,w)) (make 0 n, v) p_v
+    fold_left (fun v f -> f v) v p_v
   in
   let _ = do_f () in
   let _ = do_v () in ()
