@@ -1,8 +1,7 @@
 (* Tries to show the profile cost of composing small functions.
 https://github.com/Chris00/ocaml-benchmark/blob/master/examples/composition.ml
-
-TODO: Due to memory constraints, iteration on existing structures is far better than making lots of new ones
-      In particular, get affected by constaintly building new closures
+Actual package has a 'throughput' function which runs code for a specified number of seconds.
+Just use a for loop for this.
 *)
 
 (* Small functions: permutations of [0 .. n-1] *)

@@ -21,6 +21,7 @@ if (process.argv.length > 2){
 	  var module = await WebAssembly.compile(buffer);
 	  var instance = await WebAssembly.instantiate(module, imports);
 	  instance.exports["OCAML$MAIN"]();
+	 // console.log(imports.ocamlRuntime.alloc(0));
   } catch (err) {
     console.log(err);
   }
