@@ -757,9 +757,9 @@ let compile_exports env {functions; exports; num_globals} =
           add_dummy_loc {
             Ast.name=encode_string "OCAML$MAIN";
             Ast.edesc=add_dummy_loc (Ast.FuncExport main_idx);
-          }; (* Export the memory - makes JS wrapper much neater *)
+          }; (* Export the memory - makes JS wrapper neater *)
          add_dummy_loc {
-            Ast.name=encode_string "mem";
+            Ast.name=encode_string "$mem";
             Ast.edesc=add_dummy_loc (Ast.MemoryExport (add_dummy_loc 0l)); (* Index of the only memory *)
             };
         ]

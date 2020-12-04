@@ -38,14 +38,13 @@ async function instantiate(file){
 	var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
 	var module = await WebAssembly.compile(buffer);
 	var runtime_instance = await WebAssembly.instantiate(module);
-    var memory = new Int32Array(runtime_instance.exports.mem.buffer);
 	var imports = {ocamlRuntime: runtime_instance.exports};
 
 	buffer = await readFile(file);
 	module = await WebAssembly.compile(buffer);
 	var instance = await WebAssembly.instantiate(module, imports);
-	// attach the memory from the runtime instance to this instance. (TODO: Should really just export directly)
-	instance._mem = memory;
+	// attach the memory from the runtime instance to this instance to avoid repeatedly making Int32Arrays
+	instance._mem = new Int32Array(instance.exports["$mem"].buffer);
 
 	var result = {};
 
@@ -53,7 +52,8 @@ async function instantiate(file){
 		var setup_val = wrap_ptr(instance.exports["OCAML$MAIN"](), instance);
 		// each export that isn't a number just gets a global
 		for (var exp in instance.exports) {
-			if (!(/^(\d+|OCAML\$MAIN)$/.test(exp))) {
+			// avoid exporting OCAML$MAIN or $mem
+			if (!(/^(\d+|OCAML\$MAIN|\$.*)$/.test(exp))) {
 				result[exp] = wrap_ptr(instance.exports[exp](), instance);
 			}
 		}
