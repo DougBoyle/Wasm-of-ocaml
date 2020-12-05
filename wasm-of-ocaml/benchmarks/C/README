@@ -3,8 +3,66 @@ clang --target=wasm32 -O3 -nostdlib -Wl,--no-entry -Wl,--export-all -o out/arith
 clang --target=wasm32 -O3 -nostdlib -Wl,--no-entry -Wl,--export-all -o out/funcrec.wasm funcrec.c
 
 When stdlib needed:
-clang --target=wasm32-unknown-wasi --sysroot ../../../../wasi-libc/sysroot -nostartfiles -Wl,--import-memory -Wl,--no-entry -Wl,--export-all -o out/alltrees.wasm alltrees.c
+clang --target=wasm32-unknown-wasi --sysroot ../../../../wasi-libc/sysroot -nostartfiles -Wl,--no-entry -Wl,--export-all -o out/alltrees.wasm alltrees.c
+
+-Wl,--import-memory allows memory to be passed in rather than internally produced. minimum 2 pages.
+nostartfiles avoids trying to use regular stdlib not suitable for wasm. Without this, get a
+  "wasi_snapshot_preview1" module import with "proc_exit" function. Works without these so avoid that.
+--export-all avoids needing to declare individual exports. Makes all functions + C stdlib visible too.
+ Could also do `-Wl,--export=main -Wl,--export=sbrk`.
+
+For ones not needing stdlib, compiling with it adds some globals but doesn't massively increase file
+  size with the 1000+ line malloc programs.
+  Compiling with it and just exporting main + sbrk: No extra globals, just 50 lines for sbrk included.
+  sbrk will always return saying 2 pages used i.e. 131072 bytes (initial size of memory).
+  For more precise measurements, may want to filter ones which #include vs ones which don't, will
+  always be at top of file.
+
+************************************
+Reasonably fair and can use for all files, regardless of stdlib or not (max +50 lines if not needed):
+clang --target=wasm32-unknown-wasi -O3 --sysroot ../../../../wasi-libc/sysroot -nostartfiles \
+  -Wl,--no-entry -Wl,--export=main -Wl,--export=sbrk -o out/<file>.wasm <file>.c
+
+If stdlib not needed (enforce nostdlib and don't export sbrk because of that):
+clang --target=wasm32-unknown-wasi -O3 -nostdlib -nostartfiles \
+  -Wl,--no-entry -Wl,--export=main -o out/<file>.wasm <file>.c
+************************************
 
 Note: Requires installing wasi-libc and using its sysroot
       Also have to donwload libclang_rt.builtins-wasm32.a binary from github and copy into /usr/lib/llvm-10/lib/clang/10.0.0/lib/wasi/libclang_rt.builtins-wasm32.a
       Lastly, only seems to work with wasm32-unknown-wasi, using wasm32 gives "unable to find library -lc"
+
+Just want to run main, so do want an entry point?
+Work out exact commands to compile them, should probably be uniform for all.
+
+arith.wasm doesn't actually use any memory. Memory is used in OCaml version for storing closures etc.
+Since C version takes tupled args instead, no closures needed.
+- Fairer comparison might be against a tupled version of arith? e.g. fun gcd (x, y) = ... no gcd x y = ...
+
+Compiling with wasi-libc adds about 7000 lines to wast file to implement malloc/free/realloc/etc.
+
+Output exports at least 2 functions: __original_main - if declared int main() then this takes no args
+    main - always takes 2 args and just calls __original_main i.e. don't use argc/argv
+
+If large computation put in a variable in main, need to use that in return value else O3 removes it.
+
+Space increment after program BReaK address:
+$sbrk is a standard unix function: https://linux.die.net/man/2/sbrk
+Gets included in memory-managed C programs. Exported as "sbrk".
+By definition, sbrk(0) should return the current program break i.e. end of the program's data segment.
+In wasm implementation, this is done as a special case which just returns mem_size << 16 when input is 0
+ i.e. gives the number of pages allocated (Better granularity probably not necessary).
+
+All C programs (by default) generate a __global_base = 66560
+Stack grows down from here, but some programs don't even need to use stack e.g. arith
+since implicit stack created by webassembly is usually sufficient.
+Where this is used, a separate internal stack pointer global is created with the same initial value.
+
+Entry point: (not much use, makes profiling less reliable)
+If --no-entry left out, wasm-ld then expects a function _start to be declared, and will set
+_start to point to that. This actually makes profiling harder as that will be called immediately,
+so leave it out for now.
+_start is allowed to return a value, just not take any input. Also, returned value can't be accessed.
+
+
+

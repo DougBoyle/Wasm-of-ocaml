@@ -26,5 +26,5 @@ int main(){
             y += phi(i);
         }
     }
-    return 0;
+    return x + y; // so that above code can't be optimised away
 }

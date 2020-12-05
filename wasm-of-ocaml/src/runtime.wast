@@ -12,13 +12,13 @@
 
     global.get $heap_top
 	memory.size
-	i32.const 65536 ;; page size
-	i32.mul
+	i32.const 16
+    i32.shl  ;; page size = 2^16 = 65536
     i32.gt_u
     if
       global.get $heap_top
-      i32.const 65536
-      i32.div_u
+      i32.const 16
+      i32.shr_u
       memory.size
       i32.sub
       i32.const 1
