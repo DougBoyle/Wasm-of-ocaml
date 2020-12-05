@@ -57,8 +57,7 @@ let make_perms (* : int -> (int -> int) list * (int list -> int list -> unit) li
         else if c = 1 then reverse (rand n) (rand n)
         else (* c = 2 *) splice (rand n) (rand n) (rand n) in
       (* Corresponding array transformer *)
-      let p_vec v =
-        map p v in
+      let p_vec v = map p v in
       random_perm (p :: p_f, p_vec :: p_v) (i - 1) in
   random_perm ([], [])
 

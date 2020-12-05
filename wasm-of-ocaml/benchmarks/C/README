@@ -1,0 +1,10 @@
+Can successfully compile the first 2 (likely do actually want an entry point)
+clang --target=wasm32 -O3 -nostdlib -Wl,--no-entry -Wl,--export-all -o out/arith.wasm arith.c
+clang --target=wasm32 -O3 -nostdlib -Wl,--no-entry -Wl,--export-all -o out/funcrec.wasm funcrec.c
+
+When stdlib needed:
+clang --target=wasm32-unknown-wasi --sysroot ../../../../wasi-libc/sysroot -nostartfiles -Wl,--import-memory -Wl,--no-entry -Wl,--export-all -o out/alltrees.wasm alltrees.c
+
+Note: Requires installing wasi-libc and using its sysroot
+      Also have to donwload libclang_rt.builtins-wasm32.a binary from github and copy into /usr/lib/llvm-10/lib/clang/10.0.0/lib/wasi/libclang_rt.builtins-wasm32.a
+      Lastly, only seems to work with wasm32-unknown-wasi, using wasm32 gives "unable to find library -lc"
