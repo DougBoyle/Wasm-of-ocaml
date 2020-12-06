@@ -1,0 +1,23 @@
+// https://ocaml.org/learn/tutorials/99problems.html problems 32-34
+let rec gcd = a => b => if (b == 0) {a} else {gcd(b)(a % b)}
+
+let coprime = a => b => gcd(a)(b) == 1
+
+let phi = (n) => {
+    let rec count_coprime = acc => d =>
+      if (d < n) {
+	    count_coprime(if (coprime(n)(d)) {acc+1} else {acc})(d+1)
+      } else {
+	    acc
+	  }
+    if (n == 1) {1} else {count_coprime(0)(1)}
+}
+
+// Note: a and b both far lower than in other programs. Grain seems to get stuck for anything greater
+// Could be due to either stack space or memory allocation. Try with un-curried functions instead
+let a = phi(210)
+
+let rec stackphi = (n) => if (n == 0) {0} else {phi(n) + stackphi(n - 1)}
+
+let b = stackphi(75)
+export a, b

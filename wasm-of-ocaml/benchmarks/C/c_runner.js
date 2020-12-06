@@ -25,5 +25,6 @@ const readFile = util.promisify(fs.readFile);
     } else { // program doesn't require memory management
         heap_top = 0;
     }
-    console.log(simple_name, millis, heap_top);
+    // filename  execution-time(ms) heap-size(bytes) file-size(bytes)
+    console.log(simple_name, millis, heap_top, fs.statSync(f).size);
 })();

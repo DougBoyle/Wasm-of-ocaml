@@ -1,0 +1,9 @@
+Bug with installed version of Grain (1.0)
+
+Curried functions produce a webassembly error: function signature mismatch
+Suggests that indirect call is getting a function with the wrong type.
+
+Rather than spend time debugging reason/trying to fix, download v2 of Grain, install that, and rewrite tests with its syntax.
+
+test.gr is a minimal example of a program that breaks.
+Also breaks composition.gr and others had to be rewritten to avoid the issue (e.g. writing map using a tuple rather than curried)

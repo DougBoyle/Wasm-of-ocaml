@@ -1,0 +1,23 @@
+import List from 'list'
+enum Tree {Leaf, Node(Tree, Tree)}
+
+let rec all_trees = (n) => if (n == 0) {[Leaf]} else {
+  let rec trees_i = (i) => {
+    let left_side = all_trees(i)
+    let right_side = all_trees(n - 1 - i)
+    let combine = (left, rest) => {
+        let makenode = (right) => Node(left, right)
+        List.append(List.map(makenode, right_side), rest)
+    }
+    List.reduceRight(combine, [], left_side)
+  }
+  let rec getall = (n) => if (n == 0) {trees_i(0)} else {
+    List.append(trees_i(n), getall(n - 1))
+  }
+  getall(n - 1)
+}
+
+// Again, less than in C or OCaml case
+let a = all_trees(7)
+
+export a

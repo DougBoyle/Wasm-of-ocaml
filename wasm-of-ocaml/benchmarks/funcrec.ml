@@ -19,9 +19,9 @@ let record = {f = f; g = g} (* Avoid record being reallocated over and over *)
 
 let rec iter f x = function
     | 0 -> x
-    | n -> iter f (f x) (n-1)
+    | n -> iter f ((f x) mod 1024) (n-1)
 
-let _ = iter (h_record {f = f; g = g}) 1 10000
+let _ = iter (h_record record) 1 10000
 let _ = iter (h_function f g) 1 10000
 let _ = iter h 1 10000
 

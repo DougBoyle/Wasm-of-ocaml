@@ -1,0 +1,21 @@
+record Env {f : Number -> Number, g :  Number -> Number}
+
+let h_record = e => x => 1 + (e.f)(x) + (e.g)(x)
+let h_function = f => g => x => 1 + f(x) + g(x)
+
+let f = x => x + 1
+let g = x => 2 * x
+let h = x => 1 + f(x) + g(x)
+
+// record is a keyword, can't use as variable name.
+// Grain doesn't like using functions as values in records, have to give an actual function
+let recrd = {f : x => x + 1, g : x => 2 * x}
+
+let rec iter = (f,x,n) => if (n == 0) {x} else {
+    iter(f,f(x) % 1024,n - 1)
+}
+
+let a = iter(h_record(recrd),1,1000)
+let b = iter(h_function(f)(g),1,1000)
+let c = iter(h, 1, 1000)
+export a,b,c

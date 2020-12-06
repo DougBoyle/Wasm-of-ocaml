@@ -1,0 +1,60 @@
+import List from 'list'
+let a = 214013
+let c = 2531011
+let m = 65536
+// can use 'mut' keyword rather than declaring a new type
+let mut x = 12345
+let rand = (n) => {
+    x = ((a*x + c) % m)
+    x % n
+}
+
+let n = 100
+let rotate = r => k => (k + r) % n
+let reverse = (i) => (j) => (k) => if ((i <= k) && (k <= j)) {j + i - k} else {k}
+let splice = (l) => (i) => (j) => (k) => if (k < j) {if (k < i) {k} else {k + l + 1}} else {
+    if (k <= j + l) {k - j + i} else {
+        let k2 = k - l - 1
+        if (k2 < i) {k2} else {k}
+    }
+}
+
+let init = (n) => (f) => {
+  let rec help = (i) => (n) => {
+    if (i == n) {[]} else {[f(i), ...(help(i+1)(n))]}
+  }
+  help(0)(n)
+}
+let rec make = (v) => (n) => {if (n == 0) {[]} else {[v, ...(make(v)(n - 1))]}}
+
+// Grain only has 'as' keyword for doing imports/exports
+let make_perms = {
+  let rec random_perm = (p_f, p_v) => (i) => {
+    if (i <= 0) {(p_f, p_v)} else {
+      let c = rand(3)
+     let p = if (c == 0) {rotate(rand(n))} else {
+       if (c == 1) {reverse(rand(n))(rand(n))} else {
+          splice(rand(n))(rand(n))(rand(n))
+        }
+      }
+      let p_vec = (v) => List.map(p, v)
+      random_perm([p, ...p_f], [p_vec, ...p_v])(i - 1)
+    }
+  }
+  random_perm([], [])
+}
+
+let ncomp = 100
+let (p_f, p_v) = make_perms(ncomp)
+let v = init(n)((k) => k)
+// do_f takes a unit, just treat as any variable
+let do_f = (x) => {
+  let f = List.reduce(((f, f0) => ((k) => f0(f(k)))), ((k) => k), p_f)
+  List.map(f, v)
+}
+let do_v = (x) => List.reduce((v, f) => f(v), v, p_v)
+
+let a = do_f(void)
+let b = do_v(void)
+
+export a, b

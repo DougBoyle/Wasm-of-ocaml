@@ -26,5 +26,5 @@ const readFile = util.promisify(fs.readFile);
     const millis = performance.now() - t0;
     // alloc(0) just returns the next free address in memory, measures how much used by program
     const heap_top = runtime.exports["alloc"](0);
-    console.log(simple_name, millis, heap_top);
+    console.log(simple_name, millis, heap_top, fs.statSync(f).size);
 })();

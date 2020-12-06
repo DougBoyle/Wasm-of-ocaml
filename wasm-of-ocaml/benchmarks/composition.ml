@@ -25,9 +25,9 @@ let splice l i j = fun k ->
 
 (* Non-implemented functions. Only have literal constructed arrays so must use lists for arbitrary size *)
 let init n f =
-  let rec help i n f =
-    if i = n then [] else (f i)::(help (i+1) n f)
-  in help 0 n f
+  let rec help i n =
+    if i = n then [] else (f i)::(help (i+1) n)
+  in help 0 n
 let rec make v = function
   | 0 -> []
   | n -> v::(make v (n-1))
