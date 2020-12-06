@@ -7,3 +7,15 @@ Rather than spend time debugging reason/trying to fix, download v2 of Grain, ins
 
 test.gr is a minimal example of a program that breaks.
 Also breaks composition.gr and others had to be rewritten to avoid the issue (e.g. writing map using a tuple rather than curried)
+
+Memory info:
+Have modified the grain source so that runtime.src.core.memory.TRACE_MEMORY = __DEBUG
+Have also set trace to do nothing and created new abstrace function just for summary stats.
+Have removed __DEBUG from Webpack.common as it is set in both of dev and prod and doesn't get overriden otherwise.
+To print memory info when running, rebuild by going to grain dir and running `yarn runtime build:dev`
+To remove memory tracking/overhead, repeat with `yarn runtime build`
+This way, no overhead when not printing memory stats, and no excessive printing of intermediate data when we are tracking it.
+Probably still a slight overhead so be cautious of how big an input it is run on.
+
+Avoided using --limitMemory option since it seems to cause programs to get stuck or run far far slower, not practical to use.
+

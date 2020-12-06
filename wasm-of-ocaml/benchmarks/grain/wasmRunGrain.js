@@ -17,6 +17,8 @@ const t0 = performance.now();
 // TODO: Done this way, no way to read out heap top
 //       COULD MODIFY `GRAIN RUN` TO TELL ME THAT?
 execSync("grain run " + filename);
+// memory to be measured separately
+
 const millis = performance.now() - t0;
 console.log(simple_name, millis, filesize);
 
