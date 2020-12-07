@@ -36,6 +36,8 @@ process.memoryUsage() =
   external: 1125329,    V8 external memory - probably ignore
   arrayBuffers: 9398
 }
+Nice explanation:
+https://stackoverflow.com/questions/12023359/what-do-the-return-values-of-node-js-process-memoryusage-stand-for
 
 From first inspection, heapUsed looks like the best choice for now.
 Run with --expose-gc to be able to call gc(), which hopefully helps to ensure a more accurate baseline.
