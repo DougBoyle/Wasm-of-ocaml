@@ -1,0 +1,35 @@
+Leaving plots out of github, doesn't make sense to version control and can always reproduce later.
+
+12_07_12_31_PM:
+	arith for C and ML has a=20000,b=3000. For grain: a=210,b=75
+	alltrees: C/ML=10, Grain=7
+	composition: 100 for ML and Grain, Not present for C
+	funcrec: 10000 iterations for C/ML, 1000 for grain. 
+
+---  MEMORY ---
+C, ML and Grain are all deterministic for memory usage, JS is only one where variance needs measuring.
+Standard deviation as percentage of mean for each JS program:
+	alltrees=0.11%
+	arith=0.17%
+	funcrec=0.16%
+	composition=2.6%
+
+Means were (in ascending order): [135328, 143248, 772472, 13559956]
+Span almost exactly 2 orders of magnitude so probably quite reliable.
+Worst was 2.6% variance with most much lower (composition had lowest mean memory so expect higher variance)
+suggesting that this is a sensible way to measure data.
+
+
+--- TIME ---
+Normalised variance ranges from 0.7% (composition in Grain) to 10% (funcrec in C)
+Most are around 1-3% which seems reasonable. Can always collect extra data manually for outliers.
+Note that 0.7% corresponds to Grain taking 3370ms average, only higher one is OCaml arith at 9620.
+Also, 10% one corresponds to C only taking 0.5ms on average, so low it is probably all just overhead anyway.
+
+First plot: Remember that arith has been made far simpler for grain so it doesn't crash. Grain by far the worst
+
+
+
+ImprovedGrainTests
+OCaml compiler unchanged, just rewrote some loops in C and copied out the needed part of Grain.js to run it without using
+exec(...), which was causing a large overhead.

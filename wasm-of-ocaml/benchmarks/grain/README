@@ -19,3 +19,4 @@ Probably still a slight overhead so be cautious of how big an input it is run on
 
 Avoided using --limitMemory option since it seems to cause programs to get stuck or run far far slower, not practical to use.
 
+TODO: Work out if there is a better way of testing than exec[Sync] - can I 'require' the js module and use that instead

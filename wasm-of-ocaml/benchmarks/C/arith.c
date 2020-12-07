@@ -21,10 +21,8 @@ int phi(int n){
 int main(){
     int x = phi(20000);
     int y = 0;
-    for (int i = 0; i < 3000; i++){
-        if (i != 0){
-            y += phi(i);
-        }
+    for (int i = 3000; i > 0; i--){
+        y += phi(i);
     }
     return x + y; // so that above code can't be optimised away
 }

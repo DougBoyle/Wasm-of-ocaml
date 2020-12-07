@@ -66,3 +66,4 @@ _start is allowed to return a value, just not take any input. Also, returned val
 
 
 
+Currently massively outperforms everything (for timings) so don't worry about running with -O3

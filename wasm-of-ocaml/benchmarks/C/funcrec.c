@@ -36,9 +36,14 @@ int main(){
     int i;
     int a = 1, b = 1, c = 1;
     Env e = {&f, &g}; // passing by reference to h_struct, but avoiding using malloc here
+    // written as 3 loops to match ml version
     for (i = 0; i < iters; i++){
         a = h_struct(&e, a) % 1024;
+    }
+    for (i = 0; i < iters; i++){
         b = h_function(&f, &g, b) % 1024;
+    }
+    for (i = 0; i < iters; i++){
         c = h(c) % 1024;
     }
     return a+b+c;
