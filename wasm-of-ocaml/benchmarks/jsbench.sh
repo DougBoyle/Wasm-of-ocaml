@@ -8,3 +8,7 @@ do
     rm ${NAME}.cmi
     rm ${NAME}.cmo
 done
+for file in js/*.js
+do
+  node --expose-gc js_runner.js $file
+done
