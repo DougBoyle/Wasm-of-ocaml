@@ -8,9 +8,12 @@ const simple_name = filename.substring(filename.indexOf('/') + 1, filename.index
 // Not done for memory/filesize - unaffected by any setup process overheads
 let run = require(process.env.GRAIN_STDLIB + "/../cli/bin/run.js");
 const runArgs = {includeDirs : [], stdlib : process.env.GRAIN_STDLIB};
-const t0 = performance.now();
-run(filename, runArgs);
-const millis = performance.now() - t0;
-console.log(simple_name, "time", millis);
+(async () => {
+    const t0 = performance.now();
+    await run(filename, runArgs);
+    const millis = performance.now() - t0;
+    console.log(simple_name, "time", millis);
+})();
+
 
 
