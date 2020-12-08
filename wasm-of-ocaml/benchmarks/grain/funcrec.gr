@@ -15,7 +15,7 @@ let rec iter = (f,x,n) => if (n == 0) {x} else {
     iter(f,f(x) % 1024,n - 1)
 }
 
-let a = iter(h_record(recrd),1,1000)
-let b = iter(h_function(f)(g),1,1000)
-let c = iter(h, 1, 1000)
+let a = iter(h_record(recrd),1,10000)
+let b = iter(h_function(f)(g),1,10000)
+let c = iter(h, 1, 10000)
 export a,b,c

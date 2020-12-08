@@ -29,7 +29,8 @@ Also, 10% one corresponds to C only taking 0.5ms on average, so low it is probab
 First plot: Remember that arith has been made far simpler for grain so it doesn't crash. Grain by far the worst
 
 
+--------------------
 
-ImprovedGrainTests
-OCaml compiler unchanged, just rewrote some loops in C and copied out the needed part of Grain.js to run it without using
-exec(...), which was causing a large overhead.
+FullCollection_08_12 - file names/iterations standardised so can be compared directly. Add C composition using closures
+Run with 10 iterations each, took about 7.5 mins.
+From now on, only run for 5 iterations, can run more iterations to get more certainty at end of project, not every time

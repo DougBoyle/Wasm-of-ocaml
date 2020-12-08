@@ -1,5 +1,6 @@
 #!/usr/bin/bash
 cd $(dirname $BASH_SOURCE)
+ITERS=5
 {
   >&2 echo "Starting OCaml"
   echo OCaml
@@ -14,7 +15,7 @@ cd $(dirname $BASH_SOURCE)
   done
   for file in out/*.wasm
   do
-	  for i in {1..10}
+	  for i in $(seq 1 $ITERS)
 	  do
 	    node ocaml_runner.js $file
 	  done
@@ -24,7 +25,7 @@ cd $(dirname $BASH_SOURCE)
   echo JS
   for file in js/*.js
   do
-	  for i in {1..10}
+	  for i in $(seq 1 $ITERS)
 	  do
 	    node --expose-gc js_runner.js $file
 	  done
@@ -39,7 +40,7 @@ cd $(dirname $BASH_SOURCE)
   done
   for file in out/*.gr.wasm
   do
-	  for i in {1..10}
+	  for i in $(seq 1 $ITERS)
 	  do
 	    node wasmRunGrain.js $file
 	  done
@@ -72,7 +73,7 @@ cd $(dirname $BASH_SOURCE)
   done
   for file in out/*.wasm
   do
-	  for i in {1..10}
+	  for i in $(seq 1 $ITERS)
 	  do
 	    node c_runner.js $file
 	  done

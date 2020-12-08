@@ -12,10 +12,8 @@ let phi n =
     in
     if n = 1 then 1 else count_coprime 0 1
 
-let _ = phi 20000 (* Limited by stack size until tail recursion added *)
-
 let rec stackphi = function
   | 0 -> 0
   | n -> (phi n) + stackphi (n-1)
 
-let _ = stackphi 3000
+let _ = stackphi 1000

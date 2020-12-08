@@ -28,17 +28,6 @@ let init n f =
   let rec help i n =
     if i = n then [] else (f i)::(help (i+1) n)
   in help 0 n
-let rec make v = function
-  | 0 -> []
-  | n -> v::(make v (n-1))
-let rec iter f = function
-  | [] -> ()
-  | x::xs -> (f x; iter f xs)
-let length l =
-  let rec aux i = function
-    | [] -> i
-    | x::xs -> aux (i+1) xs in
-  aux 0 l
 let rec fold_left f e = function
   | [] -> e
   | x::xs -> fold_left f (f e x) xs

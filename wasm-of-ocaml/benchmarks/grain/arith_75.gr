@@ -13,11 +13,8 @@ let phi = (n) => {
     if (n == 1) {1} else {count_coprime(0)(1)}
 }
 
-// Note: a and b both far lower than in other programs. Grain seems to get stuck for anything greater
-// Could be due to either stack space or memory allocation. Try with un-curried functions instead
-let a = phi(210)
-
 let rec stackphi = (n) => if (n == 0) {0} else {phi(n) + stackphi(n - 1)}
 
-let b = stackphi(75)
-export a, b
+// Note: Actually just 75, seeming doesn't work for greater values
+let a = stackphi(75)
+export a

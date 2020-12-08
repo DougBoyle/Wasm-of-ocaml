@@ -30,7 +30,7 @@ def readFile(filename):
         return data
 
 # TODO: Gather variance statistics to work out number of repeats needed (Normalised variance more useful?)
-data = readFile("12_07_12_31_PM.txt")
+data = readFile("ImprovedGrainTests.txt")
 langs = ["C", "Grain", "JS", "OCaml"]
 benchmarks = ["alltrees", "arith", "composition", "funcrec"]
 means = {lang : {} for lang in langs}
@@ -115,10 +115,10 @@ def bar_plot(ax, data, colors=None, total_width=0.8, single_width=1, legend=True
     if legend:
         ax.legend(bars, data.keys())
 
-#toplot = {lang : [means[lang][b] for b in benchmarks] for lang in means}
-langsnotgrain = ["C", "JS", "OCaml"]
-benchnotarith = benchmarks = ["alltrees", "composition", "funcrec"]
-toplot = {lang : [means[lang][b] for b in benchmarks] for lang in langsnotgrain}
+toplot = {lang : [means[lang][b] for b in benchmarks] for lang in means}
+#langsnotgrain = ["C", "JS", "OCaml"]
+#benchnotarith = ["alltrees", "composition", "funcrec"]
+#toplot = {lang : [means[lang][b] for b in benchnotarith] for lang in langs}
 
 fig, ax = plt.subplots()
 bar_plot(ax, toplot, total_width=.8, single_width=.9)

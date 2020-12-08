@@ -5,15 +5,13 @@ Have to collect grain memory data separately due to needing to switch runtime (j
 Lots of work unnecessarily repeated e.g. file size and memory usage where deterministic.
 Now I have a full script to do it all, may want to rewrite some of the runners.
 
-Also need to fix file formatting. Indenting is a mess currently.
-
-Also need to make note of differences between test files e.g. fewer iterations in Grain, more in JS_of_ocaml?
-
-Save results to a separate directory.
-
 Can specify options by passing in args when running the script. They appear as $1, $2, ... and $# is number of args.
 Common to use the commands getopts and shift to avoid having to consider lots of permutations of arguments.
 
 Check order of outputs lines up i.e. filename execTime fileSize memoryUsed
 
-Takes about 4 mins to run
+Takes about 7.5 mins to run at 10 iterations each
+
+Unified tests so that, where iterations differ, specified in file name.
+Output (when all on 1 line) is filename time heapusage filesize
+Currently set to only do 5 iterations of each, can change at top of script
