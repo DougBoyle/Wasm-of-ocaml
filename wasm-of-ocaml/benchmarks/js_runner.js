@@ -1,9 +1,7 @@
 const { performance } = require('perf_hooks');
 const fs = require("fs");
-const util = require('util');
-const execSync = util.promisify(require('child_process').execSync);
 
-let filename = process.argv[2];
+const filename = process.argv[2];
 const simple_name = filename.substring(filename.indexOf('/') + 1, filename.indexOf('.'));
 const filesize = fs.statSync(filename).size
 
