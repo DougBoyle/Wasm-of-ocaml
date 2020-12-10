@@ -4,12 +4,6 @@ open Types
 open CompileMatch
 open LinastUtils
 
-(* May end up needing different functions for translating to linast vs compound vs imm expr *)
-(* Can encode quite nicely as a value of required type accompanied with a set of needed linast bindings (to do left-to-right) *)
-
-(* A list equivalent to a Linast: Collect a sequence of the bindings needed as we translate things
-   then merge them into a Linast tree at the end. *)
-
 let rec take n l = if n = 0 then ([], l) else
   match l with [] -> assert false (* Should never happen *) | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
 
@@ -111,8 +105,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   | Texp_let(Nonrecursive, [], e) -> translate_compound e
   | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
     let ((rest : Linast.compound_expr), rest_setup) = translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
-      (* TODO: Have a simplified version for single rows? *)
-      let matrix = [([vb_pat], (rest, rest_setup), None)] in
+      let matrix = [([vb_pat], ((rest, rest_setup), []), None)] in
       let (value, value_setup) = translate_imm vb_expr in
       let (body, setup) = compile_matrix fail_trap [value] matrix in
       (body, value_setup @ setup)
@@ -129,7 +122,6 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
       (body, (List.concat required_binds_setup)
                @ (BLetRec (List.combine names required_binds)) :: body_setup)
 
-  (* TODO: Refactor translate_imm to just call these *)
   | Texp_tuple l ->
     let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock 0l args, List.concat setup)
@@ -244,12 +236,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   | Texp_letop {let_; ands; param; body; partial} -> translate_letop let_ ands param body partial
   | _ -> raise NotSupported
 
-and transl_cases cases =
-   List.map (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard)) cases
-
-(* TODO: Replace use of transl_cases with this *)
 and case_to_row {c_lhs; c_guard; c_rhs} =
-  ([c_lhs], translate_compound c_rhs, Option.map translate_compound c_guard)
+  ([c_lhs], (translate_compound c_rhs, []), Option.map translate_compound c_guard)
 
 and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   let (compound, setup) = translate_compound e in binds_to_anf setup (LinastExpr.compound compound)
@@ -371,23 +359,14 @@ let rec translate_structure exported = function
    | Tstr_value (Nonrecursive, []) -> translate_structure exported items
    (* TODO: Should have 'pre-anf' (see Grain) to simplify what can appear in this type of let binding *)
    | Tstr_value (Nonrecursive, {vb_pat;vb_expr;}::bind_list) ->
-     (* TODO: This works on linast terms rather than compounds, need separate compile function
-              One for lets + one for functions/switch/tstr_values would allow separate compound/linast result *)
      let rest = translate_structure exported ({item with str_desc=Tstr_value(Nonrecursive, bind_list)}::items) in
-     let (compound, compound_setup) = translate_compound vb_expr in
-     let binds = getBindings fail_trap vb_pat compound in
-     binds_to_anf ~exported (compound_setup @ binds) rest
+     let matrix = [([vb_pat], rest)] in
+     let (value, value_setup) = translate_imm vb_expr in
+     let tree = CompileLet.compile_matrix ~exported fail_trap [value] matrix in
+     binds_to_anf ~exported value_setup tree
+
    | _ -> translate_structure exported items (* TODO: Should check which ones should/shouldn't be included *)
   )
-
-(*
- let ((rest : Linast.compound_expr), rest_setup) = translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
-      (* TODO: Have a simplified version for single rows? *)
-      let matrix = [([vb_pat], (rest, rest_setup), None)] in
-      let (value, value_setup) = translate_imm vb_expr in
-      let (body, setup) = compile_matrix fail_trap [value] matrix in
-      (body, value_setup @ setup)
-*)
 
 let translate_structure_with_coercions (structure, coercions) =
  binds_to_anf (!primBinds) (translate_structure (getExports (structure.str_items, coercions)) structure.str_items)
