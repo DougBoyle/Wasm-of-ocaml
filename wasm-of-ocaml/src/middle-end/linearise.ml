@@ -372,9 +372,10 @@ let rec translate_structure exported = function
    | Tstr_value (Nonrecursive, []) -> translate_structure exported items
    (* TODO: Should have 'pre-anf' (see Grain) to simplify what can appear in this type of let binding *)
    | Tstr_value (Nonrecursive, {vb_pat;vb_expr;}::bind_list) ->
+     let rest = translate_structure exported ({item with str_desc=Tstr_value (Nonrecursive, bind_list)}::items) in
      let (compound, compound_setup) = translate_compound vb_expr in
      let binds = getBindings fail_trap vb_pat compound in
-     binds_to_anf ~exported (compound_setup @ binds) (translate_structure exported items)
+     binds_to_anf ~exported (compound_setup @ binds) rest
    | _ -> translate_structure exported items (* TODO: Should check which ones should/shouldn't be included *)
   )
 

@@ -38,7 +38,7 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
     [BLet(id, expr); BLet(testid, test_result);
     BEffect(Compound.mkif
       (Imm.id testid)
-      (LinastExpr.compound (Compound.imm unit_value))   (* Test passed - do nothing TODO: Use a global unit value *)
+      (LinastExpr.compound (Compound.imm unit_value))
       (LinastExpr.compound (Compound.imm (Imm.fail fail))))] (* Test failed - trap/next pattern *)
   | Tpat_tuple l ->
     let id = Ident.create_local "tuple" in
@@ -81,7 +81,7 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
     BLet(testid, test_result);
     BEffect(Compound.mkif
       (Imm.id testid)
-      (LinastExpr.compound (Compound.imm unit_value))   (* Test passed - do nothing TODO: Use a global unit value *)
+      (LinastExpr.compound (Compound.imm unit_value))
       (LinastExpr.compound (Compound.imm (Imm.fail fail)))); (* Test failed - trap/next pattern *)
     ]  @ sub_binds
 
@@ -111,18 +111,42 @@ let rec getBindings fail (pat : pattern) (expr : compound_expr) = match pat.pat_
       (binds_to_anf second_binds (LinastExpr.compound (Compound.imm unit_value)))
     in [BLet(id, expr); BEffect compound]
 
-
+  | Tpat_array pl ->
+      let expected_length = List.length pl in
+      let id = Ident.create_local "array" in
+      let ar_imm = Imm.id id in
+      (* Test tag - fail if not a match *)
+      let len_id = Ident.create_local "array_len" in
+      let len_expr = Compound.gettag ar_imm in
+      (* Note that this puts an int32 constant in the tree, instead of the usual const_int - other integers aren't converted *)
+      let test_result = Compound.binary Eq (Imm.const (Const_int32 (Int32.of_int expected_length))) (Imm.id len_id) in
+      let testid = Ident.create_local "isequal" in
+      (* If tag matches - bind subcomponents *)
+      let block_element_binds index pat =
+        let elem_id = Ident.create_local "element" in
+        let elem_expr = Compound.imm (Imm.id elem_id) in
+        let sub_binds = getBindings fail pat elem_expr in
+        (* Only include the binding for the tuple element if it is actually needed to perform other bindings *)
+        (match sub_binds with [] -> [] | _ -> (BLet(elem_id, Compound.field ar_imm (Int32.of_int index)))::sub_binds)
+      in let sub_binds = List.concat (List.mapi block_element_binds pl) in
+      [BLet(id, expr);
+      BLet(len_id, len_expr);
+      BLet(testid, test_result);
+      BEffect(Compound.mkif
+        (Imm.id testid)
+        (LinastExpr.compound (Compound.imm unit_value))   (* Test passed - do nothing *)
+        (LinastExpr.compound (Compound.imm (Imm.fail fail)))); (* Test failed - trap/next pattern *)
+      ]  @ sub_binds
   (* Don't expect to need to match Tpat_value or Tpat_lazy -- GADT, they aren't value patterns *)
-  | Tpat_array pl -> raise (NotImplemented __LOC__)
   | Tpat_variant (_, _, _) -> raise (NotImplemented __LOC__)
   | _ -> raise NotSupported
 
-let include_guard fail expr = function
-  | None -> (expr, [])
+let include_guard fail (expr, expr_setup) = function
+  | None -> (expr, expr_setup)
   | Some (comp, setup) ->
     let id = Ident.create_local "guard" in
     let id_imm = Imm.id id in
-    (Compound.mkif (id_imm) (LinastExpr.compound comp) (LinastExpr.compound (Compound.imm (Imm.fail fail))),
+    (Compound.mkif (id_imm) (binds_to_anf expr_setup (LinastExpr.compound comp)) (LinastExpr.compound (Compound.imm (Imm.fail fail))),
      setup @ [BLet(id, comp)]) (* May as well just pass it in as an immediate? *)
 
 
@@ -144,15 +168,15 @@ let rec compile_match partial fail expr = function
   | [] -> (Compound.imm (Imm.fail fail), []) (* All cases exhausted *)
   | [(pat, (e, setup), guard)] when (match partial with Total -> true | _ -> false) ->
     let binds = getBindings fail pat expr in
-    let (e', guard_setup) = include_guard fail e guard in
-    (e', binds @ guard_setup @ setup) (* Total so no matchtry, hence need to return the setup separately *)
+    let (e', guard_setup) = include_guard fail (e, setup) guard in
+    (e', binds @ guard_setup) (* Total so no matchtry, hence need to return the setup separately *)
   | (pat, (e, setup), guard)::rest -> let (rest, rest_setup) = compile_match partial fail expr rest in
     let new_fail = next_fail_count () in
     let binds = getBindings new_fail pat expr in
-    let (e', guard_setup) = include_guard new_fail e guard in
+    let (e', guard_setup) = include_guard new_fail (e, setup) guard in
     (Compound.matchtry
       new_fail
-      (binds_to_anf (binds @ guard_setup @ setup) (LinastExpr.compound e'))
+      (binds_to_anf (binds @ guard_setup) (LinastExpr.compound e'))
       (binds_to_anf rest_setup (LinastExpr.compound rest)),
     [])
 
