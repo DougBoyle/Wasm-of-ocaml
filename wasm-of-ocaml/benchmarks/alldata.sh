@@ -17,7 +17,7 @@ ITERS=5
   do
 	  for i in $(seq 1 $ITERS)
 	  do
-	    node ocaml_runner.js $file
+	    node runner.js $file
 	  done
   done
   >&2 echo "Starting JS"
@@ -27,7 +27,7 @@ ITERS=5
   do
 	  for i in $(seq 1 $ITERS)
 	  do
-	    node --expose-gc js_runner.js $file
+	    node --expose-gc runner.js $file
 	  done
   done
   cd grain
@@ -42,7 +42,7 @@ ITERS=5
   do
 	  for i in $(seq 1 $ITERS)
 	  do
-	    node wasmRunGrain.js $file
+	    node ../runner.js $file
 	  done
   done
   cd $GRAIN_STDLIB/..
@@ -65,17 +65,17 @@ ITERS=5
 	  if grep -q "#include" $file
 	  then
 	    clang --target=wasm32-unknown-wasi --sysroot ../../../../wasi-libc/sysroot \
-		  -nostartfiles -Wl,--no-entry -Wl,--export=main -Wl,--export=sbrk -o out/$NAME.wasm $file
+		  -nostartfiles -Wl,--no-entry -Wl,--export=main -Wl,--export=sbrk -o out/$NAME.c.wasm $file
 	  else
 	    clang --target=wasm32-unknown-wasi -nostdlib -nostartfiles \
-		  -Wl,--no-entry -Wl,--export=main -o out/$NAME.wasm $file
+		  -Wl,--no-entry -Wl,--export=main -o out/$NAME.c.wasm $file
 	  fi
   done
   for file in out/*.wasm
   do
 	  for i in $(seq 1 $ITERS)
 	  do
-	    node c_runner.js $file
+	    node ../runner.js $file
 	  done
   done
 } > "results/$(date +"%m_%d_%H_%M").txt"

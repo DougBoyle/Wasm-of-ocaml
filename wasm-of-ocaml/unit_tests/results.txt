@@ -1,5 +1,5 @@
 // filename var1=val1 ... varn=valn OR 'filename !' to indicate it should trap. Current just support ints
-add x=3 y=2 z=-2
+add a=3 b=1 c=12 d=3 e=-1
 // Getting "expected valid block signature" error, even though main succeeds?
 array y=5 z=11
 array_highbounds !
@@ -10,9 +10,14 @@ matchfail !
 datatype y=6
 curry a=17
 // dependent on encoding of true/false
-bool a=0
-compare x=1 a=1 b=0 c=1
+bool a=0 b=0 c=1 d=1 e=1 f=0
+compare x=1 a=1 b=0 c=0 d=1 e=0 f=1
+match a=1 b=1 c=1 d=1 e=1
+function a=1 b=1 c=1 d=1 e=1
 for y=45
 while y=16
+merge b=1
+letand x=1 y=2 z=3
+guards x=1
 ../samples/arith x=26 y=4
 ../samples/trees x=15

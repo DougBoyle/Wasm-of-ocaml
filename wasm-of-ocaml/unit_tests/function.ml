@@ -1,13 +1,14 @@
-let a = match 2 with
+(* Identical to match.ml but with functions *)
+let f1 = function
   | 0 -> 0
   | 1 -> 0
   | _ -> 1
-let b = match (1,2) with
+let f2 = function
   | (2, _) -> 0
   | (_, 1) -> 0
   | (_, 2) -> 1
   | _ -> 0
-let c = match [|1|] with
+let f3 = function
   | [||] -> 0
   | [|2|] -> 0
   | [|_|] -> 1
@@ -15,14 +16,20 @@ let c = match [|1|] with
   | _ -> 0
 
 type t = {x : int; y : int}
-let d = match {x = 1; y = 2} with
+let f4 = function
   | {x = 2} -> 0
   | {y = 1} -> 0
   | _ -> 1
 
 type lst = Nil | Cons of int * lst
-let e = match Cons(1, Nil) with
+let f5 = function
   | Nil -> 0
   | Cons(_, Cons(_, _)) -> 0
   | Cons(1, _) -> 1
   | Cons(_, _) -> 0
+
+let a = f1 2
+let b = f2 (1, 2)
+let c = f3 [|1|]
+let d = f4 {x = 1; y = 2}
+let e = f5 (Cons(1, Nil))
