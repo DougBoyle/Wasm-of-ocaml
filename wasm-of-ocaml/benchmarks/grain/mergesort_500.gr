@@ -1,0 +1,29 @@
+let rec merge = (lx) => (ly) => {match ((lx, ly)){
+  ([], _) => ly,
+  (_, []) => lx,
+  ([x, ...xs], [y, ...ys])  => if (x < y) {[x, ...(merge(xs)(ly))]} else {[y, ...(merge(lx)(ys))]}
+}}
+//let merge = lx => ly => []
+
+let a = 214013
+let c = 2531011
+let m = 65536
+// can use 'mut' keyword rather than declaring a new type
+let mut x = 12345
+let rand = (n) => {
+    x = ((a*x + c) % m)
+    x % n
+}
+
+let init = n => m => {
+  let rec help = (i) => (n) => {
+    if (i == n) {[]} else {[rand(m), ...(help(i+1)(n))]}
+  }
+  help(0)(n)
+}
+
+let n = 500
+let m = 100
+let l1 = init(n)(m)
+let l2 = init(n)(m)
+let l = merge(l1)(l2)
