@@ -30,22 +30,24 @@ def readFile(filename):
         return data
 
 # TODO: Gather variance statistics to work out number of repeats needed (Normalised variance more useful?)
-data = readFile("ImprovedGrainTests.txt")
+data = readFile("Latest_12_08_20_29.txt")
 langs = ["C", "Grain", "JS", "OCaml"]
-benchmarks = ["alltrees", "arith", "composition", "funcrec"]
+benchmarks = data.keys()
+#benchmarks = ["alltrees", "arith", "composition", "funcrec"]
 means = {lang : {} for lang in langs}
 stds = {lang : {} for lang in langs}
 for bench in data:
-    for lang in data[bench]:
-        times = data[bench][lang]["times"]
-        #print(bench, lang, np.mean(times), np.std(times))
-       # print(bench, lang, np.std(times)/np.mean(times))
-      #  print(np.std(times)/np.mean(times))
-        means[lang][bench] = np.mean(times)
-        stds[lang][bench] = np.std(times)
+    for lang in langs:
+        if lang in data[bench]:
+            times = data[bench][lang]["times"]
+            #print(bench, lang, np.mean(times), np.std(times))
+           # print(bench, lang, np.std(times)/np.mean(times))
+          #  print(np.std(times)/np.mean(times))
+            means[lang][bench] = np.mean(times)
+            stds[lang][bench] = np.std(times)
+        else:
+            means[lang][bench] = 0
 
-# Due to test not being present
-means["C"]["composition"] = 0
 
 # Will probably want plots for individual benchmarks too!
 # Going to have issues with axis scale, need to split into fast/slow ones (Grain far slower than rest)
@@ -115,13 +117,13 @@ def bar_plot(ax, data, colors=None, total_width=0.8, single_width=1, legend=True
     if legend:
         ax.legend(bars, data.keys())
 
-toplot = {lang : [means[lang][b] for b in benchmarks] for lang in means}
+toplot = {lang : [means[lang][b] for b in benchmarks if b != "arith"] for lang in means if lang != "Grain"}
 #langsnotgrain = ["C", "JS", "OCaml"]
 #benchnotarith = ["alltrees", "composition", "funcrec"]
 #toplot = {lang : [means[lang][b] for b in benchnotarith] for lang in langs}
 
 fig, ax = plt.subplots()
 bar_plot(ax, toplot, total_width=.8, single_width=.9)
-plt.xticks(range(len(benchmarks)), benchmarks)
+plt.xticks(range(len(benchmarks) - 1), [b for b in benchmarks if b != "arith"])
 plt.ylabel("time (ms)")
 plt.show()

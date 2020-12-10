@@ -26,22 +26,12 @@ let get_id_from_pattern = function
     | {pat_desc=Tpat_var(id, _)} -> id
     | _ -> raise NotSupported
 
-(* TODO: Texp_extension_constructor, Texp_array and Texp_variant all left out initially, may implement later once working. *)
-(* TODO: Can simplify in some cases and call correct level and just use its result
-         e.g. Tuple - make call to translate_compound then just assign that to a variable name. *)
+(* TODO: Texp_extension_constructor and Texp_variant all left out initially, may implement later once working. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
   |  Texp_ident (path, idLoc, valDesc) -> (Imm.id (translate_ident path valDesc.val_kind), [])
 
   | Texp_constant c -> (Imm.const c, [])
-
-  (* Can probably rewrite as a fold *)
-  | Texp_let(Nonrecursive, [], e) -> translate_imm e
-  | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
-      let (exp, exp_setup) = translate_compound vb_expr in
-      let bindList = getBindings fail_trap vb_pat exp in
-      let (rest, rest_setup) = translate_imm ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
-      (rest, exp_setup @ bindList @ rest_setup)
 
   | Texp_let(Recursive, binds, body) ->
     let (binds, binds_setup) =
@@ -65,7 +55,8 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
 
   | Texp_tuple _ | Texp_construct _ | Texp_record _ | Texp_field _
   | Texp_setfield _ | Texp_ifthenelse _ | Texp_while _ | Texp_for _
-  | Texp_function _ | Texp_apply _ | Texp_match _ | Texp_array _ ->
+  | Texp_function _ | Texp_apply _ | Texp_match _ | Texp_array _
+  | Texp_let(Nonrecursive, _, _) ->
     let id = Ident.create_local "compound" in
     let (compound, setup) = translate_compound e in
     (Imm.id id, setup @ [BLet(id, compound)])
@@ -119,14 +110,15 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   (* Can probably rewrite as a fold *)
   | Texp_let(Nonrecursive, [], e) -> translate_compound e
   | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
-      let (exp, exp_setup) = translate_compound vb_expr in
-      let bindList = getBindings fail_trap vb_pat exp in
-      let (rest, rest_setup) = translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
-      (rest, exp_setup @ bindList @ rest_setup)
+    let ((rest : Linast.compound_expr), rest_setup) = translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
+      (* TODO: Have a simplified version for single rows? *)
+      let matrix = [([vb_pat], (rest, rest_setup), None)] in
+      let (value, value_setup) = translate_imm vb_expr in
+      let (body, setup) = compile_matrix fail_trap [value] matrix in
+      (body, value_setup @ setup)
 
   | Texp_let(Recursive, binds, body) ->
-      (* TODO: Why isn't it an issue that the setup of one expression may call one of the other recursive functions, hence
-               that setup surely can't come before the recursive function? *)
+      (* Most potential recursion issues solved by the constrained form allowed for letrec expressions *)
       let (binds, binds_setup) =
         List.split (List.map (fun {vb_pat; vb_expr} -> (vb_pat, translate_compound vb_expr)) binds) in
       let (required_binds, required_binds_setup) = List.split binds_setup in
@@ -244,14 +236,20 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
       | (Some p, None) -> {case with c_lhs=p}
       | _ -> raise NotSupported (* No exception patterns allowed *)) cases in
    let (arg, arg_setup) = translate_imm e in
-   let (body, setup) = compile_match partial fail_trap (Compound.imm arg) (transl_cases cases) in
-   (body, arg_setup @ setup)
+   let matrix = List.map case_to_row cases in
+   (* TODO: Include partial/total information? *)
+  let (body, setup) = compile_matrix fail_trap [arg] matrix in
+  (body, arg_setup @ setup)
 
   | Texp_letop {let_; ands; param; body; partial} -> translate_letop let_ ands param body partial
   | _ -> raise NotSupported
 
 and transl_cases cases =
    List.map (fun {c_lhs;c_guard;c_rhs} -> (c_lhs, translate_compound c_rhs, Option.map translate_compound c_guard)) cases
+
+(* TODO: Replace use of transl_cases with this *)
+and case_to_row {c_lhs; c_guard; c_rhs} =
+  ([c_lhs], translate_compound c_rhs, Option.map translate_compound c_guard)
 
 and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   let (compound, setup) = translate_compound e in binds_to_anf setup (LinastExpr.compound compound)
@@ -282,7 +280,7 @@ and translate_prim_app (primDesc : Primitive.description) args =
 
 and translate_function param cases partial =
   (* TODO: Use this first one or not? Current Wasm implementation doesn't allow currying! *)
-   ( (* match cases with [{c_lhs=pat; c_guard=None;
+   (* match cases with [{c_lhs=pat; c_guard=None;
     c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
     partial = partial'; }; exp_env; exp_type} as exp}]
     (* Pattern always matches and never binds anything *)
@@ -294,9 +292,10 @@ and translate_function param cases partial =
         | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
       )
   | _ -> *)
-   let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
-   (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound comp)), [])
-  )
+   let matrix = List.map case_to_row cases in
+   let (body, setup) = compile_matrix fail_trap [Imm.id param] matrix in
+   (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound body)), [])
+
 
 (* Taken from transl_core.transl_letop of OCaml compiler *)
 (*
@@ -372,12 +371,23 @@ let rec translate_structure exported = function
    | Tstr_value (Nonrecursive, []) -> translate_structure exported items
    (* TODO: Should have 'pre-anf' (see Grain) to simplify what can appear in this type of let binding *)
    | Tstr_value (Nonrecursive, {vb_pat;vb_expr;}::bind_list) ->
+     (* TODO: This works on linast terms rather than compounds, need separate compile function
+              One for lets + one for functions/switch/tstr_values would allow separate compound/linast result *)
+     let rest = translate_structure exported ({item with str_desc=Tstr_value(Nonrecursive, bind_list)}::items) in
      let (compound, compound_setup) = translate_compound vb_expr in
      let binds = getBindings fail_trap vb_pat compound in
-     binds_to_anf ~exported (compound_setup @ binds) (translate_structure exported items)
+     binds_to_anf ~exported (compound_setup @ binds) rest
    | _ -> translate_structure exported items (* TODO: Should check which ones should/shouldn't be included *)
   )
 
+(*
+ let ((rest : Linast.compound_expr), rest_setup) = translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
+      (* TODO: Have a simplified version for single rows? *)
+      let matrix = [([vb_pat], (rest, rest_setup), None)] in
+      let (value, value_setup) = translate_imm vb_expr in
+      let (body, setup) = compile_matrix fail_trap [value] matrix in
+      (body, value_setup @ setup)
+*)
 
 let translate_structure_with_coercions (structure, coercions) =
  binds_to_anf (!primBinds) (translate_structure (getExports (structure.str_items, coercions)) structure.str_items)
