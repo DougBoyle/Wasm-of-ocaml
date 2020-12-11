@@ -115,4 +115,76 @@
     ;; function case
     unreachable
   )
+  ;; stdlib functions, written directly in Wasm rather than writing in OCaml and compiling to Wasm (inefficient)
+  (func $abs (export "abs") (param $x i32) (result i32)
+    local.get $x
+    i32.const 0
+    i32.ge_s
+    if (result i32)
+      local.get $x
+    else
+      i32.const 0
+      local.get $x
+      i32.sub
+    end
+  )
+  (func $min (export "min") (param $x i32) (param $y i32) (result i32)
+    local.get $x
+    local.get $y
+    i32.ge_s
+    if (result i32)
+      local.get $y
+    else
+      local.get $x
+    end
+  )
+  (func $max (export "max") (param $x i32) (param $y i32) (result i32)
+    local.get $x
+    local.get $y
+    i32.ge_s
+    if (result i32)
+      local.get $x
+    else
+      local.get $y
+    end
+  )
+  (func $append (export "@") (param $l1 i32) (param $l2 i32) (result i32)
+    (local $l1decoded i32) (local $result i32)
+    local.get $l1
+    i32.const 1
+    i32.xor
+    local.tee $l1decoded
+    i32.load ;; tag - either 0 = [] or 2 (encoded) = x::xs
+    if (result i32)
+      ;; list non-empty
+      i32.const 16
+      call $alloc
+
+      local.tee $result
+      i32.const 2 ;; Dependent on runtime encoding of tags
+      i32.store
+
+      local.get $result
+      i32.const 2
+      i32.store offset=4 ;; arity=2
+
+      local.get $result
+      local.get $l1decoded
+      i32.load offset=8 ;; head of l1
+      i32.store offset=8
+
+      local.get $result
+      local.get $l1decoded
+      i32.load offset=12 ;; tail of l1
+      local.get $l2
+      call $append ;; recursive result of appending tail to l2
+      i32.store offset=12
+
+      local.get $result
+      i32.const 1
+      i32.xor ;; tag result as data block
+    else
+      local.get $l2
+    end
+  )
 )

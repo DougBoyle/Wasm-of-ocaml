@@ -5,7 +5,7 @@ array y=5 z=11
 array_highbounds !
 array_lowbounds !
 op y=11
-prims z=1
+prims z=1 b=10 c=3
 matchfail !
 datatype y=6
 curry a=17
@@ -19,5 +19,6 @@ while y=16
 merge b=1
 letand x=1 y=2 z=3
 guards x=1
+app z=1
 ../samples/arith x=26 y=4
 ../samples/trees x=15

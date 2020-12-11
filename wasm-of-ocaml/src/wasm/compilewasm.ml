@@ -44,11 +44,19 @@ let swap_slots = List.append swap_slots_i32 swap_slots_i64
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let alloc_ident = Ident.create_persistent "alloc"
 let compare_ident = Ident.create_persistent "compare"
+let abs_ident = Ident.create_persistent "abs"
+let min_ident = Ident.create_persistent "min"
+let max_ident = Ident.create_persistent "max"
+let append_ident = Ident.create_persistent "@"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
 let runtime_imports = [
   { mimp_name=alloc_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
-  { mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };]
+  { mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
+  { mimp_name=abs_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
+  { mimp_name=min_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
+  { mimp_name=max_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
+  { mimp_name=append_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };]
 
 let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length runtime_imports)
 
@@ -120,6 +128,10 @@ let var_of_runtime_func env itemname =
   add_dummy_loc @@ lookup_runtime_func env itemname
 let call_alloc env = Ast.Call(var_of_runtime_func env alloc_ident)
 let call_compare env = Ast.Call(var_of_runtime_func env compare_ident)
+let call_abs env = Ast.Call(var_of_runtime_func env abs_ident)
+let call_min env = Ast.Call(var_of_runtime_func env min_ident)
+let call_max env = Ast.Call(var_of_runtime_func env max_ident)
+let call_append env = Ast.Call(var_of_runtime_func env append_ident)
 
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =
@@ -263,8 +275,7 @@ let compile_unary env op arg : Wasm.Ast.instr' list =
       Ast.Const(encoded_const_int 1);
       Ast.Binary(Values.I32 Ast.IntOp.Sub);
     ]
-  (* Currently implemented as a lambda term *)
-  | Abs -> failwith "Not yet implemented - come back to later"
+  | Abs -> compiled_arg @ [call_abs env]
 
 (* Assumes all operations are on integers, can't reuse for floats *)
 let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
@@ -278,7 +289,7 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   *)
   match op with
   | Add ->
-    (* TODO: Removed overflow_safe bit - commented out in first case, removed in rest *)
+    (* TODO: Removed overflow_safe bit *)
     (* Removed all casting etc. for now. That and overflow checking may be needed once values tagged
        and treated as 31/63 bit ints. *)
     compiled_arg1 @ compiled_arg2 @ [Ast.Binary(Values.I32 Ast.IntOp.Add);]
@@ -334,12 +345,14 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
      [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.GtU)] @ encode_num
   (* TODO: Neq -- Is it worth removing this and compiling to Not (Eq ...)? *)
   (* TODO: Physical equality - should actually be relatively simple, just compare literal/pointer. *)
-  | Compare -> compiled_arg1 @ compiled_arg2 @ [call_compare env;] @ encode_num
+  | Compare -> compiled_arg1 @ compiled_arg2 @ [call_compare env;] (* @ encode_num Not needed - takes difference of encoded args *)
   | Eq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
   | Neq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num @
     [Ast.Const(const_true); Ast.Binary(Values.I32 Ast.IntOp.Xor);] (* Flip the bit encoded as true/false *)
   (* Append currently being mapped to a linast expression higher up, likewise min/max *)
-  | Min | Max  | Append -> failwith "Not yet implemented"
+  | Min -> compiled_arg1 @ compiled_arg2 @ [call_min env;]
+  | Max -> compiled_arg1 @ compiled_arg2 @ [call_max env;]
+  | Append -> compiled_arg1 @ compiled_arg2 @ [call_append env;]
 
 (** Heap allocations. *)
 let round_up (num : int) (multiple : int) : int =

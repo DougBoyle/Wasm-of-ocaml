@@ -10,3 +10,6 @@ wasm:
 unittest:
 	make all
 	node unit_tests/test.js
+rt:
+	wat2wasm src/runtime.wast
+	mv runtime.wasm samples/runtime.wasm

@@ -8,11 +8,11 @@ let rec take n l = if n = 0 then ([], l) else
   match l with [] -> assert false (* Should never happen *) | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
 
 let translate_ident path = function
-  | Val_prim p -> Primitives.translate_prim p
+  | Val_prim p -> Imm.id (Primitives.translate_prim p)
   (* May need to handle some identifiers which point directly to runtime functions e.g. Stdlib!.min
      Could also just 'hack' these into the file as usual idents but would be inefficient and probably slower. *)
   | _ -> (match path with
-    | Path.Pident id -> id
+    | Path.Pident id -> Imm.id id
     | Path.Pdot(Path.Pident (Ident.Global "Stdlib"), s) -> Primitives.translate_other_prim s
     | _ -> raise (NotImplemented __LOC__))
 
@@ -23,7 +23,7 @@ let get_id_from_pattern = function
 (* TODO: Texp_extension_constructor and Texp_variant all left out initially, may implement later once working. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
-  |  Texp_ident (path, idLoc, valDesc) -> (Imm.id (translate_ident path valDesc.val_kind), [])
+  |  Texp_ident (path, idLoc, valDesc) -> (translate_ident path valDesc.val_kind, [])
 
   | Texp_constant c -> (Imm.const c, [])
 
@@ -97,7 +97,7 @@ and transl_apply f args =
 
 and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
-  |  Texp_ident (path, idLoc, valDesc) -> (Compound.imm (Imm.id (translate_ident path valDesc.val_kind)), [])
+  |  Texp_ident (path, idLoc, valDesc) -> (Compound.imm (translate_ident path valDesc.val_kind), [])
 
   | Texp_constant c -> (Compound.imm (Imm.const c), [])
 
@@ -190,34 +190,30 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   (* Rather than special case for currying, could add a special case for tuples. *)
   | Texp_function { param; cases; partial; } ->
     translate_function param cases partial
-  (*  (match cases with [{c_lhs=pat; c_guard=None;
-     c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
-     partial = partial'; }; exp_env; exp_type} as exp}]
-     (* Pattern always matches and never binds anything *)
-     (* Find the function for the inner body and attach param on front *)
-     when Parmatch.inactive ~partial pat ->
-       (match translate_compound exp with
-         | ({desc=CFunction(args, body);_} as comp, setup) ->
-           ({comp with desc=CFunction(param::args, body)}, setup)
-         | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
-       )
-   | _ ->
-    let (comp, setup) = compile_match partial fail_trap (Compound.imm (Imm.id param)) (transl_cases cases) in
-    (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound comp)), [])
-   ) *)
 
   (* Fully applied primitive *)
-  (* TODO: Change to correctly detect primitives *)
-  | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p}); exp_type = prim_type }, oargs)
+  | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p})}, oargs)
       when List.length oargs >= p.prim_arity && List.for_all (fun (_, arg) -> arg <> None) oargs ->
         let argl, extra_args = take p.prim_arity oargs in
-        let arg_exps =
-           List.map (function _, Some x -> x | _ -> assert false) argl
-        in
+        let arg_exps = List.map (function _, Some x -> x | _ -> assert false) argl in
         let (op, arg_setups) = translate_prim_app p arg_exps
         in if extra_args = [] then (op, arg_setups)
         else let (app, setup) = transl_apply op extra_args in
         (app, arg_setups @ setup)
+  (* Not 'Val_prim primitive_description' so have to extract arity manually. val_kind = Val_reg to exclude Val_prim cases *)
+  | Texp_apply({exp_desc = Texp_ident(Path.Pdot(Path.Pident (Ident.Global "Stdlib"), name), _, {val_kind = Val_reg})}, oargs)
+    when List.length oargs >= (match Hashtbl.find Primitives.prim_table name with Unary _ -> 1 | Binary _ -> 2)
+         && List.for_all (fun (_, arg) -> arg <> None) oargs ->
+    let op, setup, extra_args = (match (Hashtbl.find Primitives.prim_table name, oargs) with
+      | Unary unop, (_, Some arg)::extra_args ->
+        let (arg_imm, setup) = translate_imm arg in
+        let op = Compound.unary unop arg_imm in (op, setup, extra_args)
+      | Binary binop, (_, Some arg1)::(_, Some arg2)::extra_args ->
+        let (arg1_imm, setup1) = translate_imm arg1 in
+        let (arg2_imm, setup2) = translate_imm arg2 in
+        let op = Compound.binary binop arg1_imm arg2_imm in (op, setup1 @ setup2, extra_args)
+      | _ -> failwith "Incorrect guard statement") in
+    if extra_args = [] then (op, setup) else let (app, rest_setup) = transl_apply op extra_args in (app, setup @ rest_setup)
 
   | Texp_apply (f, args) ->
     let (f_compound, fsetup) = translate_compound f in
@@ -303,7 +299,7 @@ and translate_letop letop ands param case partial =
     | andop :: rest ->
         let left_id = Ident.create_local "left" in
         let right_id = Ident.create_local "right" in
-        let op = Imm.id (translate_ident andop.bop_op_path andop.bop_op_val.val_kind)
+        let op = translate_ident andop.bop_op_path andop.bop_op_val.val_kind
         in
         let (exp, exp_setup) = translate_compound andop.bop_exp in
         let (lam, lam_setup) =
@@ -315,7 +311,7 @@ and translate_letop letop ands param case partial =
         in (res, prev_setup @ (BLet(left_id, prev_body)) :: res_setup)
       (*  bind left_id prev_lam (loop lam rest)  *)
   in
-  let op = Imm.id (translate_ident letop.bop_op_path letop.bop_op_val.val_kind)
+  let op = translate_ident letop.bop_op_path letop.bop_op_val.val_kind
   in
   let (exp, exp_setup) = loop (translate_compound letop.bop_exp) ands in
   let (func, func_setup) =

@@ -83,7 +83,7 @@ let rec binds_to_anf ?(exported=[]) binds body =
      | BLetRec lets -> LinastExpr.mkletrec (List.map (fun (id, e) -> (id, get_global_flag exported id, e)) lets) body
    ) binds body
 
-(* Primative name -> Ident *)
+(* Primative name (string) -> Ident *)
 let primIds : (string * Ident.t) list ref = ref []
 (* List of Binds to include in program *)
 let primBinds : linast_setup list ref = ref []
