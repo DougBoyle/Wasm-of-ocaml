@@ -63,19 +63,26 @@ let init_env = {
   handler_heights = [];
 }
 
+(* Finds the function number each runtime import was bound to during setup *)
+let lookup_runtime_func env itemname =
+  Hashtbl.find imported_funcs itemname
+let var_of_runtime_func env itemname =
+  add_dummy_loc @@ lookup_runtime_func env itemname
+let call_alloc env = Ast.Call(var_of_runtime_func env alloc_ident)
+let call_compare env = Ast.Call(var_of_runtime_func env compare_ident)
+let make_float env = Ast.Call(var_of_runtime_func env make_float_ident)
+
 (* TODO: Support strings *)
 
 let const_int32 n = add_dummy_loc (Values.I32Value.to_value (Int32.of_int n))
 let const_int64 n = add_dummy_loc (Values.I64Value.to_value (Int64.of_int n))
-let const_float32 n = add_dummy_loc (Values.F32Value.to_value (Wasm.F32.of_float n))
 let const_float64 n = add_dummy_loc (Values.F64Value.to_value (Wasm.F64.of_float n))
 
 (* These are like the above 'const' functions, but take inputs
    of the underlying types instead *)
 let wrap_int32 n = add_dummy_loc (Values.I32Value.to_value n)
 let wrap_int64 n = add_dummy_loc (Values.I64Value.to_value n)
-let wrap_float32 n = add_dummy_loc (Values.F32Value.to_value n)
-let wrap_float64 n = add_dummy_loc (Values.F64Value.to_value n)
+let wrap_float64 env n = [Ast.Const (add_dummy_loc (Values.F64Value.to_value n)); make_float env]
 
 (* TODO: Work out which of these actually needed *)
 (* For integers taken out of wasmtree - all tags/ints need doubling (but not memory offsets) *)
@@ -84,16 +91,15 @@ let encoded_int32 n = Int32.mul 2l n
 let encoded_const_int n = const_int32 (encoded_int n)
 let encoded_const_int32 n = wrap_int32 (encoded_int32 n)
 (** Constant compilation *)
-let rec compile_const c : Wasm.Values.value Wasm.Source.phrase =
+let rec compile_const env c =
     match c with
-    | MConstI32 n -> encoded_const_int32 n
-    | MConstI64 n -> wrap_int64 (Int64.mul 2L n)
-    | MConstF32 n -> wrap_float32 (Wasm.F32.of_float n)
-    | MConstF64 n -> wrap_float64 (Wasm.F64.of_float n)
+    | MConstI32 n -> [Ast.Const(encoded_const_int32 n)]
+    | MConstI64 n -> [Ast.Const(wrap_int64 (Int64.mul 2L n))] (* TODO: Handle I64's and literal I32s *)
+    | MConstF64 n -> wrap_float64 env (Wasm.F64.of_float n)
 
 (* Translate constants to WASM. Override names from wasmtree to be wasm phrases (values with regions) *)
-let const_true = compile_const const_true
-let const_false = compile_const const_false (* also equals unit i.e. () *)
+let const_true = compile_const init_env const_true
+let const_false = compile_const init_env const_false (* also equals unit i.e. () *)
 
 (* WebAssembly helpers *)
 (* These instructions get helpers due to their verbosity *)
@@ -114,15 +120,6 @@ let load
     () =
   let open Wasm.Ast in
   Load({ty; align; sz; offset;})
-
-(* Finds the function number each runtime import was bound to during setup *)
-let lookup_runtime_func env itemname =
-  Hashtbl.find imported_funcs itemname
-let var_of_runtime_func env itemname =
-  add_dummy_loc @@ lookup_runtime_func env itemname
-let call_alloc env = Ast.Call(var_of_runtime_func env alloc_ident)
-let call_compare env = Ast.Call(var_of_runtime_func env compare_ident)
-let make_float env = Ast.Call(var_of_runtime_func env make_float_ident)
 
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =
@@ -238,7 +235,7 @@ let tee_swap ?ty:(typ=Types.I32Type) env idx =
 
 let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   match i with
-  | MImmConst c -> [Ast.Const(compile_const c)]
+  | MImmConst c -> compile_const env c
   | MImmBinding b -> compile_bind ~is_get:true env b
   | MImmFail j -> (match j with
     | -1l -> [Ast.Unreachable] (* trap *)
@@ -254,10 +251,9 @@ let compile_unary env op arg : Wasm.Ast.instr' list =
   match op with
   | UnAdd -> [] (* Does nothing *)
   | UnNeg -> (Ast.Const(encoded_const_int 0)) :: compiled_arg @ [Ast.Binary(Values.I32 Ast.IntOp.Sub)]
-  | Not -> compiled_arg @ [
-      Ast.Const(const_true); (* Flip the bit encoded as true/false *)
-      Ast.Binary(Values.I32 Ast.IntOp.Xor);
-    ]
+  | Not -> compiled_arg @
+      const_true @ (* Flip the bit encoded as true/false *)
+      [Ast.Binary(Values.I32 Ast.IntOp.Xor);]
   | Succ -> compiled_arg @ [
       Ast.Const(encoded_const_int 1);
       Ast.Binary(Values.I32 Ast.IntOp.Add);
@@ -340,7 +336,7 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   | Compare -> compiled_arg1 @ compiled_arg2 @ [call_compare env;] @ encode_num
   | Eq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
   | Neq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num @
-    [Ast.Const(const_true); Ast.Binary(Values.I32 Ast.IntOp.Xor);] (* Flip the bit encoded as true/false *)
+    const_true @ [Ast.Binary(Values.I32 Ast.IntOp.Xor);] (* Flip the bit encoded as true/false *)
   (* Append currently being mapped to a linast expression higher up, likewise min/max *)
   | Min | Max  | Append -> failwith "Not yet implemented"
 
@@ -451,7 +447,7 @@ let compile_data_op env imm op =
     (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
     List.map add_dummy_loc (get_swap @ index @ decode_num @ [
     Ast.Const(wrap_int32 4l); Ast.Binary(Values.I32 Ast.IntOp.Mul);   (* Array store returns unit *)
-    Ast.Binary(Values.I32 Ast.IntOp.Add);] @ value @ [store ~offset:8l (); Ast.Const const_false]),
+    Ast.Binary(Values.I32 Ast.IntOp.Add);] @ value @ ((store ~offset:8l ()) :: const_false)),
     [add_dummy_loc Ast.Unreachable]);]
 
 (* What is this doing? Appears to just call f on the given env, but with backpatches reset *)
@@ -598,7 +594,7 @@ and compile_instr env instr =
        List.map add_dummy_loc
         [Ast.Loop(ValBlockType (Some Types.I32Type),
               List.map add_dummy_loc
-              ([Ast.Const const_false] @
+              (const_false @
               compiled_cond @
               decode_num @
               [Ast.Test(Values.I32 Ast.IntOp.Eqz); (* TODO: Why the extra test? Checking for NOT true? *)
@@ -617,7 +613,7 @@ and compile_instr env instr =
        List.map add_dummy_loc
         [Ast.Loop(ValBlockType (Some Types.I32Type),
               List.map add_dummy_loc
-              ([Ast.Const const_false] @ (* Return unit value when loop fails *)
+              (const_false @ (* Return unit value when loop fails *)
               (compile_bind ~is_get:true env arg) @
               (compile_bind ~is_get:true env end_arg) @
               [Ast.Compare(Values.I32

@@ -19,5 +19,6 @@ while y=16
 merge b=1
 letand x=1 y=2 z=3
 guards x=1
+float y=1 z=0
 ../samples/arith x=26 y=4
 ../samples/trees x=15

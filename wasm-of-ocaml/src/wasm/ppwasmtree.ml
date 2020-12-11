@@ -10,7 +10,6 @@ let print_typ ppf = function
 let rec print_const ppf = function
   | MConstI32 n -> fprintf ppf "%lil" n
   | MConstI64 n -> fprintf ppf "%LiL" n
-  | MConstF32 f -> fprintf ppf "%f" f
   | MConstF64 f -> fprintf ppf "%f" f
 
 let binary ppf = function

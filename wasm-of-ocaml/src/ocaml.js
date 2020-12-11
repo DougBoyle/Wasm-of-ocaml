@@ -9,6 +9,15 @@ function wrap_ptr(i, instance){
 	var result;
 	switch (i & 3) {
 		case 1:
+			// Interpret floats
+			const tag = mem[i/4>>0];
+			if (tag == -1){
+				// get just that float
+				// +3 due to tag of 1, DataView to allow reading in Little Endian
+				const f = new DataView(instance.exports["$mem"].buffer).getFloat64(i+3, true /* littleEndian */);
+				result = () => f;
+				break;
+			}
 			const arity = mem[(i/4>>0) + 1];
 			// If a mutable record, could be modified in future, so function must do the memory lookup when called
 			result = () => {
