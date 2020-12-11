@@ -48,6 +48,7 @@ let abs_ident = Ident.create_persistent "abs"
 let min_ident = Ident.create_persistent "min"
 let max_ident = Ident.create_persistent "max"
 let append_ident = Ident.create_persistent "@"
+let make_float_ident = Ident.create_persistent "make_float"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
 let runtime_imports = [
@@ -56,7 +57,8 @@ let runtime_imports = [
   { mimp_name=abs_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
   { mimp_name=min_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
   { mimp_name=max_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
-  { mimp_name=append_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };]
+  { mimp_name=append_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
+  { mimp_name=make_float_ident; mimp_type=MFuncImport([F64Type], [I32Type]); };]
 
 let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length runtime_imports)
 
@@ -132,6 +134,7 @@ let call_abs env = Ast.Call(var_of_runtime_func env abs_ident)
 let call_min env = Ast.Call(var_of_runtime_func env min_ident)
 let call_max env = Ast.Call(var_of_runtime_func env max_ident)
 let call_append env = Ast.Call(var_of_runtime_func env append_ident)
+let make_float env = Ast.Call(var_of_runtime_func env make_float_ident)
 
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =

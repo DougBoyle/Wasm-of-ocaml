@@ -264,7 +264,6 @@ let transl_program (program : linast_expr) : wasm_program =
   let functions = compile_remaining_worklist() in
   {
     functions;
-  (*  imports=[]; *) (* Will be populated by runtime functions *)
     exports;
     main_body;
     main_body_stack_size;
