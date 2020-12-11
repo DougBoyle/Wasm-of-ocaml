@@ -44,11 +44,13 @@ let swap_slots = List.append swap_slots_i32 swap_slots_i64
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let alloc_ident = Ident.create_persistent "alloc"
 let compare_ident = Ident.create_persistent "compare"
+let make_float_ident = Ident.create_persistent "make_float"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
 let runtime_imports = [
   { mimp_name=alloc_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
-  { mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };]
+  { mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
+  { mimp_name=make_float_ident; mimp_type=MFuncImport([F64Type], [I32Type]); };]
 
 let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length runtime_imports)
 
@@ -120,6 +122,7 @@ let var_of_runtime_func env itemname =
   add_dummy_loc @@ lookup_runtime_func env itemname
 let call_alloc env = Ast.Call(var_of_runtime_func env alloc_ident)
 let call_compare env = Ast.Call(var_of_runtime_func env compare_ident)
+let make_float env = Ast.Call(var_of_runtime_func env make_float_ident)
 
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =

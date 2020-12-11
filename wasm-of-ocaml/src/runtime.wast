@@ -34,8 +34,22 @@
     else ;; memory not exceeded, do nothing
     end
   )
+  (func $make_float (export "make_float") (param $f f64) (result i32)
+    (local $result i32)
+    i32.const 12
+    call $alloc
+    local.tee $result
+    i32.const -1 ;; variant tag for floats, distinguishes from constructor blocks
+    i32.store
+    local.get $result
+    local.get $f
+    f64.store offset=4
+    local.get $result
+    i32.const 1 ;; data block tag
+    i32.or
+  )
   (func $compare (export "compare") (param $v1 i32) (param $v2 i32) (result i32)
-    (local $x i32) (local $arity i32) (local $i i32)
+    (local $x i32) (local $arity i32) (local $i i32) (local $f f64)
     block
       block
         block
@@ -61,6 +75,33 @@
       i32.xor
       local.set $v2
       ;; compare variant tags (also orders arrays)
+      local.get $v1
+      i32.load
+      ;; check for float variant tag (-1), in which case just do float equality
+      i32.const -1
+      i32.eq
+      if ;; compare floats TODO: Special cases e.g. +- 0 and infs/nans. Probably need more complex float comparison.
+         ;; Also note that 'compare NaN NaN' = 0 but 'NaN = NaN' is false. Now need separate 'equals' fun
+         ;; OCaml seems to treat +-0 as equal.
+        local.get $v1
+        f64.load offset=4
+        local.get $v2
+        f64.load offset=4
+        f64.sub
+        local.tee $f
+        f64.const 0
+        f64.lt
+        if
+          i32.const -1
+          return
+        else
+          local.get $f
+          f64.const 0
+          f64.gt
+          return
+        end
+      else ;; Not a float, should rewrite so that rest of compare goes in else block
+      end
       local.get $v1
       i32.load
       local.get $v2
