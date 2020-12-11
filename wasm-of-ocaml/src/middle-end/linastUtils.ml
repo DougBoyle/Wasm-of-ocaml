@@ -59,7 +59,7 @@ end
 let unit_value = Imm.const (Asttypes.Const_int 0)
 
 let get_const_constructor_tag = function
-  | Cstr_constant i -> Asttypes.Const_int i (* TODO: Should be an int32 instead? *)
+  | Cstr_constant i -> i (* TODO: Should be an int32 instead? *)
   | _ -> failwith "Not a constant constructor"
 
 (* Assign constant/block constructor tags to disjoint, contiguous values *)

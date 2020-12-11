@@ -4,10 +4,7 @@ open Typedtree
 open Types
 open Asttypes
 
-(* Used whenever a match could fail. Default value is -1 for trap, otherwise this is used to access an outer try/catch *)
-(* Great simplification of OCaml's approach, which keeps a list of (int * matrix) pairs, allowing the compiler to not
-   only escape a failed match, but potentially jump further down the list of cases based on additional information learned
-   about the expression during trying this pattern. *)
+(* Default value is -1 for trap, otherwise this is used to access an outer try/catch *)
 let fail_trap = -1l
 
 let fail_count = ref fail_trap
@@ -24,10 +21,6 @@ let include_guard fail ((action, action_setup), binds) = function
     (Compound.mkif (id_imm) (binds_to_anf action_setup (LinastExpr.compound action)) (LinastExpr.compound (Compound.imm (Imm.fail fail))),
      binds @ guard_setup @ [BLet(id, comp)])
 
-let rec expand_ors pat = match pat.pat_desc with
-  | Tpat_or(p1, p2, _) -> (expand_ors p1) @ (expand_ors p2)
-  | _ -> [pat]
-
 (* Aliases case still needed here as it is used by simplified_or_patterns i.e. before removal of aliases *)
 (* TODO: Variant patterns? *)
 let rec is_variable_pattern pat = match pat.pat_desc with
@@ -35,11 +28,8 @@ let rec is_variable_pattern pat = match pat.pat_desc with
    | Tpat_alias(p, _, _) -> is_variable_pattern p
   | _ -> false
 
-(* Loose definition of constructor pattern, should also handle tuples/arrays/constants/records *)
-(* Will likely need to split up actual case of constructor/constant(/array by length?) vs tuple/record *)
 let is_constructor_pattern pat = match pat.pat_desc with
   | Tpat_constant _ | Tpat_tuple _ | Tpat_construct(_, _, _) | Tpat_record(_, _) | Tpat_array _ -> true
-(*  | Tpat_alias(p, _, _) -> is_constructor_pattern p -- Aliases preprocessed out before this happens *)
   | _ -> false
 
 let rec apply_variable_rule (value : Linast.imm_expr) (pats, (action, action_setup), guard) =
@@ -52,16 +42,6 @@ let rec apply_variable_rule (value : Linast.imm_expr) (pats, (action, action_set
         let new_bind = match value.desc with ImmIdent i when i = x -> [] | _ -> [BLet(x, Compound.imm value)] in
         (ps, (action, new_bind @ action_setup), guard)
         | _ -> failwith "Not possible to apply variable rule")
-
-(* TODO: Handle more general constants *)
-let rec specialise_const_int_matrix matrix n =
-  let rows = List.filter (function
-    | ({pat_desc=Tpat_constant (Const_int m)}::_,_,_) -> m = n
-    | _ -> failwith "Wrong rule applied") matrix in
-  let new_matrix = List.map (function
-   | (_::ps,act,g) -> (ps, act, g)
-   | _ -> failwith "Wrong rule applied") rows in
-  (n, new_matrix)
 
 let rec apply_mixture_rule matrix =
   let rec split_by_test test acc = function
@@ -76,6 +56,10 @@ let rec apply_mixture_rule matrix =
       else if is_constructor_pattern p then split_by_test is_constructor_pattern [row] rest
       else failwith "Mixture rule ran into matrix it couldn't process"
     | _ -> failwith "Mixture rule ran into a matrix it couldn't process"
+
+let rec expand_ors pat = match pat.pat_desc with
+  | Tpat_or(p1, p2, _) -> (expand_ors p1) @ (expand_ors p2)
+  | _ -> [pat]
 
 (* p1|...|x|pk|...|pn -> p1|...|x *)
 let rec simplified_or_pattern pat = match pat.pat_desc with
@@ -100,16 +84,16 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
 
 (* Add partial information later *)
 (* values is imm vector corresponding to the vector of patterns in each row *)
-(* List of rows, each row is ([pattern list], (action, action_setup), (guard,setup) option)
-   action/guard is a compound *)
+(* List of rows, each row is ([pattern list], ((action, action_setup), binds), (guard,setup) option)  *)
 (* TODO: May need an extra rule for variants and how to process them, shouldn't be difficult *)
-(* TODO: Make use of guards/cleaner pattern matching to avoid checks that lists not empty *)
-(* TODO: GUARDS PUT IN WHEN TRANSLATING MATCH STATEMENT TO INITIAL MATRIX *)
+(* TODO: Encode fact that variables vector/length of row should match up by putting inside a
+         structure with special getter functions, so only see exceptions in 1 place *)
 let rec compile_matrix fail values matrix =
   let matrix = List.map (preprocess_row values) matrix in
   match (values, matrix) with
   | (_, []) -> (Compound.imm (Imm.fail fail), []) (* No valid patterns left *)
-  | ([], ([], act, g)::rest) -> include_guard fail act g (* Guard handled here *)
+  | ([], ([], act, g)::rest) -> include_guard fail act g (* Successful match, guard handled here *)
+
   (* OR rule -> Compile([v], expanded_or_matrix); Compile(vs, rest_of_row) *)
   | (v::vs, [(({pat_desc=Tpat_or(_, _, _)} as p)::ps, act, g)]) ->
     let patterns = expand_ors p in
@@ -118,79 +102,63 @@ let rec compile_matrix fail values matrix =
     let (rest, rest_setup) = compile_matrix fail vs [(ps, act, g)] in
     (rest, or_setup @ (BEffect(or_match))::rest_setup)
 
-  | (v::vs, matrix) ->
-    if List.for_all
-      (function ([], _,_) -> failwith "Not Possible to have empty list" | (p::ps,_,_) -> is_variable_pattern p) matrix
-    then (* variable rule *)
-       compile_matrix fail vs (List.map (apply_variable_rule v) matrix)
-    else if List.for_all
-   (function ([], _,_)  -> failwith "Not Possible to have empty list" | (p::ps,_,_) -> is_constructor_pattern p) matrix
-    then (* constructor rule TODO: Move each case to a mutually recursive function *)
-      (match matrix with
-        | ({pat_desc=Tpat_tuple l}::_,_,_)::_ ->
-         apply_tuple_rule fail v vs matrix (List.length l)
+  (* variable rule *)
+  | (v::vs, matrix) when List.for_all
+      (function ([], _,_) -> failwith "Not Possible to have empty list"
+              | (p::ps,_,_) -> is_variable_pattern p) matrix ->
+    compile_matrix fail vs (List.map (apply_variable_rule v) matrix)
 
-         (* Handle constant constructors specially *)
-         | ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_ when signature.cstr_nonconsts = 0 ->
-           let get_cstr_tag = function
-              | ({pat_desc=Tpat_construct (_, desc, _)}::_,_,_) -> (* TODO: Change what get_const_constructor_tag returns? *)
-                (match get_const_constructor_tag desc.cstr_tag with Const_int i -> i | _ -> failwith "const_constructor_tag")
-              | _ -> failwith "Can't apply constructor rule" in
-           let cstrs_used = List.fold_left (fun cstrs row -> let tag = get_cstr_tag row in
-             if List.mem tag cstrs then cstrs else tag::cstrs) [] matrix in
-          (* Replace with int tags *)
-          let matrix' = List.map (function (({pat_desc=Tpat_construct (_, desc, _)} as p)::ps,act,g) ->
-            ({p with pat_desc=Tpat_constant(get_const_constructor_tag desc.cstr_tag)}::ps, act, g)
-            | _ -> failwith "Not a constructor pattern") matrix in
-          (* Now just treat as int constant since each pattern is const_int *)
-        let cases = List.map (specialise_const_int_matrix matrix') cstrs_used in
-        let cases' = List.map (fun (n, mat) -> let (expr, setup) = compile_matrix fail vs mat
-          in (Int32.of_int n, binds_to_anf setup (LinastExpr.compound expr))) cases in
-          if List.length cstrs_used = signature.cstr_consts then (* Reason for not doing as pre-processing, can tell if all int cases considered *)
-          (Compound.mkswitch v cases' None, []) else
-        (Compound.mkswitch v cases' (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))), [])
+  (* mixture rule *)
+  | (v::vs, matrix) when List.exists
+      (function ([], _,_) -> failwith "Not Possible to have empty list"
+              | (p::ps,_,_) -> not(is_constructor_pattern p)) matrix ->
+     let m1, m2 = apply_mixture_rule matrix in
+     let new_fail = next_fail_count () in
+     let (expr1, setup1) = compile_matrix new_fail values m1 in
+     let (expr2, setup2) = compile_matrix fail values m2 in
+     (Compound.matchtry
+        new_fail
+        (binds_to_anf setup1 (LinastExpr.compound expr1))
+        (binds_to_anf setup2 (LinastExpr.compound expr2)),
+      [])
 
-        | ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_ ->
-          (* TODO: When is cstr_normal non-zero? *)
-          apply_constructor_rule fail v vs matrix (signature.cstr_consts + signature.cstr_nonconsts)
+ (* select correct constructor rule *)
+ | (v::vs, ({pat_desc=Tpat_tuple l}::_,_,_)::_) ->
+    apply_tuple_rule fail v vs matrix (List.length l)
 
-        | ({pat_desc=Tpat_record (_, _)}::_,_,_)::_ ->
-          apply_record_rule fail v vs matrix
+ | (v::vs, ({pat_desc=Tpat_record (_, _)}::_,_,_)::_) ->
+    apply_record_rule fail v vs matrix
 
-        | ({pat_desc=Tpat_array _}::_,_,_)::_ ->
-          apply_array_rule fail v vs matrix
+ | (v::vs, ({pat_desc=Tpat_array _}::_,_,_)::_) ->
+    apply_array_rule fail v vs matrix
 
-        (* Similar to constructor case but just test each constant + have a default fail
-           TODO: Sometimes better to use if/else rather than a switch? e.g. only 1 row? *)
-        | ({pat_desc=Tpat_constant (Const_int _)}::_,_,_)::_ ->
-          let get_const_int = function
-            | ({pat_desc=Tpat_constant (Const_int i)}::_,_,_) -> i
-            | _ -> failwith "Can't apply const_int rule" in
-          let ints_used = List.fold_left (fun ints row -> let n = get_const_int row in
-            if List.mem n ints then ints else n::ints) [] matrix in
-          let cases = List.map (specialise_const_int_matrix matrix) ints_used in
-          (* TODO: Just make specialise_const_int_matrix mutually recursive *)
-          let cases' = List.map (fun (n, mat) -> let (expr, setup) = compile_matrix fail vs mat
-            (* TODO: Need to be careful with mapping at wasm level of what does/doesn't get doubled *)
-            in (Int32.of_int n, binds_to_anf setup (LinastExpr.compound expr))) cases in
-          (Compound.mkswitch v cases' (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))), [])
+ (* Handle constant constructors specially *)
+ | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_) when signature.cstr_nonconsts = 0 ->
+   let get_cstr_tag = function
+      | ({pat_desc=Tpat_construct (_, desc, _)}::_,_,_) -> get_const_constructor_tag desc.cstr_tag
+      | _ -> failwith "Can't apply constructor rule" in
+   let cstrs_used = List.fold_left (fun cstrs row -> let tag = get_cstr_tag row in
+     if List.mem tag cstrs then cstrs else tag::cstrs) [] matrix in
+   (* Replace with int tags *)
+   let matrix' = List.map (function (({pat_desc=Tpat_construct (_, desc, _)} as p)::ps,act,g) ->
+      ({p with pat_desc=Tpat_constant(Asttypes.Const_int (get_const_constructor_tag desc.cstr_tag))}::ps, act, g)
+      | _ -> failwith "Not a constructor pattern") matrix in
+    apply_const_int_rule fail v vs matrix' cstrs_used (List.length cstrs_used = signature.cstr_consts)
 
-        (* TODO: Support chars/floats/strings/int32/64/native?
-                 Linast has all of these but CSwitch only supports int32 tags *)
-        | ({pat_desc=Tpat_constant _}::_,_,_)::_ ->raise (NotImplemented __LOC__)
-        | _ -> failwith "Should never happen, wrong rule applied"
-      )
-    else (* mixture rule *)
-      let m1, m2 = apply_mixture_rule matrix in
-      let new_fail = next_fail_count () in
-      let (expr1, setup1) = compile_matrix new_fail values m1 in
-      let (expr2, setup2) = compile_matrix fail values m2 in
-      (Compound.matchtry
-         new_fail
-         (binds_to_anf setup1 (LinastExpr.compound expr1))
-         (binds_to_anf setup2 (LinastExpr.compound expr2)),
-       [])
-  | _ -> failwith "Malformed matrix/vector input"
+ | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_) ->
+   (* TODO: When is cstr_normal non-zero? *)
+   apply_constructor_rule fail v vs matrix (signature.cstr_consts + signature.cstr_nonconsts)
+
+ (* TODO: May be better to use simple if/else if only 1 constant. Do in later optimisation pass? *)
+ | (v::vs, ({pat_desc=Tpat_constant (Const_int _)}::_,_,_)::_) ->
+    let get_const_int = function
+      | ({pat_desc=Tpat_constant (Const_int i)}::_,_,_) -> i
+      | _ -> failwith "Can't apply const_int rule" in
+    let ints_used = List.fold_left (fun ints row -> let n = get_const_int row in
+      if List.mem n ints then ints else n::ints) [] matrix in
+    apply_const_int_rule fail v vs matrix ints_used false
+ | (v::vs, ({pat_desc=Tpat_constant _}::_,_,_)::_) ->raise (NotImplemented __LOC__)
+ | _ -> failwith "Malformed matrix/vector input"
 
 and apply_tuple_rule fail v vs matrix len =
   let new_val_ids = List.init len (fun _ -> Ident.create_local "tuple_arg") in
@@ -285,3 +253,19 @@ and apply_record_rule fail v vs matrix =
         | _ -> failwith "Wrong rule applied") matrix in
     let (expr, setup) = compile_matrix fail (new_vals @ vs) new_rows in
     (expr, new_val_binds @ setup) (* Extract each of the fields then recursively match the pattern *)
+
+(* TODO: Handle other constants *) (* Total=true when created from full constant constructor signature *)
+(* Working out ints_used factored out to allow computing if total or not for const constructors *)
+and apply_const_int_rule fail v vs matrix ints_used total =
+  let specialise_const_int_matrix n =
+    let rows = List.filter (function
+      | ({pat_desc=Tpat_constant (Const_int m)}::_,_,_) -> m = n
+      | _ -> failwith "Wrong rule applied") matrix in
+    let new_matrix = List.map (function
+     | (_::ps,act,g) -> (ps, act, g)
+     | _ -> failwith "Wrong rule applied") rows in
+    let (expr, setup) = compile_matrix fail vs new_matrix in
+    (Int32.of_int n, binds_to_anf setup (LinastExpr.compound expr)) in
+  let cases = List.map specialise_const_int_matrix ints_used in
+  if total then (Compound.mkswitch v cases None, []) else
+  (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))), [])
