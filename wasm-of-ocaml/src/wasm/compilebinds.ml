@@ -77,9 +77,9 @@ let compile_const (c : Asttypes.constant) =
   match c with
   | Const_int i -> MConstI32 (Int32.of_int i)
   | Const_string _ -> failwith "no strings yet" (* TODO: Implement strings *)
-  | Const_float f_str -> failwith "no floats yet" (* TODO: Implement floats *)
+  | Const_float f_str -> MConstF64 (float_of_string f_str)
   | Const_int32 i32 -> MConstI32 i32
-  | Const_int64 i64 -> MConstI64 i64
+  | Const_int64 i64 -> MConstI64 i64 (* TODO: Should this be supported currently? Likely fails in practice *)
  (* | Const_bool b -> if b then const_true else const_false  TODO: Handle bools specially at Linast level
     Could modify the OCaml compiler, but that would affect type checking so probably don't want to *)
   | Const_char c -> failwith "Characters not yet supported"
@@ -92,9 +92,8 @@ let compile_imm env (i : imm_expr) =
   | ImmMatchFail i -> MImmFail i (* TODO: Not yet implemented at lower level, requires tracking trap block distances *)
 
 (* Line 106 in Grain *)
-
-(* TODO: Understnad all of this (particularly later part) *)
 let compile_function env args body : closure_data =
+  let arg, rest = match args with x::xs -> x, xs | _ -> failwith "Function of no args" in
   let used_var_set = free_vars Ident.Set.empty body in
   (* TODO: Should ignore global variables, shouldn't go into closure (can use find_id?) *)
   let free_var_set = Ident.Set.diff used_var_set (Ident.Set.of_list args) in
@@ -103,10 +102,10 @@ let compile_function env args body : closure_data =
   let free_binds = Utils.fold_lefti (fun acc closure_idx var ->
       Ident.add var (MClosureBind(Int32.of_int closure_idx)) acc)
       Ident.empty free_vars in
-  let closure_arg = Ident.create_local "$self" in (* TODO: Is the $ in name just to avoid clashes? *)
+  let closure_arg = Ident.create_local "$self" in
   (* Closure is made available in function by being an added first argument *)
   (* Unroll currying here, so only ever 2 args *)
-  let new_args = (*closure_arg::args*) match args with x::xs -> [closure_arg; x] | _ -> failwith "Function of no args" in
+  let new_args = [closure_arg; arg] in
   let arg_binds = Utils.fold_lefti (fun acc arg_idx arg ->
       Ident.add arg (MArgBind(Int32.of_int arg_idx)) acc)
       free_binds new_args in
@@ -122,12 +121,9 @@ let compile_function env args body : closure_data =
     stack_idx=0;
     arity=arity;
   } in
-
-  let remaining_args = match args with x::xs -> xs | _ -> failwith "Function of no args" in
-
   let worklist_item = {
     (* Unfold currying here *)
-    body=Lin (match remaining_args with [] -> body | _ -> LinastExpr.compound (Compound.mkfun remaining_args body));
+    body=Lin (match rest with [] -> body | _ -> LinastExpr.compound (Compound.mkfun rest body));
     env=func_env;
     idx;
     arity;
@@ -136,7 +132,7 @@ let compile_function env args body : closure_data =
   worklist_add worklist_item;
   {
     func_idx=(Int32.of_int idx);
-    arity=(Int32.of_int arity); (* Work out arity - possibly only for tuples so don't use initially? *)
+    arity=(Int32.of_int arity); (* Should remove, always going to be 2? *)
     (* These variables should be in scope when the lambda is constructed. *)
     variables=(List.map (fun id -> MImmBinding(find_id id env)) free_vars);
   }

@@ -63,8 +63,8 @@ type asmtype = Wasm.Types.value_type =
 
 type constant =
   | MConstI32 of int32
-  | MConstI64 of int64
-  | MConstF32 of float
+  | MConstI64 of int64 (* Likely want to remove this until implemented. Similarly, Int32 will need wrapper, not just MConstI32 *)
+(*  | MConstF32 of float    No reason I would want to support 32 bit floats *)
   | MConstF64 of float
 
 type binding =
