@@ -70,7 +70,6 @@ and transl_apply f args =
     | (_, Some e) :: rest -> let (im, s) = translate_imm e in
       let (args, setup) = getSetupAndImms rest in ((Some im) :: args, s @ setup)
   in let (args, argsetup) = getSetupAndImms args in
-(*  let (f, fsetup) = translate_compound f in *)
 
   let flattenApp (f : compound_expr) args = match f.desc with
     | CApp(f', args') -> ({f with desc=CApp(f', args' @ args)}, [])
@@ -86,14 +85,8 @@ and transl_apply f args =
   in let (ab, ap) = getAbstractionsAndApplications args in
   let (newF, newSetup) = flattenApp f ap in
 
-  (* TODO: Can't currently curry functions in this way, so unroll them *)
   match ab with [] -> (newF, argsetup @ newSetup) (* The usual obvious case *)
-    | _ ->
-    (List.fold_right
-    (fun id expr -> Compound.mkfun [id] (LinastExpr.compound expr)) ab newF,
-    argsetup @ newSetup)
-  (*  (Compound.mkfun ab (LinastExpr.compound newF), argsetup @ newSetup)  *)
-  (* TODO: Check all setup expressions carried through to final return value *)
+    | _ -> (Compound.mkfun ab (LinastExpr.compound newF), argsetup @ newSetup) (* Some labels remaining *)
 
 and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
@@ -189,7 +182,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
   (* Rather than special case for currying, could add a special case for tuples. *)
   | Texp_function { param; cases; partial; } ->
-    translate_function param cases partial
+    translate_function param partial cases
 
   (* Fully applied primitive *)
   | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p})}, oargs)
@@ -262,24 +255,24 @@ and translate_prim_app (primDesc : Primitive.description) args =
         | _ -> assert false (* Should never be possible to get an arity mismatch here *)
       )
 
-and translate_function param cases partial =
-  (* TODO: Use this first one or not? Current Wasm implementation doesn't allow currying! *)
-   (* match cases with [{c_lhs=pat; c_guard=None;
-    c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
-    partial = partial'; }; exp_env; exp_type} as exp}]
-    (* Pattern always matches and never binds anything *)
-    (* Find the function for the inner body and attach param on front *)
-    when Parmatch.inactive ~partial pat ->
-      (match translate_compound exp with
-        | ({desc=CFunction(args, body);_} as comp, setup) ->
-          ({comp with desc=CFunction(param::args, body)}, setup)
-        | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
-      )
-  | _ -> *)
-   let matrix = List.map case_to_row cases in
-   let (body, setup) = compile_matrix fail_trap [Imm.id param] matrix in
-   (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound body)), [])
-
+and translate_function param partial = function
+   (* Currying gets unrolled again later, but makes IR neater and could aid optimisations *)
+   (* Handling currying this way lower down also makes writing functions for primitives/labelled arg functions neater *)
+   [{c_lhs=pat; c_guard=None;
+      c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
+      partial = partial'; }; exp_env; exp_type} as exp}]
+      (* Pattern always matches and doesn't bind anything, since the variable in the pattern is the same as the function arg *)
+      (* Find the function for the inner body and attach param on front *)
+      when Parmatch.inactive ~partial pat ->
+        (match translate_compound exp with
+          | ({desc=CFunction(args, body);_} as comp, setup) ->
+            ({comp with desc=CFunction(param::args, body)}, setup)
+          | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
+        )
+    | cases ->
+     let matrix = List.map case_to_row cases in
+     let (body, setup) = compile_matrix fail_trap [Imm.id param] matrix in
+     (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound body)), [])
 
 (* Taken from transl_core.transl_letop of OCaml compiler *)
 (*
@@ -315,7 +308,7 @@ and translate_letop letop ands param case partial =
   in
   let (exp, exp_setup) = loop (translate_compound letop.bop_exp) ands in
   let (func, func_setup) =
-    translate_function param [case] partial
+    translate_function param partial [case]
   in
   let exp_id = Ident.create_local "andbody" in
   let func_id = Ident.create_local "func" in

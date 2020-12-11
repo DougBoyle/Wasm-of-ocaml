@@ -36,28 +36,12 @@ let prim_table = Misc.create_hashtable 24 [
     "@", Binary(Append);
 ]
 
-let make_if_fun args setupid setupval cond compound1 compound2 =
- match args with [] -> failwith "Given empty args"
- | x::xs ->
- (* Compound.mkfun args  HAVE TO REWRITE UNTIL TUPLES/CURRIED SORTED OUT *)
-  Compound.mkfun [x]
-  (List.fold_right (fun id expr -> LinastExpr.compound (Compound.mkfun [id] expr)) xs
-   (
-   LinastExpr.mklet setupid Local setupval
-    (LinastExpr.compound
-     (Compound.mkif
-      cond
-      (LinastExpr.compound compound1)
-      (LinastExpr.compound compound2)))))
-
-
 let bindBinary opId operator =
     let id1, id2 = Ident.create_local "prim", Ident.create_local "prim" in
     (* TODO: Change to specifying curried/tuple to make this neater (for now just done to make work) *)
     BLet(opId,
-    Compound.mkfun [id1] (LinastExpr.compound (Compound.mkfun [id2]
-    (LinastExpr.compound (Compound.binary operator (Imm.id id1) (Imm.id id2))))))
-
+    Compound.mkfun [id1; id2]
+        (LinastExpr.compound (Compound.binary operator (Imm.id id1) (Imm.id id2))))
 
 let bindUnary opId operator =
     let id = Ident.create_local "prim" in

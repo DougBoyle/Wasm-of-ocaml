@@ -105,12 +105,13 @@ let compile_function env args body : closure_data =
       Ident.empty free_vars in
   let closure_arg = Ident.create_local "$self" in (* TODO: Is the $ in name just to avoid clashes? *)
   (* Closure is made available in function by being an added first argument *)
-  let new_args = closure_arg::args in
+  (* Unroll currying here, so only ever 2 args *)
+  let new_args = (*closure_arg::args*) match args with x::xs -> [closure_arg; x] | _ -> failwith "Function of no args" in
   let arg_binds = Utils.fold_lefti (fun acc arg_idx arg ->
       Ident.add arg (MArgBind(Int32.of_int arg_idx)) acc)
       free_binds new_args in
   let idx = next_lift() in (* TODO: What is this used for - gets put into the work_item - function body being compiled? *)
-  let arity = List.length new_args in
+  let arity = 2 (* List.length new_args TODO: Remove arity field, always 2 (besides toplevel main?) *) in
   (* Number of vars declared in body hence number of locals added.
      ASSERTION: At least as large as final stack_idx when compiling.
                 If larger, just get unused slots. If too small, get out of bounds local accesses. *)
@@ -121,8 +122,12 @@ let compile_function env args body : closure_data =
     stack_idx=0;
     arity=arity;
   } in
+
+  let remaining_args = match args with x::xs -> xs | _ -> failwith "Function of no args" in
+
   let worklist_item = {
-    body=Lin body;
+    (* Unfold currying here *)
+    body=Lin (match remaining_args with [] -> body | _ -> LinastExpr.compound (Compound.mkfun remaining_args body));
     env=func_env;
     idx;
     arity;
@@ -194,21 +199,13 @@ let rec compile_comp env (c : compound_expr) =
   (* TODO: Strings/floats *)
   | CGetTag(obj) ->
     MDataOp(MGetTag, compile_imm env obj)
-  (* TODO: Check this is actually correct *)
   | CMatchTry (i, body1, body2) ->
-   MTry(i, compile_linast env body1, compile_linast env body2)
-  | CFunction(args, body) -> (* TODO: Resolve mismatch of args!! Just have functions take 1 arg for now (tuples later) *)
-    if List.length args > 1 then Printf.printf "TOO MANY ARGS\n";
+    MTry(i, compile_linast env body1, compile_linast env body2)
+  | CFunction(args, body) ->
     MAllocate(MClosure(compile_function env args body))
-  (* TODO: Currying vs tuple mismatch - likely want to do many Function calls (can expand lower down)
-           NEED CURRYING ANNOTATION *)
   | CApp(f, args) ->
-    (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Yes, for abs/min/max later *)
+    (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Maybe for optimisation when target known *)
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args)
- (* Use for min/max/abs operators later, to avoid implementing them in Linast instead and just have as runtime funcs
- | CAppBuiltin(modname, name, args) ->
-    let builtin_idx = Int32.zero in
-    MCallKnown(builtin_idx, List.map (compile_imm env) args) *)
   | CImm i -> MImmediate(compile_imm env i)
 
 and compile_linast env expr =

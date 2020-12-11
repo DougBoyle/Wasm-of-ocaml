@@ -554,37 +554,18 @@ and compile_instr env instr =
   | MUnary(op, arg) -> compile_unary env op arg
   | MBinary(op, arg1, arg2) -> compile_binary env op arg1 arg2
   | MSwitch(arg, branches, default) -> compile_switch env arg branches default
-  | MStore(binds) -> compile_store env binds (* TODO: Difference MAllocate and MStore - alloc for compound, store for toplevel *)
-  (* TODO: Currying vs tuples - may need to generate many Ast.CallIndirects - take 1 arg at a time?? *)
-  (* Need CURRYING/TUPLE options to make this more efficient. Effectively unrolling nested MCallIndirects *)
+  | MStore(binds) -> compile_store env binds (* Difference between MAllocate and MStore - alloc for compound, store for toplevel *)
+  (* args are curried, so unroll this to do many calls *)
   | MCallIndirect(func, args) ->
     let compiled_func = compile_imm env func in
     let get_swap = get_swap env 0 in
     let tee_swap = tee_swap env 0 in
     List.fold_left
     (fun f arg -> let compiled_arg = compile_imm env arg in
-      (* Arity fixed due to never handling tuple arg/result specially. TODO: Make tuples special *)
       let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
       f @ (untag Closure) @ tee_swap @ compiled_arg @ get_swap @ [load ~offset:0l (); Ast.CallIndirect(ftype);])
     compiled_func args
-  (*
-    let compiled_func = compile_imm env func in
-    let compiled_args = List.flatten (List.map (compile_imm env) args) in
-    let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env (1 + List.length args))) in
-    let get_swap = get_swap env 0 in
-    let tee_swap = tee_swap env 0 in
-    let all_args =
-      compiled_func @
-    (*  untag LambdaTagType @  -- Probably need, but ignoring tags for now *)
-      tee_swap @
-      compiled_args in
 
-    all_args @               --- closure; args; fun_ptr_from_closure
-    get_swap @ [
-      load ();
-      Ast.CallIndirect(ftype);
-    ]
-   *)
   | MIf(cond, thn, els) ->
     let compiled_cond = compile_imm env cond in
     let compiled_thn = List.map
