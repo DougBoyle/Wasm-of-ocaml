@@ -261,12 +261,14 @@ and translate_function param partial = function
    [{c_lhs=pat; c_guard=None;
       c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
       partial = partial'; }; exp_env; exp_type} as exp}]
-      (* Pattern always matches and doesn't bind anything, since the variable in the pattern is the same as the function arg *)
-      (* Find the function for the inner body and attach param on front *)
       when Parmatch.inactive ~partial pat ->
+      (* Add the parameter onto the list of arguments of the inner function, with the necessary pattern matching *)
         (match translate_compound exp with
           | ({desc=CFunction(args, body);_} as comp, setup) ->
-            ({comp with desc=CFunction(param::args, body)}, setup)
+             let matrix = [([pat], body)] in
+             (* Argument binding so 'exported' list not needed *)
+             let tree = CompileLet.compile_matrix ~exported:[] fail_trap [Imm.id param] matrix in
+            ({comp with desc=CFunction(param::args, tree)}, setup)
           | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
         )
     | cases ->

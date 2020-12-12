@@ -70,7 +70,7 @@ let worklist = ref ([] : work_element list)
          Why is this built in reverse order? May be possible to rewrite other way round *)
 let worklist_add elt = worklist := !worklist @ [elt]
 let worklist_pop () = match !worklist with
-  | [] -> raise Not_found
+  | [] -> failwith "Worklist empty"
   | x::xs -> worklist := xs; x
 
 let compile_const (c : Asttypes.constant) =
