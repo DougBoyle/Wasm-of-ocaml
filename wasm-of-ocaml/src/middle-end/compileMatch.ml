@@ -157,6 +157,8 @@ let rec compile_matrix fail values matrix =
     let ints_used = List.fold_left (fun ints row -> let n = get_const_int row in
       if List.mem n ints then ints else n::ints) [] matrix in
     apply_const_int_rule fail v vs matrix ints_used false
+ | (v::vs, ({pat_desc=Tpat_constant (Const_float _)}::_,_,_)::_) ->
+   apply_float_rule fail v vs matrix
  | (v::vs, ({pat_desc=Tpat_constant _}::_,_,_)::_) ->raise (NotImplemented __LOC__)
  | _ -> failwith "Malformed matrix/vector input"
 
@@ -269,3 +271,27 @@ and apply_const_int_rule fail v vs matrix ints_used total =
   let cases = List.map specialise_const_int_matrix ints_used in
   if total then (Compound.mkswitch v cases None, []) else
   (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))), [])
+
+(* Can't switch on floats, so have to generate nested if-then-else *)
+and apply_float_rule fail v vs matrix =
+  let specialise_float_matrix f =
+    let rows = List.filter (function (* All constants must be floats due to type-checking *)
+      | ({pat_desc=Tpat_constant c}::_,_,_) -> f = c
+      | _ -> failwith "Wrong rule applied") matrix in
+    let new_matrix = List.map (function
+     | (_::ps,act,g) -> (ps, act, g)
+     | _ -> failwith "Wrong rule applied") rows in
+    let (expr, setup) = compile_matrix fail vs new_matrix in
+    (f, binds_to_anf setup (LinastExpr.compound expr)) in
+  let get_float = function
+        | ({pat_desc=Tpat_constant c}::_,_,_) -> c
+        | _ -> failwith "Can't apply float rule" in
+  let floats_used = List.fold_left (fun floats row -> let f = get_float row in
+    if List.mem f floats then floats else f::floats) [] matrix in
+  let cases = List.map specialise_float_matrix floats_used in
+  (* Made awkward by wanting to return a compound *)
+  List.fold_right (fun (f, body) (rest, rest_setup) ->
+    let test_result = Compound.binary Eq (Imm.const f) v in
+    let testid = Ident.create_local "isequal" in
+    (Compound.mkif (Imm.id testid) body (binds_to_anf rest_setup (LinastExpr.compound rest)),
+     [BLet(testid, test_result);])) cases (Compound.imm (Imm.fail fail), [])
