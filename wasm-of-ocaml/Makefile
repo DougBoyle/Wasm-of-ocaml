@@ -13,3 +13,9 @@ unittest:
 rt:
 	wat2wasm src/runtime.wast
 	mv runtime.wasm samples/runtime.wasm
+cleanout:
+	rm benchmarks/out/*.wasm
+	rm benchmarks/js/*.js
+	rm benchmarks/js/*.byte
+	rm benchmarks/grain/out/*.wasm
+	rm benchmarks/C/out/*.wasm
