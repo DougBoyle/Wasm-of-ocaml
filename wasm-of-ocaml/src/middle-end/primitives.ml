@@ -11,7 +11,6 @@ let prim_table = Misc.create_hashtable 24 [
     "%greaterequal", Binary(GTE);
     "%greaterthan", Binary(GT);
     "%compare", Binary(Compare);
-    (* TODO: min/max/abs/min_int/max_int/@ *)
     "%eq", Binary (Eq_phys);
     "%noteq", Binary (Neq_phys);
 
@@ -28,6 +27,13 @@ let prim_table = Misc.create_hashtable 24 [
     "%mulint", Binary (Mult);
     "%divint", Binary (Div);
     "%modint", Binary (Mod);
+
+    "%negfloat", Unary(FUnNeg);
+    "%addfloat", Binary(FAdd);
+    "%subfloat", Binary(FSub);
+    "%mulfloat", Binary(FMult);
+    "%divfloat", Binary(FDiv);
+    "caml_sqrt_float", Unary(FSqrt);
 
     (* Not actually primitives, but can be treated as such *)
     "abs", Unary(Abs);

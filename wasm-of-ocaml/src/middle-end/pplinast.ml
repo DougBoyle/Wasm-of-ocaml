@@ -53,6 +53,11 @@ let binary ppf = function
   | Mod -> fprintf ppf "mod"
   (* list *)
   | Append -> fprintf ppf "@"
+  (* float *)
+  | FAdd -> fprintf ppf "+."
+  | FSub -> fprintf ppf "-."
+  | FMult -> fprintf ppf "*."
+  | FDiv -> fprintf ppf "/."
 
 let unary ppf = function
   (* boolean *)
@@ -63,7 +68,10 @@ let unary ppf = function
   | UnAdd -> fprintf ppf "identity"
   | Succ -> fprintf ppf "succ"
   | Pred -> fprintf ppf "pred"
-  | Abs (* missing *) -> fprintf ppf "abs"
+  | Abs -> fprintf ppf "abs"
+  (* float *)
+  | FUnNeg -> fprintf ppf "-."
+  | FSqrt -> fprintf ppf "sqrt"
 
 let print_imm ppf (imm : imm_expr) = match imm.desc with
   | ImmIdent id -> Ident.print ppf id

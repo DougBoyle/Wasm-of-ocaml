@@ -133,6 +133,9 @@ let load
   let open Wasm.Ast in
   Load({ty; align; sz; offset;})
 
+(* Offset of 4, floats have a tag of 01 *)
+let load_float = load ~ty:Wasm.Types.F64Type ~offset:3l ()
+
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =
   let rec aux n = function [] -> None | x::xs -> if p x then Some(n, x) else aux (n+1) xs in
@@ -261,7 +264,7 @@ let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
 let compile_unary env op arg : Wasm.Ast.instr' list =
   let compiled_arg = compile_imm env arg in
   match op with
-  | UnAdd -> [] (* Does nothing *)
+  | UnAdd -> compiled_arg (* Does nothing *)
   | UnNeg -> (Ast.Const(encoded_const_int 0)) :: compiled_arg @ [Ast.Binary(Values.I32 Ast.IntOp.Sub)]
   | Not -> compiled_arg @
       const_true @ (* Flip the bit encoded as true/false *)
@@ -275,6 +278,13 @@ let compile_unary env op arg : Wasm.Ast.instr' list =
       Ast.Binary(Values.I32 Ast.IntOp.Sub);
     ]
   | Abs -> compiled_arg @ [call_abs env]
+  (* Skip calling make_float and just create the float constant 0.0 directly *)
+  | FUnNeg -> [Ast.Const (add_dummy_loc (Values.F64Value.to_value (Wasm.F64.of_float 0.0)));] @
+    compiled_arg @ [load_float; Ast.Binary(Values.F64 Ast.FloatOp.Sub); make_float env]
+  | FSqrt -> compiled_arg @ [load_float; Ast.Unary(Values.F64 Ast.FloatOp.Sqrt); make_float env]
+   (*
+   (Ast.Const(encoded_const_int 0)) :: compiled_arg @ [Ast.Binary(Values.I32 Ast.IntOp.Sub)]
+    *)
 
 (* Assumes all operations are on integers, can't reuse for floats *)
 let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
@@ -352,6 +362,14 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
   | Min -> compiled_arg1 @ compiled_arg2 @ [call_min env;]
   | Max -> compiled_arg1 @ compiled_arg2 @ [call_max env;]
   | Append -> compiled_arg1 @ compiled_arg2 @ [call_append env;]
+  | FAdd -> compiled_arg1 @ [load_float] @ compiled_arg2 @
+    [load_float; Ast.Binary(Values.F64 Ast.FloatOp.Add); make_float env]
+  | FSub -> compiled_arg1 @ [load_float] @ compiled_arg2 @
+    [load_float; Ast.Binary(Values.F64 Ast.FloatOp.Sub); make_float env]
+  | FMult -> compiled_arg1 @ [load_float] @ compiled_arg2 @
+    [load_float; Ast.Binary(Values.F64 Ast.FloatOp.Mul); make_float env]
+  | FDiv -> compiled_arg1 @ [load_float] @ compiled_arg2 @
+    [load_float; Ast.Binary(Values.F64 Ast.FloatOp.Div); make_float env]
 
 (** Heap allocations. *)
 let round_up (num : int) (multiple : int) : int =
