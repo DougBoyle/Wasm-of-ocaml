@@ -282,9 +282,6 @@ let compile_unary env op arg : Wasm.Ast.instr' list =
   | FUnNeg -> [Ast.Const (add_dummy_loc (Values.F64Value.to_value (Wasm.F64.of_float 0.0)));] @
     compiled_arg @ [load_float; Ast.Binary(Values.F64 Ast.FloatOp.Sub); make_float env]
   | FSqrt -> compiled_arg @ [load_float; Ast.Unary(Values.F64 Ast.FloatOp.Sqrt); make_float env]
-   (*
-   (Ast.Const(encoded_const_int 0)) :: compiled_arg @ [Ast.Binary(Values.I32 Ast.IntOp.Sub)]
-    *)
 
 (* Assumes all operations are on integers, can't reuse for floats *)
 let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
@@ -333,7 +330,6 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
              List.map add_dummy_loc swap_get,
              List.map add_dummy_loc (compile_imm (enter_block env) arg2))
     ]
-  (* TODO: Rewrite to call runtime compare function to do more general 'a * 'a comparison *)
   | GT ->
     compiled_arg1 @ compiled_arg2 @
     [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.GtS)] @ encode_num
@@ -348,12 +344,10 @@ let compile_binary (env : env) op arg1 arg2 : Wasm.Ast.instr' list =
     [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.LeS)] @ encode_num
   | Eq ->
     compiled_arg1 @ compiled_arg2 @
-    [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
+    [call_compare env; Ast.Test(Values.I32 Ast.IntOp.Eqz);] @ encode_num
   | Neq -> (* TODO: Could optimise to use Select? *)
      compiled_arg1 @ compiled_arg2 @
      [call_compare env; Ast.Const(const_int32 0); Ast.Compare(Values.I32 Ast.IntOp.GtU)] @ encode_num
-  (* TODO: Neq -- Is it worth removing this and compiling to Not (Eq ...)? *)
-  (* TODO: Physical equality - should actually be relatively simple, just compare literal/pointer. *)
   | Compare -> compiled_arg1 @ compiled_arg2 @ [call_compare env;] (* @ encode_num Not needed - takes difference of encoded args *)
   | Eq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num
   | Neq_phys -> compiled_arg1 @ compiled_arg2 @ [Ast.Compare(Values.I32 Ast.IntOp.Eq)] @ encode_num @

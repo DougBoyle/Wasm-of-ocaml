@@ -3,7 +3,7 @@ open LinastUtils
 
 type arity = Unary of unop | Binary of binop
 
-let prim_table = Misc.create_hashtable 24 [
+let prim_table = Misc.create_hashtable 31 [
     "%equal", Binary(Eq);
     "%notequal", Binary(Neq);
     "%lessequal", Binary(LTE);
