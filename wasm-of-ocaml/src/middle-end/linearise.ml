@@ -277,6 +277,11 @@ and translate_prim_app (primDesc : Primitive.description) args =
         | Binary binop, [arg1; arg2] -> let (imm1, setup1) = translate_imm arg1 in
           let (imm2, setup2) = translate_imm arg2 in
           (Compound.binary binop imm1 imm2, setup1 @ setup2)
+        | CompoundUnary c_fun, [arg] -> let (imm, setup1) = translate_imm arg in
+          let (expr, setup2) = c_fun imm in (expr, setup1 @ setup2)
+        | CompoundBinary c_fun, [arg1; arg2] -> let (imm1, setup1) = translate_imm arg1 in
+          let (imm2, setup2) = translate_imm arg2 in
+          let (expr, setup3) = c_fun imm1 imm2 in (expr, setup1 @ setup2 @ setup3)
         | _ -> assert false (* Should never be possible to get an arity mismatch here *)
       )
 

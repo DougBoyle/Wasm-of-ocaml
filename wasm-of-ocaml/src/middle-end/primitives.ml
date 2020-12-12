@@ -2,8 +2,13 @@ open Linast
 open LinastUtils
 
 type arity = Unary of unop | Binary of binop
+(* Implemented at IR level, functional form allows getting as operators, but also inlining when fully applied.
+   Either apply function to new idents, for creating the body of a function to pass back an operator,
+   or apply to the actual immediates to inline them. *)
+  | CompoundUnary of (Linast.imm_expr -> Linast.compound_expr * LinastUtils.linast_setup list)
+  | CompoundBinary of (Linast.imm_expr -> Linast.imm_expr -> Linast.compound_expr * LinastUtils.linast_setup list)
 
-let prim_table = Misc.create_hashtable 27 [
+let prim_table = Misc.create_hashtable 31 [
     "%equal", Binary(Eq);
     "%notequal", Binary(Neq);
     "%lessequal", Binary(LTE);
@@ -34,12 +39,22 @@ let prim_table = Misc.create_hashtable 27 [
     "%mulfloat", Binary(FMult);
     "%divfloat", Binary(FDiv);
     "caml_sqrt_float", Unary(FSqrt);
+
+    (* Reference operations just mapped to other expressions *)
+    "%makemutable", CompoundUnary(fun imm -> (Compound.makeblock 0l [imm], []));
+    "%field0", CompoundUnary(fun imm -> (Compound.field imm 0l, []));
+    "%setfield0", CompoundBinary(fun imm1 imm2 -> (Compound.setfield imm1 0l imm2, []));
+    "%incr", CompoundUnary(let v1 = Ident.create_local "old_value" and v2 = Ident.create_local "new_value" in
+      fun imm -> (Compound.setfield imm 0l (Imm.id v2),
+                 [BLet(v1, Compound.field imm 0l); BLet(v2, Compound.unary Succ (Imm.id v1));]));
+    "%decr", CompoundUnary(let v1 = Ident.create_local "old_value" and v2 = Ident.create_local "new_value" in
+      fun imm -> (Compound.setfield imm 0l (Imm.id v2),
+                 [BLet(v1, Compound.field imm 0l); BLet(v2, Compound.unary Pred (Imm.id v1));]));
 ]
 
 let make_if_fun args setupid setupval cond compound1 compound2 =
  match args with [] -> failwith "Given empty args"
  | x::xs ->
- (* Compound.mkfun args  HAVE TO REWRITE UNTIL TUPLES/CURRIED SORTED OUT *)
   Compound.mkfun [x]
   (List.fold_right (fun id expr -> LinastExpr.compound (Compound.mkfun [id] expr)) xs
    (
@@ -106,6 +121,16 @@ let bindUnary opId operator =
   (*  BLet(opId,
       CFunction([id], LCompound(CUnary(operator, ImmIdent id)))) *)
 
+let make_unary_function c_fun =
+  let id = Ident.create_local "arg" in
+  let (expr, setup) = c_fun (Imm.id id) in
+  Compound.mkfun [id] (binds_to_anf setup (LinastExpr.compound expr))
+
+let make_binary_function c_fun =
+  let id1 = Ident.create_local "arg1" and id2 = Ident.create_local "arg2" in
+  let (expr, setup) = c_fun (Imm.id id1) (Imm.id id2) in
+  Compound.mkfun [id1; id2] (binds_to_anf setup (LinastExpr.compound expr))
+
 (* Creates a function performing that operation, adds it to the list of bindings + primitves mapped,
    and returns the Ident to use. *)
 (* Note that in this case, && and || DO evaluate both arguments, so can safely handle in this way rather than an if statement *)
@@ -114,6 +139,8 @@ let bindOp name =
   let binding = match Hashtbl.find prim_table name with
     | Unary unop -> bindUnary opId unop
     | Binary binop -> bindBinary opId binop
+    | CompoundUnary c -> BLet(opId, make_unary_function c)
+    | CompoundBinary c -> BLet(opId, make_binary_function c)
   in
   primBinds := binding :: (!primBinds);
   primIds := (name, opId) :: (!primIds);

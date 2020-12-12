@@ -49,7 +49,7 @@
     i32.or
   )
   (func $compare (export "compare") (param $v1 i32) (param $v2 i32) (result i32)
-    (local $x i32) (local $arity i32) (local $i i32) (local $f f64)
+    (local $x i32) (local $arity i32) (local $i i32) (local $f1 f64) (local $f2 f64)
     block
       block
         block
@@ -80,23 +80,20 @@
       ;; check for float variant tag (-1), in which case just do float equality
       i32.const -1
       i32.eq
-      if ;; compare floats TODO: Special cases e.g. +- 0 and infs/nans. Probably need more complex float comparison.
-         ;; Also note that 'compare NaN NaN' = 0 but 'NaN = NaN' is false. Now need separate 'equals' fun
-         ;; OCaml seems to treat +-0 as equal.
+      if ;; compare floats. Compares according to Wasm's semantics, need to check OCaml's behaviour
         local.get $v1
         f64.load offset=4
+        local.tee $f1
         local.get $v2
         f64.load offset=4
-        f64.sub
-        local.tee $f
-        f64.const 0
+        local.tee $f2
         f64.lt
         if
           i32.const -1
           return
         else
-          local.get $f
-          f64.const 0
+          local.get $f1
+          local.get $f2
           f64.gt
           return
         end
