@@ -3,7 +3,7 @@ open LinastUtils
 
 type arity = Unary of unop | Binary of binop
 
-let prim_table = Misc.create_hashtable 21 [
+let prim_table = Misc.create_hashtable 27 [
     "%equal", Binary(Eq);
     "%notequal", Binary(Neq);
     "%lessequal", Binary(LTE);
@@ -11,7 +11,6 @@ let prim_table = Misc.create_hashtable 21 [
     "%greaterequal", Binary(GTE);
     "%greaterthan", Binary(GT);
     "%compare", Binary(Compare);
-    (* TODO: min/max/abs/min_int/max_int/@ *)
     "%eq", Binary (Eq_phys);
     "%noteq", Binary (Neq_phys);
 
@@ -28,6 +27,13 @@ let prim_table = Misc.create_hashtable 21 [
     "%mulint", Binary (Mult);
     "%divint", Binary (Div);
     "%modint", Binary (Mod);
+
+    "%negfloat", Unary(FUnNeg);
+    "%addfloat", Binary(FAdd);
+    "%subfloat", Binary(FSub);
+    "%mulfloat", Binary(FMult);
+    "%divfloat", Binary(FDiv);
+    "caml_sqrt_float", Unary(FSqrt);
 ]
 
 let make_if_fun args setupid setupval cond compound1 compound2 =

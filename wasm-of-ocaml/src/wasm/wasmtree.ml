@@ -9,27 +9,17 @@
    Simple hack would be to store as [0, num_args, code_ptr, [args]] when all others are [len, tag, [vals]] so 0 => fun
 Similarly not interacting with strings or DOM for now so can completely ignore them for now *)
 
-(* OCaml floats are 64-bit *)
-type float32 = float
-type float64 = float
-
-(* TODO: What are Sexps and why are they used (See https://github.com/janestreet/sexplib) *)
-(*
-let prim1_of_sexp, sexp_of_prim1 = Parsetree.prim1_of_sexp, Parsetree.sexp_of_prim1
-let prim2_of_sexp, sexp_of_prim2 = Parsetree.prim2_of_sexp, Parsetree.sexp_of_prim2
-*)
-
+(* Copied out to make visible without opening Linast in compilewasm *)
 type unop = Linast.unop =
   | Not
-  (* integer *)
   | UnNeg
-  | UnAdd (* Identity - part of OCaml due to principle of least suprise, just the identity op *)
+  | UnAdd
   | Succ
   | Pred
   | Abs
+  | FUnNeg
+  | FSqrt
 
-(* TODO: Some of these handled by giving a Linast expression for them higher up, move that to a wasm definition/function
-         and hence make use of the operators here. *)
 type binop = Linast.binop =
   | Eq
   | Neq
@@ -42,23 +32,24 @@ type binop = Linast.binop =
   | Max
   | Eq_phys
   | Neq_phys
-  (* boolean *)
   | AND
   | OR
-  (* integer *)
   | Add
   | Sub
   | Mult
   | Div
   | Mod
-  (* list *)
   | Append
+  | FAdd
+  | FSub
+  | FMult
+  | FDiv
 
 (* Types within the WASM output *)
 type asmtype = Wasm.Types.value_type =
   | I32Type
   | I64Type
-  | F32Type
+  | F32Type (* Should never actually occur, but want to use same type as Wasm.Types.value_type *)
   | F64Type
 
 type constant =

@@ -4,7 +4,7 @@ open Wasmtree
 let print_typ ppf = function
   | I32Type -> fprintf ppf "i32"
   | I64Type -> fprintf ppf "i64"
-  | F32Type -> fprintf ppf "f32"
+  | F32Type -> failwith "Should never have 32-bit float in OCaml"
   | F64Type -> fprintf ppf "f64"
 
 let rec print_const ppf = function
@@ -12,40 +12,8 @@ let rec print_const ppf = function
   | MConstI64 n -> fprintf ppf "%LiL" n
   | MConstF64 f -> fprintf ppf "%f" f
 
-let binary ppf = function
-  | Eq -> fprintf ppf "="
-  | Neq -> fprintf ppf "<>"
-  | LT -> fprintf ppf "<"
-  | GT -> fprintf ppf ">"
-  | LTE -> fprintf ppf "<="
-  | GTE -> fprintf ppf ">="
-  | Compare  -> fprintf ppf "compare"
-  | Min (* missing *)  -> fprintf ppf "min"
-  | Max (* missing *) -> fprintf ppf "max"
-  | Eq_phys -> fprintf ppf "=="
-  | Neq_phys -> fprintf ppf "!="
-  (* boolean *)
-  | AND -> fprintf ppf "&&"
-  | OR -> fprintf ppf "||"
-  (* integer *)
-  | Add -> fprintf ppf "+"
-  | Sub -> fprintf ppf "-"
-  | Mult -> fprintf ppf "*"
-  | Div -> fprintf ppf "/"
-  | Mod -> fprintf ppf "mod"
-  (* list *)
-  | Append -> fprintf ppf "@"
-
-let unary ppf = function
-  (* boolean *)
-  | Not -> fprintf ppf "not"
-  (* integer *)
-  | UnNeg -> fprintf ppf "-"
-  (* Identity - part of OCaml due to principle of least suprise, just the identity op *)
-  | UnAdd -> fprintf ppf "identity"
-  | Succ -> fprintf ppf "succ"
-  | Pred -> fprintf ppf "pred"
-  | Abs (* missing *) -> fprintf ppf "abs"
+let binary = Pplinast.binary
+let unary = Pplinast.unary
 
 let print_bind ppf = function
   | MArgBind i -> fprintf ppf "arg(%li)" i
