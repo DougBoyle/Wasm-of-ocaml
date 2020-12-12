@@ -65,5 +65,6 @@ so leave it out for now.
 _start is allowed to return a value, just not take any input. Also, returned value can't be accessed.
 
 
-
 Currently massively outperforms everything (for timings) so don't worry about running with -O3
+
+-lm usually needed for including the math library. Doesn't appear to be the case when linking as wasm.

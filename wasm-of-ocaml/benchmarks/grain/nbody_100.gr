@@ -1,0 +1,141 @@
+import Array from 'array'
+
+let pi = 3.141592653589793
+let solar_mass = 4. * pi * pi
+let days_per_year = 365.24
+
+record Planet { mut x : Number, mut y : Number,  mut z : Number,
+  mut vx: Number,  mut vy: Number,  mut vz: Number, mass : Number }
+
+// Throughout code, have to write recursive iteration functions since Grain lacks for loops
+// Also no Sqrt function exposed by stdlib, so skip taking sqrts.
+// (Could probably implement myself in Grain's runtime, but couldn't claim to be fair/optimal)
+
+let advance = bodies => num_bodies => dt => {
+  let n = num_bodies - 1
+
+  let rec loopi = i => if (i  > n) {void} else {
+    let b = bodies[i]
+    let rec loopj = j => if (j  > n) {void} else {
+      let b2 = bodies[j]
+      let dx = b.x - b2.x
+      let dy = b.y - b2.y
+      let dz = b.z - b2.z
+      let dist2 = dx * dx + dy * dy + dz * dz
+      // Should be `dt / (dist2 * sqrt(dist2))` - Grain doesn't have a math library with sqrt yet so left it out
+      // Hence should run faster
+      let mag = dt / dist2
+      b.vx = b.vx - dx * b2.mass * mag
+      b.vy = b.vy - dy * b2.mass * mag
+      b.vz = b.vz - dz * b2.mass * mag
+
+      b2.vx = b2.vx + dx * b.mass * mag
+      b2.vy = b2.vy + dy * b.mass * mag
+      b2.vz = b2.vz + dz * b.mass * mag
+      loopj(j + 1)
+    }
+    loopj(i + 1)
+    loopi(i + 1)
+  }
+  loopi(0)
+
+  let rec updatepos = i => if (i > n) {void} else {
+    let b = bodies[i]
+    b.x = b.x + dt * b.vx
+    b.y = b.y + dt * b.vy
+    b.z = b.z + dt * b.vz
+    updatepos(i + 1)
+  }
+  updatepos(0)
+}
+
+let energy = bodies => num_bodies => {
+    let mut e = 0.
+    let rec loopi = i => if (i == num_bodies) {void} else {
+        let b = bodies[i]
+        e = e + 0.5 * b.mass * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
+        let rec loopj = j => if (j == num_bodies) {void} else {
+            let b2 = bodies[j]
+            let dx = b.x - b2.x
+            let dy = b.y - b2.y
+            let dz = b.z - b2.z
+            // sqrt removed until added to Grain runtime library
+            let distance = dx * dx + dy * dy + dz * dz
+            e = e - (b.mass * b2.mass) / distance
+            loopj(j + 1)
+        }
+        loopj(i + 1)
+        loopi(i + 1)
+    }
+    loopi(0)
+    e
+}
+
+let offset_momentum = bodies => num_bodies => {
+    let mut px = 0.
+    let mut py = 0.
+    let mut pz = 0.
+    let rec loop = i => if (i == num_bodies) {void} else {
+        px = px + bodies[i].vx * bodies[i].mass
+        py = py + bodies[i].vy * bodies[i].mass
+        pz = pz + bodies[i].vz * bodies[i].mass
+        loop(i + 1)
+    }
+    // Get an error without 0 at front
+    bodies[0].vx = 0 - px / solar_mass
+    bodies[0].vy = 0 - py / solar_mass
+    bodies[0].vz = 0 - pz / solar_mass
+}
+
+
+let jupiter = {x : 4.84143144246472090e+00, y : -1.16032004402742839e+00,
+         z : -1.03622044471123109e-01, vx : 1.66007664274403694e-03 * days_per_year,
+         vy : 7.69901118419740425e-03 * days_per_year, vz : -6.90460016972063023e-05 * days_per_year,
+         mass : 9.54791938424326609e-04 * solar_mass}
+
+let saturn = { x : 8.34336671824457987e+00,
+               y : 4.12479856412430479e+00,
+               z : -4.03523417114321381e-01,
+               vx : -2.76742510726862411e-03 * days_per_year,
+               vy : 4.99852801234917238e-03 * days_per_year,
+               vz : 2.30417297573763929e-05 * days_per_year,
+               mass : 2.85885980666130812e-04 * solar_mass   }
+
+let uranus = { x : 1.28943695621391310e+01,
+               y : -1.51111514016986312e+01,
+               z : -2.23307578892655734e-01,
+               vx : 2.96460137564761618e-03 * days_per_year,
+               vy : 2.37847173959480950e-03 * days_per_year,
+               vz : -2.96589568540237556e-05 * days_per_year,
+               mass : 4.36624404335156298e-05 * solar_mass     }
+
+let neptune = { x : 1.53796971148509165e+01,
+                y : -2.59193146099879641e+01,
+                z : 1.79258772950371181e-01,
+                vx : 2.68067772490389322e-03 * days_per_year,
+                vy : 1.62824170038242295e-03 * days_per_year,
+                vz : -9.51592254519715870e-05 * days_per_year,
+                mass : 5.15138902046611451e-05 * solar_mass  }
+
+let sun = { x : 0.,  y : 0.,  z : 0.,  vx : 0.,  vy : 0., vz : 0.,
+            mass : solar_mass }
+
+let bodies = [> sun, jupiter, saturn, uranus, neptune]
+let num_bodies = 5
+
+// Number of iterations, gets stuck if more than 105
+let n = 100
+
+// Export result, since can't print it
+let mut e = 0
+offset_momentum(bodies)(num_bodies)
+e = energy(bodies)(num_bodies)
+let rec step = i => if (i > n) {void} else {
+    advance(bodies)(num_bodies)(0.01)
+    step(i+1)
+}
+step(1)
+// Add to first call to avoid dead assignment
+e = e + energy(bodies)(num_bodies)
+
+export e

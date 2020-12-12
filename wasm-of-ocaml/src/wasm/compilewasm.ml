@@ -422,7 +422,7 @@ let compile_data_op env imm op =
   | MSet(idx, imm) ->
     block @ (untag Data) @ (compile_imm env imm) @ [
         store ~offset:(Int32.mul 4l (Int32.add idx 2l)) ();
-      ] @ (compile_imm env imm) (* Why do we put the value on the stack again after? *)
+      ] @ const_false (* Return unit *)
   | MGetTag -> (* Not divided by 2 unless actually used in a switch *)
     block @ (untag Data) @ [
       load ~offset:0l ();
