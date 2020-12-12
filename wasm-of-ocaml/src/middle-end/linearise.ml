@@ -195,7 +195,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
         (app, arg_setups @ setup)
   (* Not 'Val_prim primitive_description' so have to extract arity manually. val_kind = Val_reg to exclude Val_prim cases *)
   | Texp_apply({exp_desc = Texp_ident(Path.Pdot(Path.Pident (Ident.Global "Stdlib"), name), _, {val_kind = Val_reg})}, oargs)
-    when List.length oargs >= (match Hashtbl.find Primitives.prim_table name with Unary _ -> 1 | Binary _ -> 2)
+    when List.length oargs >= (match Hashtbl.find Primitives.prim_table name with Unary _ -> 1 | Binary _ -> 2
+                                    | _ -> failwith "No such cases for Compound functions")
          && List.for_all (fun (_, arg) -> arg <> None) oargs ->
     let op, setup, extra_args = (match (Hashtbl.find Primitives.prim_table name, oargs) with
       | Unary unop, (_, Some arg)::extra_args ->
@@ -252,6 +253,11 @@ and translate_prim_app (primDesc : Primitive.description) args =
         | Binary binop, [arg1; arg2] -> let (imm1, setup1) = translate_imm arg1 in
           let (imm2, setup2) = translate_imm arg2 in
           (Compound.binary binop imm1 imm2, setup1 @ setup2)
+        | CompoundUnary c_fun, [arg] -> let (imm, setup1) = translate_imm arg in
+          let (expr, setup2) = c_fun imm in (expr, setup1 @ setup2)
+        | CompoundBinary c_fun, [arg1; arg2] -> let (imm1, setup1) = translate_imm arg1 in
+          let (imm2, setup2) = translate_imm arg2 in
+          let (expr, setup3) = c_fun imm1 imm2 in (expr, setup1 @ setup2 @ setup3)
         | _ -> assert false (* Should never be possible to get an arity mismatch here *)
       )
 
