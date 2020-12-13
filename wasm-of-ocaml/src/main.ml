@@ -18,6 +18,10 @@ let main () =
   try  Compile.typed_implementation Format.err_formatter filename output_prefix
   with x -> (Location.report_exception Format.err_formatter x; exit 1) in
   let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
+
+  (* Basic optimisation pass, only removes assignments OCaml already warns about until CSE/const propagation added *)
+  let ir = OptDeadAssignments.optimise ir in
+
   if !print_ir then (Pplinast.print_ast Format.std_formatter ir; Format.print_newline();  Format.print_newline());
   let wasm_ast = Compilebinds.transl_program ir in
   if !print_wasmtree then

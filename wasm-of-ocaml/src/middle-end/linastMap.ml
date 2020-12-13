@@ -29,7 +29,12 @@ let rec map_compound_expr mappers compound =
     | CSwitch (imm, cases, default) ->
       CSwitch (mappers.map_imm imm, List.map (fun (i, body) -> (i, map_linast_expr mappers body)) cases,
                Option.map (map_linast_expr mappers) default)
-    | CMatchTry (i, body, handle) -> CMatchTry (i, map_linast_expr mappers body, map_linast_expr mappers handle)
+    | CMatchTry (i, body, handle) ->
+      (* Due to scoping hack, handler evaluated first. Ensures bindings never incorrectly identified as unused.
+         May need to rewrite if other order ever needed. *)
+      (* Not actually an issue until pattern matching optimised further. Currently, try/handle obey scoping *)
+      let handle = map_linast_expr mappers handle in
+      CMatchTry (i, map_linast_expr mappers body, handle)
     | CApp (imm, args) -> CApp(mappers.map_imm imm, List.map mappers.map_imm args)
     | CFunction (args, body) -> CFunction(args, map_linast_expr mappers body)
   in mappers.leave_compound {compound' with desc=new_desc}
