@@ -71,7 +71,6 @@ type binding =
 type immediate =
   | MImmConst of constant
   | MImmBinding of binding
-  | MImmFail of int32 (* Match failure - compiles to a branch out to the block for the switch of same label *)
 
 type closure_data = {
   func_idx: int32;
@@ -113,6 +112,7 @@ type data_op =
 
 type instr =
   | MImmediate of immediate
+  | MFail of int32 (* Match failure - compiles to a branch out to the block for the switch of same label *)
   | MCallKnown of int32 * immediate list (* Optimized path for statically-known function names *)
   | MCallIndirect of immediate * immediate list
   | MAllocate of allocation_type

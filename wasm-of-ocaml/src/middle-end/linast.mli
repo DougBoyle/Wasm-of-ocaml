@@ -54,13 +54,6 @@ type unop =
 type imm_expr_desc =
   | ImmIdent of Ident.t
   | ImmConst of Asttypes.constant
-  (* Guard expression or constant pattern failed, escape to trying other patterns. int32 allows identifying one of
-   several nested CMatchTry expressions, can optimise in future to jump past some ruled out cases e.g:
-   A(5, _) when e -> ...  Fail on testing 5 can jump to 3rd case, fail on testing e jumps to 2nd case
-   A(5, _) -> ...
-   ...  *)
-  (* CMatchFail -1l => actual pattern match failure, trap *)
-  | ImmMatchFail of int32
 
 type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
 
@@ -69,6 +62,10 @@ type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be re
 
 type compound_expr_desc =
   | CImm of imm_expr
+   (* Compound term as it never appears inside another compound and excluding it from immediates
+      means all immediates are 'pure' expressions i.e. Idents or Constants
+    CMatchFail -1l => top level failure, trap. Other values are jumps to corresponding handler *)
+  | CMatchFail of int32
   | CUnary of unop * imm_expr
   | CBinary of binop * imm_expr * imm_expr
   | CSetField of imm_expr * int32 * imm_expr (* Field is just 0 for reference objects *)

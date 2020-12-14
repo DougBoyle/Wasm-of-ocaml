@@ -18,7 +18,7 @@ let include_guard fail ((action, action_setup), binds) = function
   | Some (comp, guard_setup) ->
     let id = Ident.create_local "guard" in
     let id_imm = Imm.id id in
-    (Compound.mkif (id_imm) (binds_to_anf action_setup (LinastExpr.compound action)) (LinastExpr.compound (Compound.imm (Imm.fail fail))),
+    (Compound.mkif (id_imm) (binds_to_anf action_setup (LinastExpr.compound action)) (LinastExpr.compound (Compound.fail fail)),
      binds @ guard_setup @ [BLet(id, comp)])
 
 (* Aliases case still needed here as it is used by simplified_or_patterns i.e. before removal of aliases *)
@@ -91,7 +91,7 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
 let rec compile_matrix fail values matrix =
   let matrix = List.map (preprocess_row values) matrix in
   match (values, matrix) with
-  | (_, []) -> (Compound.imm (Imm.fail fail), []) (* No valid patterns left *)
+  | (_, []) -> (Compound.fail fail, []) (* No valid patterns left *)
   | ([], ([], act, g)::rest) -> include_guard fail act g (* Successful match, guard handled here *)
 
   (* OR rule -> Compile([v], expanded_or_matrix); Compile(vs, rest_of_row) *)
@@ -194,7 +194,7 @@ and apply_array_rule fail v vs matrix =
   let len_id = Ident.create_local "array_len" in
   let len_imm = Imm.id len_id in
   let len_bind = BLet(len_id, Compound.gettag v) in
-  (Compound.mkswitch len_imm cases (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))), [len_bind])
+  (Compound.mkswitch len_imm cases (Some (LinastExpr.compound (Compound.fail fail))), [len_bind])
 
 and apply_constructor_rule fail v vs matrix num_constructors =
   let rec specialise_constructor_matrix tag =
@@ -224,7 +224,7 @@ and apply_constructor_rule fail v vs matrix num_constructors =
   if List.length cstrs_used = num_constructors
   then (Compound.mkswitch tag_imm cases None, [tag_bind])
   else (Compound.mkswitch tag_imm cases
-    (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))), [tag_bind])
+    (Some (LinastExpr.compound (Compound.fail fail))), [tag_bind])
 
 and apply_record_rule fail v vs matrix =
     let get_label_pos (_, desc, _) = desc.lbl_pos in
@@ -270,7 +270,7 @@ and apply_const_int_rule fail v vs matrix ints_used total =
     (Int32.of_int n, binds_to_anf setup (LinastExpr.compound expr)) in
   let cases = List.map specialise_const_int_matrix ints_used in
   if total then (Compound.mkswitch v cases None, []) else
-  (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))), [])
+  (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.fail fail))), [])
 
 (* Can't switch on floats, so have to generate nested if-then-else *)
 and apply_float_rule fail v vs matrix =
@@ -294,4 +294,4 @@ and apply_float_rule fail v vs matrix =
     let test_result = Compound.binary Eq (Imm.const f) v in
     let testid = Ident.create_local "isequal" in
     (Compound.mkif (Imm.id testid) body (binds_to_anf rest_setup (LinastExpr.compound rest)),
-     [BLet(testid, test_result);])) cases (Compound.imm (Imm.fail fail), [])
+     [BLet(testid, test_result);])) cases (Compound.fail fail, [])

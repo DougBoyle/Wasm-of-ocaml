@@ -68,7 +68,7 @@ let rec preprocess_row ~exported values ((patterns, act) as row) = match values,
 let rec compile_matrix ~exported fail values matrix =
   let matrix = List.map (preprocess_row ~exported values) matrix in
   match (values, matrix) with
-  | (_, []) -> LinastExpr.compound (Compound.imm (Imm.fail fail)) (* No valid patterns left *)
+  | (_, []) -> LinastExpr.compound (Compound.fail fail) (* No valid patterns left *)
   | ([], ([], act)::rest) -> act
   (* OR rule -> Compile([v], expanded_or_matrix); Compile(vs, rest_of_row) *)
   | (v::vs, [(({pat_desc=Tpat_or(_, _, _)} as p)::ps, act)]) ->
@@ -160,7 +160,7 @@ and apply_array_rule ~exported fail v vs matrix =
   let len_imm = Imm.id len_id in
   let len_bind = BLet(len_id, Compound.gettag v) in
   binds_to_anf ~exported [len_bind]
-  (LinastExpr.compound (Compound.mkswitch len_imm cases (Some (LinastExpr.compound (Compound.imm (Imm.fail fail))))))
+  (LinastExpr.compound (Compound.mkswitch len_imm cases (Some (LinastExpr.compound (Compound.fail fail)))))
 
 and apply_constructor_rule ~exported fail v vs matrix num_constructors =
   let rec specialise_constructor_matrix tag =
@@ -190,7 +190,7 @@ and apply_constructor_rule ~exported fail v vs matrix num_constructors =
   if List.length cstrs_used = num_constructors
   then binds_to_anf ~exported [tag_bind] (LinastExpr.compound (Compound.mkswitch tag_imm cases None))
   else binds_to_anf ~exported [tag_bind] (LinastExpr.compound (Compound.mkswitch tag_imm cases
-    (Some (LinastExpr.compound (Compound.imm (Imm.fail fail))))))
+    (Some (LinastExpr.compound (Compound.fail fail)))))
 
 and apply_record_rule ~exported fail v vs matrix =
     let get_label_pos (_, desc, _) = desc.lbl_pos in
@@ -235,7 +235,7 @@ and apply_const_int_rule ~exported fail v vs matrix ints_used total =
     (Int32.of_int n, action) in
   let cases = List.map specialise_const_int_matrix ints_used in
   if total then LinastExpr.compound (Compound.mkswitch v cases None) else
-  LinastExpr.compound (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.imm (Imm.fail fail)))))
+  LinastExpr.compound (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.fail fail))))
 
 and apply_float_rule ~exported fail v vs matrix =
   let specialise_float_matrix f =
@@ -258,4 +258,4 @@ and apply_float_rule ~exported fail v vs matrix =
     let test_result = Compound.binary Eq (Imm.const f) v in
     let testid = Ident.create_local "isequal" in
     binds_to_anf ~exported [BLet(testid, test_result);] (LinastExpr.compound (Compound.mkif (Imm.id testid) body rest)))
-    cases (LinastExpr.compound (Compound.imm (Imm.fail fail)))
+    cases (LinastExpr.compound (Compound.fail fail))

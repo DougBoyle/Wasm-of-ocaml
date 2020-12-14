@@ -25,7 +25,6 @@ let print_bind ppf = function
 let print_imm ppf = function
   | MImmBinding b -> print_bind ppf b
   | MImmConst c -> print_const ppf c
-  | MImmFail n -> fprintf ppf "@[<2>(fail@ %li)@]" n
 
 let print_imms ppf args = List.iter (fun e -> fprintf ppf "@ %a" print_imm e) args
 
@@ -37,6 +36,7 @@ let print_alloc ppf = function
 
 let rec print_instr ppf = function
     | MImmediate i -> print_imm ppf i
+    | MFail n -> fprintf ppf "@[<2>(fail@ %li)@]" n
     | MCallKnown(i, args) ->
       let print_args ppf args = List.iter (fprintf ppf " %a" print_imm) args in
       fprintf ppf "(call@ func(%li)%a)" i print_args args

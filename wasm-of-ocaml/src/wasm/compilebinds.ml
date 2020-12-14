@@ -89,7 +89,6 @@ let compile_imm env (i : imm_expr) =
   match i.desc with
   | ImmConst c -> MImmConst(compile_const c)
   | ImmIdent id -> MImmBinding(find_id id env)
-  | ImmMatchFail i -> MImmFail i (* TODO: Not yet implemented at lower level, requires tracking trap block distances *)
 
 (* Line 106 in Grain *)
 let compile_function env args body : closure_data =
@@ -166,7 +165,7 @@ let rec compile_comp env (c : compound_expr) =
   | CSwitch(arg, branches, default) -> let compiled_arg = compile_imm env arg in
     MSwitch(compiled_arg,
        List.map (fun (lbl, body) -> (lbl, compile_linast env body)) branches,
-       match default with Some e -> compile_linast env e | None -> [MImmediate (MImmFail (-1l))])
+       match default with Some e -> compile_linast env e | None -> [MFail (-1l)])
   | CIf(cond, thn, els) ->
     MIf(compile_imm env cond, compile_linast env thn, compile_linast env els)
   | CWhile(cond, body) ->
@@ -202,6 +201,7 @@ let rec compile_comp env (c : compound_expr) =
   | CApp(f, args) ->
     (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Maybe for optimisation when target known *)
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args)
+  | CMatchFail i -> MFail i
   | CImm i -> MImmediate(compile_imm env i)
 
 and compile_linast env expr =

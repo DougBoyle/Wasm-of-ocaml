@@ -76,10 +76,10 @@ let unary ppf = function
 let print_imm ppf (imm : imm_expr) = match imm.desc with
   | ImmIdent id -> Ident.print ppf id
   | ImmConst c -> struct_const ppf c
-  | ImmMatchFail n -> fprintf ppf "@[<2>(fail@ %li)@]" n
 
 let rec print_compound ppf (c : compound_expr) = match c.desc with
     | CImm i -> print_imm ppf i
+    | CMatchFail n -> fprintf ppf "@[<2>(fail@ %li)@]" n
     | CUnary (op, imm) -> fprintf ppf "(%a %a)" unary op print_imm imm
     | CBinary (op, imm1, imm2) -> fprintf ppf "(%a %a %a)" print_imm imm1 binary op print_imm imm2
     | CSetField (imm1, i, imm2) -> fprintf ppf "%a.(%lil) <- %a" print_imm imm1 i print_imm imm2

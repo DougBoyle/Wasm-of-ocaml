@@ -16,7 +16,6 @@ module Imm = struct
        annotations=ref []}
   let id id = mk (ImmIdent id)
   let const const = mk (ImmConst const)
-  let fail i = mk (ImmMatchFail i)
 end
 
 module Compound = struct
@@ -26,6 +25,7 @@ module Compound = struct
      env=defaultEnv;
      annotations=ref []}
   let imm imm = mk (CImm imm)
+  let fail i = mk (CMatchFail i)
   let unary op imm = mk (CUnary (op, imm))
   let binary op imm1 imm2 = mk (CBinary (op, imm1, imm2))
   let setfield imm1 i imm2 = mk (CSetField (imm1, i, imm2))
@@ -138,7 +138,9 @@ and free_vars_comp env (c : compound_expr) = match c.desc with
     List.fold_left (fun acc a -> Ident.Set.union (free_vars_imm env a) acc) Ident.Set.empty args
   | CImm i -> free_vars_imm env i
     (* Fail cases record the env at that point, union taken to avoid counting varaibles in handler which
-       are bound by matching in the try block. Doesn't discount actual free varaibles due to use of unique Idents. *)
+       are bound by matching in the try block. Doesn't discount actual free varaibles due to use of unique Idents.
+       Not actually necessary until pattern matching optimisations implemented *)
+  | CMatchFail i -> update_handler_env i env; Ident.Set.empty
   | CMatchTry (i, body, handler) ->
     (* Must be evaluated in this order *)
     let free_in_body = free_vars env body in
@@ -147,8 +149,6 @@ and free_vars_comp env (c : compound_expr) = match c.desc with
 
 and free_vars_imm env (i : imm_expr) = match i.desc with
   | ImmIdent x when not (Ident.Set.mem x env) -> Ident.Set.singleton x
-  (* Track possibly bound variables for when handler body entered *)
-  | ImmMatchFail i -> update_handler_env i env; Ident.Set.empty
   | _ -> Ident.Set.empty
 
 (* Just needs the maximum since same 'env' (contains most recent stack index) is passed to compilation

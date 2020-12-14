@@ -252,11 +252,6 @@ let compile_imm (env : env) (i : immediate) : Wasm.Ast.instr' list =
   match i with
   | MImmConst c -> compile_const env c
   | MImmBinding b -> compile_bind ~is_get:true env b
-  | MImmFail j -> (match j with
-    | -1l -> [Ast.Unreachable] (* trap *)
-    (* get block to jump to *)
-    | _ -> [Ast.Br (add_dummy_loc (List.assoc j env.handler_heights))])
-
 
 (* call_error_handler left out - not doing proper exceptions (makes a call to runtime_throw_error) *)
 (* Don't think error_if_true or check_overflow needed either - OCaml allows slient overflows *)
@@ -547,6 +542,10 @@ and compile_instr env instr =
   match instr with
   | MDrop -> [Ast.Drop]
   | MImmediate(imm) -> compile_imm env imm
+  | MFail j -> (match j with
+      | -1l -> [Ast.Unreachable] (* trap *)
+      (* get block to jump to *)
+      | _ -> [Ast.Br (add_dummy_loc (List.assoc j env.handler_heights))])
   | MAllocate(alloc) -> (* New - currying appeared to not work before *)
   let new_backpatches = ref [] in
   let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in

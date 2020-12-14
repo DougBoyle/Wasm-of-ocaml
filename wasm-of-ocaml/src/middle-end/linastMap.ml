@@ -13,6 +13,7 @@ let rec map_compound_expr mappers compound =
   let compound' = mappers.enter_compound compound in
   let new_desc = match compound'.desc with
     | CImm imm -> CImm (mappers.map_imm imm)
+    | CMatchFail i -> compound'.desc (* No change *)
     | CUnary (op, imm) -> CUnary (op, mappers.map_imm imm)
     | CBinary (op, imm1, imm2) -> CBinary (op, mappers.map_imm imm1, mappers.map_imm imm2)
     | CSetField (imm1, idx, imm2) -> CSetField (mappers.map_imm imm1, idx, mappers.map_imm imm2)
