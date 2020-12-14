@@ -115,18 +115,21 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
       (body, (List.concat required_binds_setup)
                @ (BLetRec (List.combine names required_binds)) :: body_setup)
 
+  (* Tuple is immutable so all fields marked as pure *)
   | Texp_tuple l ->
     let (args, setup) = List.split (List.map translate_imm l) in
-    (Compound.makeblock 0l args, List.concat setup)
+    (Compound.makeblock ~annotations:(ref [ImmutableBlock (List.map (fun _ -> true) l)]) 0l args, List.concat setup)
 
   | Texp_construct (identLoc, desc, []) when desc.cstr_nonconsts = 0 ->
     (Compound.imm (Imm.const (Asttypes.Const_int (get_const_constructor_tag desc.cstr_tag))), [])
   | Texp_construct (identLoc, desc, l) ->
     let (args, setup) = List.split (List.map translate_imm l) in
-    (Compound.makeblock (unify_constructor_tag desc) args, List.concat setup)
-  (* TODO: Add type annotations to the arguments to indicate mutable/immutable (all mut for arrays) *)
+    (Compound.makeblock ~annotations:(ref [ImmutableBlock (List.map (fun _ -> true) l)])
+     (unify_constructor_tag desc) args, List.concat setup)
+  (* Every field of an array is mutable *)
   | Texp_array l -> let (args, setup) = List.split (List.map translate_imm l) in
-    (Compound.makeblock (Int32.of_int (List.length l)) args, List.concat setup)
+    (Compound.makeblock ~annotations:(ref [ImmutableBlock (List.map (fun _ -> false) l)])
+     (Int32.of_int (List.length l)) args, List.concat setup)
 
  (* Made easier by fact that Typedtree always puts fields in order, regardless of order in program.
     Hence no need to do sorting or check label descriptions *)
@@ -137,14 +140,17 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     (* Not built off of anything so each field must be Overridden *)
     | None -> let (args, setup) =
         List.split (List.map (function (_, Overridden(_, e)) -> translate_imm e | _ -> raise NotSupported) (Array.to_list fields))
-      in (Compound.makeblock 0l args, List.concat setup)
+      in let mutable_list = List.map (fun (desc, _) -> desc.lbl_mut = Asttypes.Immutable) (Array.to_list fields) in
+      (Compound.makeblock ~annotations:(ref [ImmutableBlock mutable_list]) 0l args, List.concat setup)
     | Some e -> let extract_field original i = (function
          | (_, Overridden(_, e)) -> translate_imm e
          | (_, Kept _) -> let fieldId = Ident.create_local "field" in
            (Imm.id fieldId, [BLet(id, Compound.field original (Int32.of_int i))]))
        in let (original, original_setup) = translate_imm e in
-       let (args, setup) = List.split (List.mapi (extract_field original) (Array.to_list fields))
-       in (Compound.makeblock 0l args, original_setup @ (List.concat setup))
+       let (args, setup) = List.split (List.mapi (extract_field original) (Array.to_list fields)) in
+       (* Description of each field indicates if it is mutable or not *)
+       let mutable_list = List.map (fun (desc, _) -> desc.lbl_mut = Asttypes.Immutable) (Array.to_list fields) in
+       (Compound.makeblock ~annotations:(ref [ImmutableBlock mutable_list]) 0l args, original_setup @ (List.concat setup))
     )
 
   | Texp_field (e, identLoc, labelDesc) ->

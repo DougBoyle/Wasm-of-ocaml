@@ -9,50 +9,50 @@ exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not ac
 
 (* Don't worry about passing around locations/environments for now, just a hastle *)
 module Imm = struct
-  let mk d : imm_expr =
+  let mk annotations d : imm_expr =
       {desc=d;
        loc=defaultLoc;
        env=defaultEnv;
-       annotations=ref []}
-  let id id = mk (ImmIdent id)
-  let const const = mk (ImmConst const)
+       annotations}
+  let id ?(annotations=ref []) id = mk annotations (ImmIdent id)
+  let const ?(annotations=ref []) const = mk annotations (ImmConst const)
 end
 
 module Compound = struct
-  let mk d : compound_expr =
+  let mk annotations d : compound_expr =
     {desc=d;
      loc=defaultLoc;
      env=defaultEnv;
-     annotations=ref []}
-  let imm imm = mk (CImm imm)
-  let fail i = mk (CMatchFail i)
-  let unary op imm = mk (CUnary (op, imm))
-  let binary op imm1 imm2 = mk (CBinary (op, imm1, imm2))
-  let setfield imm1 i imm2 = mk (CSetField (imm1, i, imm2))
-  let field imm i = mk (CField (imm, i))
-  let arrayset imm1 imm2 imm3 = mk (CArraySet (imm1, imm2, imm3))
-  let arrayget imm1 imm2 = mk (CArrayGet (imm1, imm2))
-  let makeblock i args = mk (CMakeBlock (i, args))
-  let gettag imm = mk (CGetTag imm)
-  let mkif imm e1 e2 = mk (CIf (imm, e1, e2))
-  let mkwhile imm e = mk (CWhile (imm, e))
-  let mkfor id start stop dir e = mk (CFor (id, start, stop, dir, e))
-  let mkswitch imm cases partial = mk (CSwitch (imm, cases, partial))
-  let matchtry i e1 e2 = mk (CMatchTry (i, e1, e2))
-  let app imm args = mk (CApp (imm, args))
-  let mkfun params e = mk (CFunction (params, e))
+     annotations}
+  let imm ?(annotations=ref []) imm = mk annotations (CImm imm)
+  let fail ?(annotations=ref []) i = mk annotations (CMatchFail i)
+  let unary ?(annotations=ref []) op imm = mk annotations (CUnary (op, imm))
+  let binary ?(annotations=ref []) op imm1 imm2 = mk annotations (CBinary (op, imm1, imm2))
+  let setfield ?(annotations=ref []) imm1 i imm2 = mk annotations (CSetField (imm1, i, imm2))
+  let field ?(annotations=ref []) imm i = mk annotations (CField (imm, i))
+  let arrayset ?(annotations=ref []) imm1 imm2 imm3 = mk annotations (CArraySet (imm1, imm2, imm3))
+  let arrayget ?(annotations=ref []) imm1 imm2 = mk annotations (CArrayGet (imm1, imm2))
+  let makeblock ?(annotations=ref []) i args = mk annotations (CMakeBlock (i, args))
+  let gettag ?(annotations=ref []) imm = mk annotations (CGetTag imm)
+  let mkif ?(annotations=ref []) imm e1 e2 = mk annotations (CIf (imm, e1, e2))
+  let mkwhile ?(annotations=ref []) imm e = mk annotations (CWhile (imm, e))
+  let mkfor ?(annotations=ref []) id start stop dir e = mk annotations (CFor (id, start, stop, dir, e))
+  let mkswitch ?(annotations=ref []) imm cases partial = mk annotations (CSwitch (imm, cases, partial))
+  let matchtry ?(annotations=ref []) i e1 e2 = mk annotations (CMatchTry (i, e1, e2))
+  let app ?(annotations=ref []) imm args = mk annotations (CApp (imm, args))
+  let mkfun ?(annotations=ref []) params e = mk annotations (CFunction (params, e))
 end
 
 module LinastExpr = struct
-  let mk d : linast_expr =
+  let mk annotations d : linast_expr =
       {desc=d;
        loc=defaultLoc;
        env=defaultEnv;
-       annotations=ref []}
-  let mklet id export e body = mk (LLet (id, export, e, body))
-  let mkletrec binds body = mk (LLetRec (binds, body))
-  let seq e1 e2 = mk (LSeq (e1, e2))
-  let compound e = mk (LCompound e)
+       annotations}
+  let mklet ?(annotations=ref []) id export e body = mk annotations (LLet (id, export, e, body))
+  let mkletrec ?(annotations=ref []) binds body = mk annotations (LLetRec (binds, body))
+  let seq ?(annotations=ref []) e1 e2 = mk annotations (LSeq (e1, e2))
+  let compound ?(annotations=ref []) e = mk annotations (LCompound e)
 end
 
 (* Now that constant only constructors are represented as integers, unit = 0l *)

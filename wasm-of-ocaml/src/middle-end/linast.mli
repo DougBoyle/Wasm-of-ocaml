@@ -1,7 +1,14 @@
 open Asttypes
 
 (* To be extended with any annotations needed during optimisation analysis e.g. live variables etc. *)
-type annotation
+(* Want to mark which parts of an expression are pure so can be replaced by CSE *)
+(* Fields: Copy annotations of fields onto block/imm assigned to *)
+type annotation = Pure of bool (* whole term/body pure *) | Fields of annotations list
+  | ImmutableBlock of bool list (* Whether SetField possible for each field - very basic analysis *)
+(* TODO: Can do much more complex analysis for whether mutable fields can be copied or not based on if anything
+         could have actually assigned to them or not
+   TODO: Analysis pass to propagate annotations through use of idents *)
+and annotations = (annotation list) ref
 
 (* TODO: Add 32/64 bit ints or no? i.e. 0l and 0L operators etc. *)
 
@@ -55,7 +62,7 @@ type imm_expr_desc =
   | ImmIdent of Ident.t
   | ImmConst of Asttypes.constant
 
-type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
+type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; annotations : annotations}
 
 type partialFlag = Partial | Total
 type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be renamed *)
@@ -96,7 +103,7 @@ type compound_expr_desc =
   | CFunction of Ident.t list * linast_expr (* Recursion done at higher level *)
   (* TODO: Leave out until I know if I can support strings in wasm or not: | CString of string *)
 
-and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
+and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; annotations : annotations}
 
 and linast_expr_desc =
   (* global rules may get more challenging if using mli file or considering redeclarations of variables *)
@@ -106,7 +113,7 @@ and linast_expr_desc =
   | LSeq of compound_expr * linast_expr
   | LCompound of compound_expr
 
-and linast_expr = {desc : linast_expr_desc; loc : Location.t; env : Env.t; annotations : (annotation list) ref}
+and linast_expr = {desc : linast_expr_desc; loc : Location.t; env : Env.t; annotations : annotations}
 
 
 (* Both grain and Lambda have a single tree at top, not a list anymore *)
