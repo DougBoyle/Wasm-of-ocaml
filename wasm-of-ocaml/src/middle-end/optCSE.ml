@@ -90,5 +90,4 @@ let leave_linast linast = (match linast.desc with
 let optimise linast =
   Ident.Tbl.clear replaced_idents;
   CompoundHashtbl.clear common_expressions;
-  (* TODO: Put actual mappers in *)
   (LinastMap.create_mapper ~map_imm ~enter_linast ~leave_linast ()) linast

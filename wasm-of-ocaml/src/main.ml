@@ -20,6 +20,7 @@ let main () =
   let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
 
   (* Basic optimisation pass, only removes assignments OCaml already warns about until CSE/const propagation added *)
+  let ir = OptConstants.optimise ir in
   let ir = OptCSE.optimise ir in
   let ir = OptDeadAssignments.optimise ir in
 
