@@ -9,8 +9,8 @@ open Linast
 let alive = ref Ident.Set.empty
 let mark id = alive := Ident.Set.add id (!alive)
 (* TODO: Work out how to replace unused but impure bindings with sequences. Would need to take the whole linast term *)
-let is_dead (id, compound) =
-  if Ident.Set.mem id (!alive) then false else (Pure.is_comp_pure [] compound)
+let is_dead (id, (compound : compound_expr)) =
+  if Ident.Set.mem id (!alive) then false else List.mem Pure (!(compound.annotations))
 
 let map_imm (imm : Linast.imm_expr) = match imm.desc with
   (* Ident appears in a compound so mark as used. May remove in later passes if that compound is unused.

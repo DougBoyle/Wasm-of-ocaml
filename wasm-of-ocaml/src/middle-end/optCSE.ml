@@ -62,7 +62,7 @@ let common_expressions = (CompoundHashtbl.create(50) : Ident.t CompoundHashtbl.t
 let enter_linast linast = (match linast.desc with
   | LLet(id, _, body, rest) -> (match CompoundHashtbl.find_opt common_expressions body.desc with
     | Some id' -> Ident.Tbl.add replaced_idents id id'
-    | None -> if Pure.pure_comp_result body then
+    | None -> if List.mem Immutable (!(body.annotations)) then
       CompoundHashtbl.add common_expressions body.desc id)
   | _ -> () (* Can't reuse function definitions due to unique idents as arguments, so leave LLetRec *)
   ); linast

@@ -2,11 +2,9 @@
    bindings to idents/use in larger compounds. Allows smarter purity analysis.
    Let id = {some compound} in ... {Imm.id id; ptr to same analysis as on compound}.
    Annotations is mutable reference to allow updating to share list without returning new term. *)
-(* TODO: Figure out exact semantics/propagation rules *)
-(* TODO: Easier to just entirely separate CSE vs dead assignment optimisations? *)
-(* TODO: Add better interface for searching/processing analysis on a term *)
 open Linast
 
+(* Pointer to the actual annotations on compounds idents are bound to, must be copied not shared *)
 let ident_analysis = (Ident.Tbl.create 50 : annotations Ident.Tbl.t)
 
 (* Mark element as not causing any side effects when evaluated. Does not guarentee that result
@@ -26,6 +24,7 @@ let copy_immutable_annotation imms annotations =
 let analyse_imm (imm : imm_expr) = match imm.desc with
   (* Assume imm doesn't already have any annotations on it *)
   | ImmIdent id -> (match Ident.Tbl.find_opt ident_analysis id with
+    (* Must copy original annotations in the list of annotations gets modified *)
     | Some annotations -> imm.annotations <- annotations
     (* Unseen ident, possibly a function argument (nothing assumed, would need to anlayse all calls) *)
     | None -> ())
@@ -40,7 +39,8 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
   (* Copy up annotations *)
   | CImm imm ->
     analyse_imm imm;
-    compound.annotations <- imm.annotations;
+    (* Pure/Immutable added after so need to take a copy *)
+    compound.annotations <- ref (!(imm.annotations));
     add_annotation Immutable compound.annotations;
     add_annotation Pure compound.annotations
   | CMatchFail (-1l) -> () (* Clearly can't gain any analysis from a trap *)
@@ -67,8 +67,9 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     (* TODO: Make use of fact that nth failing => case can never occur.
              Applies to lines 69 and 76. Needs a Impossible annotation *)
     (function Fields l -> (match List.nth_opt l (Int32.to_int idx) with
-                        | Some annotations -> compound.annotations <- annotations
-                        | None -> ())
+           | Some annotations -> (* Immutable depends on if field immutable, not value stored *)
+       compound.annotations <- ref(List.filter (function Immutable -> false | _ -> true) !annotations)
+           | None -> ())
               | _ -> ()) (!(imm.annotations));
     (* Add or copy immutable annotation if field can never be changed? *)
     List.iter
@@ -113,7 +114,8 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
   (* Only care about linast? Or imms too? *)
   | CFor (_, _, _, _, body) ->
     analyse_linast handlers body;
-    compound.annotations <- body.annotations;
+    (* May add an Immutable annotation after so need to copy *)
+    compound.annotations <- ref (!(body.annotations));
     if List.mem Pure (!(compound.annotations)) then add_annotation Immutable compound.annotations
 
   (* Intersection of each possible result *)
@@ -125,9 +127,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     compound.annotations <- ref (List.fold_left (fun annots (_, body) ->
       List.filter (fun annot -> List.mem annot annots) (!(body.annotations))) (!(body.annotations)) cases)
 
-  (* TODO: Come back to. Analyse handle, set fail i to have those annotations, then analyse body and set
-           overall annotations to same as body *)
-  | CMatchTry (i, body, handle) -> (* TODO: analyse body with (i, handle.annotations)::handlers *)
+  | CMatchTry (i, body, handle) ->
     analyse_linast handlers handle;
     analyse_linast ((i, handle.annotations)::handlers) body;
     compound.annotations <- body.annotations
@@ -145,7 +145,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
      Need to unroll currying in analysis however *)
   | CApp (f, args) ->
     analyse_imm f;
-    List.iter analyse_imm args;
+  (*  List.iter analyse_imm args;  -- Not made use of *)
     compound.annotations <- List.fold_left
      (fun func_annots arg -> List.fold_left (* extract just the body annotations, assume nothing else *)
        (fun annots -> (function (Fields [body]) -> body | _ -> annots)) (ref []) (!func_annots))
@@ -158,7 +158,8 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     compound.annotations <- (* Encodes currying by nesting fields. Each partial function is pure/immutable *)
       (List.fold_left (fun annots _ -> ref [Pure; Immutable; Fields [annots]]) body.annotations args)
 
-
+(* Annotations of a linast ARE the annotations of the corresponding subterm (compound/smaller linast)
+   so must be copied not shared during analysis of compounds *)
 and analyse_linast handlers linast = match linast.desc with
   (* Add analysis of binds to ident_analysis. Set overall linast analysis to combination of bind/body *)
   | LLet(id, _, bind, body) ->
@@ -188,7 +189,6 @@ and analyse_linast handlers linast = match linast.desc with
   | LCompound compound ->
     analyse_compound handlers compound;
     linast.annotations <- compound.annotations
-
 
 let analyse linast =
   Ident.Tbl.clear ident_analysis;
