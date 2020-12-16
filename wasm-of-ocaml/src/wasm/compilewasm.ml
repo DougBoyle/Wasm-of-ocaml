@@ -52,13 +52,13 @@ let make_float_ident = Ident.create_persistent "make_float"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
 let runtime_imports = [
-  { mimp_name=alloc_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
-  { mimp_name=compare_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
-  { mimp_name=abs_ident; mimp_type=MFuncImport([I32Type], [I32Type]); };
-  { mimp_name=min_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
-  { mimp_name=max_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
-  { mimp_name=append_ident; mimp_type=MFuncImport([I32Type; I32Type], [I32Type]); };
-  { mimp_name=make_float_ident; mimp_type=MFuncImport([F64Type], [I32Type]); };]
+  { mimp_name=alloc_ident; mimp_type=([I32Type], [I32Type]); };
+  { mimp_name=compare_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
+  { mimp_name=abs_ident; mimp_type=([I32Type], [I32Type]); };
+  { mimp_name=min_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
+  { mimp_name=max_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
+  { mimp_name=append_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
+  { mimp_name=make_float_ident; mimp_type=([F64Type], [I32Type]); };]
 
 let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length runtime_imports)
 
@@ -686,17 +686,10 @@ let compute_table_size env {functions} =
 (* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
 (* TODO: Understand what all of ths does/is needed for *)
 let compile_imports env =
-  let compile_import {mimp_name; mimp_type} =
+  let compile_import {mimp_name; mimp_type=(args, ret)} =
     let module_name = encode_string (Ident.name runtime_mod) in
     let item_name = encode_string (Ident.name mimp_name) in
-    let idesc = match mimp_type with
-      (* TODO: Should this actually be the other case? i.e. line 877 of Grain, not 869.
-               Look at what determines ImportGrain vs ImportWasm i.e. which is the runtime environment for Grain *)
-      | MGlobalImport typ ->
-        let func_type = Types.FuncType([], [typ]) in
-        add_dummy_loc @@ Ast.FuncImport(add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
-      | MFuncImport(args, ret) ->
-        let func_type = Types.FuncType(args, ret) in
+    let idesc = let func_type = Types.FuncType(args, ret) in
         add_dummy_loc @@ Ast.FuncImport(add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
     in
     (* Wasm.Ast import' type *)
@@ -838,7 +831,7 @@ let rec fold_lefti f e l =
 
 (* Sets up 'env' with all the imported runtime functions *)
 let prepare env =
-  List.iteri (fun idx {mimp_name; mimp_type;} -> Hashtbl.add imported_funcs mimp_name (Int32.of_int idx)) runtime_imports;
+  List.iteri (fun idx {mimp_name;} -> Hashtbl.add imported_funcs mimp_name (Int32.of_int idx)) runtime_imports;
   {env with func_offset=List.length runtime_imports;}
 
 let compile_wasm_module prog =

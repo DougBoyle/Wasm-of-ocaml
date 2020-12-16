@@ -135,15 +135,10 @@ type instr =
 
 and block = instr list
 
-(* No modules so how much are these needed (for now, may extend later) *)
-type import_type =
-  | MFuncImport of asmtype list * asmtype list
-  | MGlobalImport of asmtype
-
 (* Used to represent the runtime imports *)
 type import = {
   mimp_name: Ident.t;
-  mimp_type: import_type;
+  mimp_type: asmtype list * asmtype list;
 }
 
 type export = {

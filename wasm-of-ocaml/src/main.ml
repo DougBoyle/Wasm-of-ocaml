@@ -19,6 +19,8 @@ let main () =
   with x -> (Location.report_exception Format.err_formatter x; exit 1) in
   let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
 
+  (* Simple analysis pass *)
+  PropagateAnalysis.analyse ir;
   (* Basic optimisation pass, only removes assignments OCaml already warns about until CSE/const propagation added *)
   let ir = OptConstants.optimise ir in
   let ir = OptCSE.optimise ir in
