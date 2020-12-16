@@ -25,7 +25,8 @@ module CompoundHash = struct
           desc1 = desc4 && desc2 = desc5 && desc3 = desc6
         | CArrayGet ({desc=desc1}, {desc=desc2}), CArrayGet ({desc=desc3}, {desc=desc4}) ->
           desc1 = desc3 && desc2 = desc4
-        | CMakeBlock (i, imms1), CMakeBlock(j, imms2) -> i = j && List.for_all
+        | CMakeBlock (i, imms1), CMakeBlock(j, imms2) -> i = j &&
+          List.length imms1 = List.length imms2 && List.for_all
           (fun (({desc=desc1} : imm_expr), ({desc=desc2} : imm_expr)) -> desc1 = desc2) (List.combine imms1 imms2)
         | CGetTag {desc=desc1}, CGetTag {desc=desc2} -> desc1 = desc2
         (* Due to unique indents, would need alpha-conversion test to determine function equality *)
