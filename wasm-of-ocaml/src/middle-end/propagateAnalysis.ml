@@ -66,7 +66,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     (* Extract out any annotations set on that field *)
     (* TODO: Make use of fact that nth failing => case can never occur.
              Applies to lines 69 and 76. Needs a Impossible annotation *)
-    (function Fields l -> (match List.nth_opt l (Int32.to_int idx) with
+    (function Fields l -> (match List.nth_opt l idx with
            | Some annotations -> (* Immutable depends on if field immutable, not value stored *)
        compound.annotations <- ref(List.filter (function Immutable -> false | _ -> true) !annotations)
            | None -> ())
@@ -74,7 +74,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     (* Add or copy immutable annotation if field can never be changed? *)
     List.iter
     (function ImmutableBlock l ->
-       (match List.nth_opt l (Int32.to_int idx) with
+       (match List.nth_opt l idx with
          | Some true -> add_annotation Immutable imm.annotations | _ -> ())
      | _ -> ()) (!(imm.annotations));
     add_annotation Pure compound.annotations

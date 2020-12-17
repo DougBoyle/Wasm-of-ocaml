@@ -168,7 +168,7 @@ let rec compile_comp env (c : compound_expr) =
   | CBinary(op, arg1, arg2) ->
     MBinary(op, compile_imm env arg1, compile_imm env arg2)
   | CSetField (obj, idx, v) -> MDataOp(MSet(idx, compile_imm env v), compile_imm env obj)
-  | CField (obj, idx) -> MDataOp(MGet(idx), compile_imm env obj)
+  | CField (obj, idx) -> MDataOp(MGet(Int32.of_int idx), compile_imm env obj)
   | CMakeBlock (tag, args) ->
       MAllocate(MData(tag, List.map (compile_imm env) args))
   | CArraySet(obj, idx, v) ->

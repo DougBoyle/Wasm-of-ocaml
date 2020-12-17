@@ -165,7 +165,7 @@ let rec compile_matrix fail values matrix =
 and apply_tuple_rule fail v vs matrix len =
   let new_val_ids = List.init len (fun _ -> Ident.create_local "tuple_arg") in
   let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
-  let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v (Int32.of_int i))) new_val_ids in
+  let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
   let new_rows = List.map
   (function ({pat_desc=Tpat_tuple l}::ps,act,g) -> (l@ps, act,g) | _ -> failwith "Wrong rule applied") matrix in
   let (expr, setup) = compile_matrix fail (new_vals @ vs) new_rows in
@@ -181,7 +181,7 @@ and apply_array_rule fail v vs matrix =
      | _ -> failwith "Wrong rule applied") rows in
     let new_val_ids = List.init n (fun _ -> Ident.create_local "array_arg") in
     let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
-    let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v (Int32.of_int i))) new_val_ids in
+    let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
     let (expr, setup) = compile_matrix fail (new_vals @ vs) new_matrix in
     (Int32.of_int n, binds_to_anf (new_val_binds @ setup) (LinastExpr.compound expr))
     in
@@ -208,7 +208,7 @@ and apply_constructor_rule fail v vs matrix num_constructors =
       | _ -> failwith "Wrong rule applied" in
     let new_val_ids = List.init arity (fun _ -> Ident.create_local "cstr_arg") in
     let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
-    let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v (Int32.of_int i))) new_val_ids in
+    let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
     let (expr, setup) = compile_matrix fail (new_vals @ vs) new_matrix in
     (tag, binds_to_anf (new_val_binds @ setup) (LinastExpr.compound expr)) in
 
@@ -237,7 +237,7 @@ and apply_record_rule fail v vs matrix =
     let labels_used = List.fold_left get_labels_used [] matrix in
     let new_val_ids = List.map (fun _ -> Ident.create_local "record_field") labels_used in
     let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
-    let new_val_binds = List.map (fun (i, id) -> BLet(id, Compound.field v (Int32.of_int i)))
+    let new_val_binds = List.map (fun (i, id) -> BLet(id, Compound.field v i))
      (List.combine labels_used new_val_ids) in
 
     let make_wildcard_pattern = function

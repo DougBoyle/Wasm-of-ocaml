@@ -653,7 +653,7 @@ and compile_instr env instr =
     let compiled_args = List.flatten @@ List.map (compile_imm env) args in
     compiled_args @ [
        Ast.Call(add_dummy_loc
-         (Int32.of_int ((* env.import_func_offset +  -- TODO: should be fixed value *) (Int32.to_int func_idx))));
+         (Int32.(add func_idx (of_int env.func_offset))));
     ]
   (* TODO: If never compiled, why does it exist? Purely documentation? *)
   | MArityOp _ -> failwith "NYI: (compile_instr): MArityOp"

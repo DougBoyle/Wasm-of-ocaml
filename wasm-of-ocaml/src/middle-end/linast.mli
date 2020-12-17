@@ -84,7 +84,7 @@ type compound_expr_desc =
   | CUnary of unop * imm_expr
   | CBinary of binop * imm_expr * imm_expr
   | CSetField of imm_expr * int32 * imm_expr (* Field is just 0 for reference objects *)
-  | CField of imm_expr * int32
+  | CField of imm_expr * int
   | CArraySet of imm_expr * imm_expr * imm_expr
   | CArrayGet of imm_expr * imm_expr
   | CMakeBlock of int32 * imm_expr list (* Tuples, References, Datatypes (constant/block). Mutable flag needed or not? *)

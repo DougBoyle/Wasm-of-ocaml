@@ -145,7 +145,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     | Some e -> let extract_field original i = (function
          | (_, Overridden(_, e)) -> translate_imm e
          | (_, Kept _) -> let fieldId = Ident.create_local "field" in
-           (Imm.id fieldId, [BLet(id, Compound.field original (Int32.of_int i))]))
+           (Imm.id fieldId, [BLet(id, Compound.field original i)]))
        in let (original, original_setup) = translate_imm e in
        let (args, setup) = List.split (List.mapi (extract_field original) (Array.to_list fields)) in
        (* Description of each field indicates if it is mutable or not *)
@@ -155,7 +155,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
 
   | Texp_field (e, identLoc, labelDesc) ->
     let (record, setup) = translate_imm e in
-    (Compound.field record (Int32.of_int labelDesc.lbl_pos), setup)
+    (Compound.field record labelDesc.lbl_pos, setup)
 
   | Texp_setfield (e, identLoc, labelDesc, v) ->
     let (record, record_setup) = translate_imm e in
