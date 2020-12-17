@@ -24,27 +24,28 @@ let initial_env = {
 
 (* Function index for doing lambda lifting *)
 let lift_index = ref 0
+(* Next lift is effectively the number of functions allocated,
+   to keep size of function table matching indices used, must add a function to worklist each time this is called *)
 let next_lift () = let v = !lift_index in incr lift_index; v
 
 (* Track global variables *)
-let global_table = ref (Ident.empty: (int32 * int32) Ident.tbl)
+let global_table = ref (Ident.empty: int32 Ident.tbl)
 let global_index = ref 0
 (* TODO: What is this doing? Why is there both a global_index and getter_index?? *)
 let global_exports () = let tbl = !global_table in
   Ident.fold_all
-  (fun ex_name (ex_global_index, ex_getter_index) acc -> {ex_name; ex_global_index; ex_getter_index}::acc) tbl []
+  (fun ex_name ex_global_index acc -> {ex_name; ex_global_index}::acc) tbl []
 
 (* Each global also gets a function to get it *)
 (* TODO: Replace functions with direct access - can just export globals themselves *)
-let next_global_indexes id =
+let next_global id =
   match Ident.find_all (Ident.name id) (!global_table) with
-    | [(_, (ret, ret_get))] -> Int32.to_int ret, Int32.to_int ret_get
-    | [] -> (* TODO: Why these steps? How come globals seem to be accessed indirectly all the time? *)
-      let ret = !global_index in
-      let ret_get = next_lift () in
-      global_table := Ident.add id ((Int32.of_int ret), (Int32.of_int ret_get)) !global_table;
-      global_index := ret + 1;
-      (ret, ret_get)
+    | [(_, ret)] -> ret
+    | [] ->
+      let ret = Int32.of_int (!global_index) in
+      global_table := Ident.add id ret !global_table;
+      incr global_index;
+      ret
     | _ -> failwith "Ident put into global table more than once"
 
 let find_id id env = Ident.find_same id env.binds
@@ -139,24 +140,6 @@ let compile_function env args body : closure_data =
 (* Compile_wrapper only used in process_imports for Wasmfunctions. Allows treating wasm function as closure?
    Not needed, as wasm_functions are just runtime calls, can map to directly. *)
 
-(* TODO: Work out why no arity/stack_size - All referenced variables must also be globals?? *)
-let next_global id =
-  let ret, idx = next_global_indexes id in
-  if ret <> ((!global_index) - 1) then (* Already allocated *)
-    ret
-  else
-    let body = [
-      MImmediate(MImmBinding(MGlobalBind (Int32.of_int ret)));
-    ] in
-    let worklist_item = {
-      body=Compiled body;
-      env=initial_env;
-      idx;
-      arity=0; (* <- this function cannot be called by the user, so no self argument is needed. TODO: Why not?? *)
-      stack_size=0;
-    } in
-    worklist_add worklist_item;
-    ret
 
 (* BULK OF CODE *)
 let rec compile_comp env (c : compound_expr) =
@@ -210,7 +193,7 @@ and compile_linast env expr =
  | LLetRec(binds, body) ->
    let get_loc idx ((id, global, _) as bind) =
      match global with
-     | Global -> (MGlobalBind(Int32.of_int (next_global id)), bind)
+     | Global -> (MGlobalBind(next_global id), bind)
      | Local -> (MLocalBind(Int32.of_int (env.stack_idx + idx)), bind) in
    let binds_with_locs = List.mapi get_loc binds in
    let new_env = List.fold_left (fun acc (new_loc, (id, _, _)) -> (* - Should use global field?? *)
@@ -224,7 +207,7 @@ and compile_linast env expr =
        MStore(List.rev wasm_binds) :: (compile_linast new_env body) (* Store takes a list?? *)
  | LLet (id, global, bind, body) ->
    let location = (match global with (* As above but only 1 element *)
-     | Global -> MGlobalBind(Int32.of_int (next_global id))
+     | Global -> MGlobalBind(next_global id)
      | Local -> MLocalBind(Int32.of_int (env.stack_idx))) in
    (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
    let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx +

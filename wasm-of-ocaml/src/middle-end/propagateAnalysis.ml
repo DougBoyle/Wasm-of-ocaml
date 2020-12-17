@@ -100,6 +100,8 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
   | CIf (_, body1, body2) ->
     analyse_linast handlers body1;
     analyse_linast handlers body2;
+    (* TODO: Literally want intersection, may want to do recursively for Field annotation
+             e.g. true -> [Pure, _] and false -> [Pure, _, _] should preserved field0 = Pure *)
     List.iter (fun annot -> if List.mem annot (!(body2.annotations)) then
       add_annotation annot compound.annotations) (!(body1.annotations))
   (* TODO: May not be neccessary to take intersection? e.g. Pure -> Immutable for While loops,
@@ -118,7 +120,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     compound.annotations <- ref (!(body.annotations));
     if List.mem Pure (!(compound.annotations)) then add_annotation Immutable compound.annotations
 
-  (* Intersection of each possible result *)
+  (* Intersection of each possible result - Should also do smarter intersection like in For *)
   | CSwitch (_, cases, default) ->
     List.iter (fun (_, body) -> analyse_linast handlers body) cases;
     (match default with Some body -> analyse_linast handlers body | None -> ());
@@ -127,6 +129,8 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     compound.annotations <- ref (List.fold_left (fun annots (_, body) ->
       List.filter (fun annot -> List.mem annot annots) (!(body.annotations))) (!(body.annotations)) cases)
 
+  (* TODO: Semantics not quite correct. Fail within body should be treated as anything, since result never returned,
+           and output should be intersection of result of body and handle. Need an Any annotation and merge_annots function *)
   | CMatchTry (i, body, handle) ->
     analyse_linast handlers handle;
     analyse_linast ((i, handle.annotations)::handlers) body;
