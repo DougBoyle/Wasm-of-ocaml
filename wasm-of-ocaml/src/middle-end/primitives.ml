@@ -43,12 +43,12 @@ let prim_table = Misc.create_hashtable 31 [
     (* Reference operations just mapped to other expressions *)
     "%makemutable", CompoundUnary(fun imm -> (Compound.makeblock 0l [imm], []));
     "%field0", CompoundUnary(fun imm -> (Compound.field imm 0, []));
-    "%setfield0", CompoundBinary(fun imm1 imm2 -> (Compound.setfield imm1 0l imm2, []));
+    "%setfield0", CompoundBinary(fun imm1 imm2 -> (Compound.setfield imm1 0 imm2, []));
     "%incr", CompoundUnary(let v1 = Ident.create_local "old_value" and v2 = Ident.create_local "new_value" in
-      fun imm -> (Compound.setfield imm 0l (Imm.id v2),
+      fun imm -> (Compound.setfield imm 0 (Imm.id v2),
                  [BLet(v1, Compound.field imm 0); BLet(v2, Compound.unary Succ (Imm.id v1));]));
     "%decr", CompoundUnary(let v1 = Ident.create_local "old_value" and v2 = Ident.create_local "new_value" in
-      fun imm -> (Compound.setfield imm 0l (Imm.id v2),
+      fun imm -> (Compound.setfield imm 0 (Imm.id v2),
                  [BLet(v1, Compound.field imm 0); BLet(v2, Compound.unary Pred (Imm.id v1));]));
 
     (* Not actually primitives, but can be treated as such *)

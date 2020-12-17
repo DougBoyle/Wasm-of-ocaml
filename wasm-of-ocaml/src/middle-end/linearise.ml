@@ -160,7 +160,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   | Texp_setfield (e, identLoc, labelDesc, v) ->
     let (record, record_setup) = translate_imm e in
     let (value, value_setup) = translate_imm v in
-    (Compound.setfield record (Int32.of_int labelDesc.lbl_pos) value, record_setup @ value_setup)
+    (Compound.setfield record labelDesc.lbl_pos value, record_setup @ value_setup)
 
   | Texp_ifthenelse (e1, e2, e3opt) ->
     let e3_lin = (match e3opt with Some e -> translate_linast e

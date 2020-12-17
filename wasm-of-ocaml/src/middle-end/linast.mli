@@ -83,7 +83,7 @@ type compound_expr_desc =
   | CMatchFail of int32
   | CUnary of unop * imm_expr
   | CBinary of binop * imm_expr * imm_expr
-  | CSetField of imm_expr * int32 * imm_expr (* Field is just 0 for reference objects *)
+  | CSetField of imm_expr * int * imm_expr (* Field is just 0 for reference objects *)
   | CField of imm_expr * int
   | CArraySet of imm_expr * imm_expr * imm_expr
   | CArrayGet of imm_expr * imm_expr
