@@ -149,7 +149,6 @@ type import = {
 type export = {
   ex_name: Ident.t;
   ex_global_index: int32;
-  ex_getter_index: int32;
 } 
 
 type wasm_function = {

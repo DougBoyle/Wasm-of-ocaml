@@ -21,6 +21,7 @@ if (process.argv.length > 2){
 	  var module = await WebAssembly.compile(buffer);
 	  var instance = await WebAssembly.instantiate(module, imports);
 	  instance.exports["OCAML$MAIN"]();
+	  console.log(instance.exports);
 	 // console.log(imports.ocamlRuntime.alloc(0));
   } catch (err) {
     console.log(err);
@@ -82,7 +83,7 @@ if (process.argv.length > 2){
 			  for (const check of output){
 				  var id = check.split("=")[0];
 				  var val = check.split("=")[1];
-				  var actual = instance.exports[id]()/2; // TODO: Put this /2 either in getters or ocaml runtime module
+				  var actual = instance.exports[id].value/2; // TODO: Put this /2 either in getters or ocaml runtime module
 				  if (actual != val){
 					  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Variable " + id + " was " + actual + ", expected " + val);
 					  passed = false;

@@ -731,22 +731,16 @@ let compile_imports env =
       };
     ])
 
-(* Is there any need for naming extensions? Doesn't look like it except to avoid naming something _start etc.
-   For now assume that never happens - convenience of being able to use actual names vs *)
 (* Linearise ensures that only one thing with each name gets exported, so don't need worry about duplicates *)
-(* TODO: Modify getter functions to do decode? Or just do in runtime/JS caller *)
 let compile_exports env {functions; exports; num_globals} =
-  (* TODO: What are these indexes? *)
-  (* `Getter` provides a simple way to access exported varaibles - provides a nullary function that just
-     returns the corresponding global variable. (Function name matches name of variable)*)
-  let compile_getter i {ex_name; ex_global_index; ex_getter_index} =
-    let exported_name = (*"GRAIN$EXPORT$GET$" ^*) (Ident.name ex_name) in
+  let compile_getter i {ex_name; ex_global_index} =
+    let exported_name = Ident.name ex_name in
     let name = encode_string exported_name in
     let export =
       let open Wasm.Ast in
       add_dummy_loc {
         name;
-        edesc=add_dummy_loc (Ast.FuncExport (add_dummy_loc (Int32.add (Int32.of_int env.func_offset) ex_getter_index)));
+        edesc=add_dummy_loc (Ast.GlobalExport (add_dummy_loc ex_global_index)); (* Export global directly *)
       } in
     export
   in
@@ -754,7 +748,7 @@ let compile_exports env {functions; exports; num_globals} =
      Runtime functions not exported so integer used for name is offset to align with function index.
      i.e. export "i" is function i. No clashes as variable names can't start with digits *)
   let compile_lambda_export i _ =
-    let name = encode_string ((* "GRAIN$LAM_" ^  -- also not needed? *) (string_of_int (i + env.func_offset))) in
+    let name = encode_string (string_of_int (i + env.func_offset)) in
     let edesc = add_dummy_loc (Ast.FuncExport(add_dummy_loc @@ Int32.of_int (i + env.func_offset))) in
     let open Wasm.Ast in
     add_dummy_loc { name; edesc } in
@@ -765,8 +759,8 @@ let compile_exports env {functions; exports; num_globals} =
   let compiled_lambda_exports = List.mapi compile_lambda_export functions in
   (* Export the varaibles/functions declared in the program using their actual names *)
   let compiled_exports = List.mapi compile_getter exports in
-     compiled_lambda_exports @
-        compiled_exports @
+     compiled_lambda_exports @ (* Export each function which could be needed to execute a closure *)
+        compiled_exports @ (* Export each global variable *)
         [
           add_dummy_loc {
             Ast.name=encode_string "OCAML$MAIN";

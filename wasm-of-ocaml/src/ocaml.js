@@ -63,7 +63,7 @@ async function instantiate(file){
 		for (var exp in instance.exports) {
 			// avoid exporting OCAML$MAIN or $mem
 			if (!(/^(\d+|OCAML\$MAIN|\$.*)$/.test(exp))) {
-				result[exp] = wrap_ptr(instance.exports[exp](), instance);
+				result[exp] = wrap_ptr(instance.exports[exp].value, instance);
 			}
 		}
 		return setup_val;
