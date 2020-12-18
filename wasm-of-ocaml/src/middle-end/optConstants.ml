@@ -79,6 +79,21 @@ let leave_compound (compound : compound_expr) = match compound.desc with
   | CBinary(op, ({desc=ImmConst c1} as imm1), ({desc=ImmConst c2})) ->
     (try {compound with desc=CImm {imm1 with desc=ImmConst (eval_binary (op, c1, c2))}}
      with Division_by_zero -> compound) (* Leave runtime division-by-zero error till runtime *)
+
+  (* Do actual changing of tree structure here so that analyse.ml can just be a side-effect function *)
+  (* Separates analysis from optimisations *)
+  (* | CGetTag imm -> compound *) (* TODO: Add analysis for this too, change FieldImms to take a tag option? *)
+  | CField (imm, idx) ->
+    (* Returns a value, so can't wrap in a List.iter *)
+    (match List.find_opt (function FieldImms _ -> true | _ -> false) (!(imm.annotations)) with
+      | None -> compound
+      | Some (FieldImms l) -> (match List.nth_opt l idx with (* nth_opt to avoid impossible case errors *)
+          | Some (Some imm) -> {compound with desc=CImm imm}
+          | _ -> compound)
+      | _ -> failwith "Filter failed to find just FieldImms")
+
+  (* No use looking at ArrayGet, can't yet make any guarentees about the field *)
+
   | _ -> compound
 
 (* Not necessary as ident won't be reused once out of scope, but helps keep table small
@@ -91,6 +106,14 @@ let leave_linast linast = (match linast.desc with
     | _ -> ())
   | _ -> ()
   ); linast
+
+(* Allows replacing getField with whatever the field was originally declared as whenever that is known.
+  Assertion: Since tree is linearised and nothing assumed about function args, imms only occur where in scope.
+  Specialised analysis pass rather than doing along with propagateAnalysis, some work repeated.
+  Attempt to do proper merging of annotations for cases/if statements. i.e. If two fields are equal,
+  keep that information even if other fields are not. *)
+
+
 
 let optimise linast =
   Ident.Tbl.clear constant_idents;

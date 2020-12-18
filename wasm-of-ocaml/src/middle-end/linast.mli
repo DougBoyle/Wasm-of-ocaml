@@ -1,23 +1,5 @@
 open Asttypes
 
-(* To be extended with any annotations needed during optimisation analysis e.g. live variables etc. *)
-(* Want to mark which parts of an expression are pure so can be replaced by CSE *)
-(* Fields: Copy annotations of fields onto block/imm assigned to *)
-(* Pure => evaluation has no side effects. Immutable => Result also can not have been changed by other effects
-   Some redundancy here? Think of Pure = dead assignment elimination, Immutable = CSE *)
-(* TODO: Impossible annotation to remove cases, and a Tag/Constant annotation for constant propagation
-         of blocks.
-         Constant annotation used similarly to Fields where value assigned is a known constant.
-         Between them, Fields and Constant (base case) allow full constant propagation, don't need
-         a special optConstants program except to actually do the replacements. *)
-type annotation = Pure (* whole term/body pure *) | Fields of annotations list
-  | ImmutableBlock of bool list (* Whether SetField possible for each field - very basic analysis *)
-  | Immutable
-(* TODO: Can do much more complex analysis for whether mutable fields can be copied or not based on if anything
-         could have actually assigned to them or not
-   TODO: Analysis pass to propagate annotations through use of idents *)
-and annotations = (annotation list) ref
-
 (* TODO: Add 32/64 bit ints or no? i.e. 0l and 0L operators etc. *)
 
 (* Deprecated stdlib operators removed *)
@@ -70,7 +52,28 @@ type imm_expr_desc =
   | ImmIdent of Ident.t
   | ImmConst of Asttypes.constant
 
-type imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}
+(* To be extended with any annotations needed during optimisation analysis e.g. live variables etc. *)
+(* Want to mark which parts of an expression are pure so can be replaced by CSE *)
+(* Fields: Copy annotations of fields onto block/imm assigned to *)
+(* Pure => evaluation has no side effects. Immutable => Result also can not have been changed by other effects
+   Some redundancy here? Think of Pure = dead assignment elimination, Immutable = CSE *)
+(* TODO: Impossible annotation to remove cases, and a Tag/Constant annotation for constant propagation
+         of blocks.
+         Constant annotation used similarly to Fields where value assigned is a known constant.
+         Between them, Fields and Constant (base case) allow full constant propagation, don't need
+         a special optConstants program except to actually do the replacements. *)
+type annotation = Pure (* whole term/body pure *) | Fields of annotations list
+  | ImmutableBlock of bool list (* Whether SetField possible for each field - very basic analysis *)
+  | Immutable
+  (* Assertion: Since tree is linearised and nothing assumed about function args, imms only occur where in scope *)
+  | FieldImms of (imm_expr option) list
+(* TODO: Can do much more complex analysis for whether mutable fields can be copied or not based on if anything
+         could have actually assigned to them or not
+   TODO: Analysis pass to propagate annotations through use of idents *)
+and annotations = (annotation list) ref
+
+and imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}
+
 
 type partialFlag = Partial | Total
 type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be renamed *)

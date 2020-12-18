@@ -13,6 +13,7 @@ let add_annotation annot annotations = if not (List.mem annot (!annotations)) th
   annotations := annot::(!annotations)
 
 (* If all Idents involved are immutable, mark compound as immutable too e.g. Unary/Binop/GetField *)
+(* TODO: Not used *)
 let copy_annotation annot from_annots to_annots =
   if List.mem annot (!from_annots) then to_annots := annot::(!to_annots)
 
@@ -32,9 +33,6 @@ let analyse_imm (imm : imm_expr) = match imm.desc with
      (* Is this necessary? *)
      add_annotation Pure imm.annotations
 
-(* Shouldn't include any side-effects from computing Imms, just that compound given computed Imm. *)
-(* TODO: Where am I making use of properties of Idents, just in functions/block fields or for
-         if/while/for loops too? *)
 let rec analyse_compound handlers (compound : compound_expr) = match compound.desc with
   (* Copy up annotations *)
   | CImm imm ->
@@ -43,7 +41,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     compound.annotations <- ref (!(imm.annotations));
     add_annotation Immutable compound.annotations;
     add_annotation Pure compound.annotations
-  | CMatchFail (-1l) -> () (* Clearly can't gain any analysis from a trap *)
+  | CMatchFail (-1l) -> () (* Could mark expression as failing - no different to just constant folding the trap *)
   | CMatchFail i -> compound.annotations <- List.assoc i handlers (* annotation of the handler it jumps to *)
   (* Currently all unary/binary operations are pure/immutable result *)
   (* Does anything about the imms need to be carried across? *)

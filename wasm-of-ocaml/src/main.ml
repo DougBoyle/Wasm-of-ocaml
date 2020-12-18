@@ -21,6 +21,8 @@ let main () =
 
   (* Simple analysis pass *)
   PropagateAnalysis.analyse ir;
+  (* Attempt to analyse how immediates passed around memory *)
+  Analyse.analyse_constant_propagation ir;
   (* Basic optimisation pass, only removes assignments OCaml already warns about until CSE/const propagation added *)
   let ir = OptConstants.optimise ir in
   let ir = OptCSE.optimise ir in
