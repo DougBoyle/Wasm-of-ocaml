@@ -1,0 +1,390 @@
+%%%%%%%%% Suggested by JMB %%%%%%%%%%%%
+\documentclass[12pt]{article}
+\usepackage{a4wide}
+
+\newcommand{\al}{$<$}
+\newcommand{\ar}{$>$}
+
+\parindent 0pt
+\parskip 6pt
+
+\begin{document}
+
+\thispagestyle{empty}
+
+\rightline{\large D A Boyle}
+\medskip
+\rightline{\large Churchill}
+\medskip
+\rightline{\large dab80}
+
+\vfil
+
+\centerline{\large Computer Science Tripos Part II Project Proposal}
+\vspace{0.4in}
+\centerline{\Large\bf Optimising Compiler from OCaml to WebAssembly}
+\vspace{0.3in}
+\centerline{\large \today}
+
+\vfil
+
+{\bf Project Originator:} Dr Tim Jones
+
+%\vspace{0.1in}
+
+%{\bf Resources Required:} No special resources
+
+\vspace{0.5in}
+
+{\bf Project Supervisor:} Dr Tim Jones
+
+\vspace{0.2in}
+
+{\bf Signature:}
+
+\vspace{0.5in}
+
+{\bf Director of Studies:} Dr John Fawcett
+
+\vspace{0.2in}
+
+{\bf Signature:}
+
+\vspace{0.5in}
+
+{\bf Overseers:} Dr Sean Holden and Dr Neel Krishnaswami
+
+\vspace{0.2in}
+
+{\bf Signatures:}% \al\emph{no need to obtain Overseers' signatures yourself}\ar
+
+\vfil
+\eject
+
+\section*{Introduction and Description of the Work}
+JavaScript is a high-level language that has become a core part of the World Wide Web, providing interactive web pages through the use of JavaScript engines on all major web browsers. A result of this is that there are compilers from many languages to JavaScript, allowing developers to write code for the web in their preferred language. \\
+JavaScript is dynamically typed so is not a convenient target for statically typed languages such as OCaml or C. These languages perform compile-time type checking so additional checks at runtime are often unnecessary and inefficient. 
+
+WebAssembly is a low-level language with a binary instruction format supported by major browsers such as Chrome, Firefox and Safari. Having a binary format reduces code size and improves load times compared to human-readable JavaScript files. WebAssembly is also based on a stack machine and its low-level design makes it a more efficient compilation target for statically typed languages. Compilers to WebAssembly therefore allow programmers to use a language of their choice and still have code run on the web without having to sacrifice performance.
+
+This project will implement a compiler to WebAssembly for the statically typed functional language OCaml. Several optimisations will be implemented and evaluated in terms of their effect on output code size, execution time and memory usage. These results will be compared with the performance of similar existing solutions, such as compilers from OCaml to JavaScript or from other functional languages to WebAssembly.
+
+%from a subset of OCaml to WebAssembly and evaluate the impact of different compiler optimisations on performance. To ensure that there is time to look at several different optimisations along multiple metrics, the module and object layers of OCaml will not be implemented, only the core layer. A set of benchmark programs will then be compiled and evaluated in terms of code size, execution speed and memory usage. This will be repeated with different sets of optimisations enabled to see what effect they have on the benchmark programs. 
+
+
+\section*{Starting Point}
+% https://github.com/sabine/ocaml-to-wasm-overview
+My experience with OCaml is limited to the IB Compilers course and studying the OCaml compiler, looking at the data structures used and the ASTs generated for some short programs. I have read parts of the WebAssembly specification
+%output of the compiler's AST printing functions for some short programs. I have read through parts of the WebAssembly specification %\footnote{https://webassembly.github.io/spec/core}
+to understand the range of instructions available and compiled a short C program to WebAssembly using Emscripten. %\footnote{https://emscripten.org}.
+
+Many languages can now be compiled to WebAssembly, although lots of tools are still works in progress. % \footnote{https://github.com/appcypher/awesome-wasm-langs}
+WebAssembly is supported as a backend of LLVM, which is the primary way to compile C/C++ to WebAssembly. There is also Asterius for compiling Haskell, and a new functional language, Grain, which compiles to WebAssembly. Another approach to running OCaml on the web is Js\_of\_ocaml, %\footnote{https://ocsigen.org/js\_of\_ocaml/3.7.0/manual/overview}
+ a compiler to JavaScript. These tools should provide an interesting comparison for the performance of my compiler and studying them will help to inform decisions about the intermediate representation I use.
+
+%My prior experience with compilers and OCaml is limited to making modifications to the compiler used for the toy language Slang during the Part IB Compilers course, and looking through the ocaml compiler source code to understand the data structures it uses. (\verb|https://github.com/Timothy-G-Griffin/cc_cl_cam_ac_uk|)
+%I am much more familiar with Standard ML, another functional language, used in the Part IA Foundations of Computer Science course. 
+%I have read through parts of the WebAssembly specification but have never worked with WebAssembly code before. (\verb|https://webassembly.github.io/spec/core/_download/WebAssembly.pdf|) \\
+
+% MAY PREFER TO INCLUDE SOME OF THIS JUSTIFICATION IN PREPARATION PART OF ACTUAL DISS
+%WebAssembly is supported as a backend of LLVM, which is the primary way to compile C/C++ to WebAssembly. However, I could not find any work on compiling OCaml to LLVM intermediate code, perhaps because LLVM changes quite regularly and does not support garbage collected languages easily. Another approach to running OCaml programs in browsers is \verb|js_of_ocaml|, a popular compiler from OCaml bytecode to Javascript. It may be interesting to compare the WebAssembly output of my compiler against the Javascript from \verb|js_of_ocaml|, however comparisons must be made carefully since WebAssembly runs from a binary format whereas Javascript undergoes JIT compilation from a text format, so the WebAssembly will almost certainly have a much smaller startup cost. \\
+
+The only example I could find of a compiler from OCaml to WebAssembly was another Part II project from 2020, which worked from the parsed AST produced by the OCaml compiler. By instead working from the typed AST of the compiler, I should be able to include a greater subset of OCaml.
+
+%The only example I could find of a compiler from OCaml to WebAssembly was another Part II project done last year. This project worked from just the parsed AST produced by the OCaml compiler then implemented type-inference and all other stages of the compiler. By instead working from the typed AST of the compiler and using an intermediate representation based off of the OCaml compiler's Lambda intermediate language, I should be able to include a greater subset of OCaml while still having time to implement several optimisations. As an extension, I hope to implement a garbage collector in WebAssembly since this was also an extension of the past project which was not completed, and would allow testing the performance of larger and longer running programs.
+
+
+
+\section*{Substance and Structure of the Project}
+I will use the parser and type-checker of the official OCaml compiler as there is little benefit in reproducing these parts. Only a subset of OCaml will be implemented to allow focusing on implementing optimisations later in the project. I will exclude the class and module language features, as they are a significant extension to the core functional language, and exceptions due to the poor support for them in WebAssembly. 
+% May get criticism about probably being able to automate this?
+%Of the standard library operations, I will initially only implement equality and the integer operations, since each operation is implemented in OCaml as a call to a C function and there is little to be gained from translating the complete set of functions to WebAssembly.
+Of OCaml's many standard library operations, I will initially only implement the comparison, integer arithmetic, boolean and list operators, which are enough to be able to compile a diverse set of test programs.
+
+I will design an intermediate representation and implement translation from the OCaml compiler's typed AST to this representation. This will require studying both the Lambda intermediate language used by the OCaml compiler as well as the intermediate representations used by other compilers to WebAssembly, in order to produce a data structure that is suitable both for performing optimisations on and for translating between the typed AST and WebAssembly.
+% Mention something about which parts will be most challenging?
+
+%The compiler will require an intermediate representation which I plan to make similar to the Lambda langauge used in the official OCaml compiler. This is a good choice to base my IR off of since it has a fairly low level representation of values but still contains typed function declarations which should map to WebAssembly functions cleanly. The main reason for not using the Lambda representation directly is that it contains other structures such as \verb|trywith| blocks and \verb|staticraise| and \verb|staticcatch| expressions, which are difficult to translate to WebAssembly since it lacks exceptions. \\
+%The compiler will need to translated a typed AST to this intermediate representation, the most complex part of which will likely be translating pattern matching without using (static) exceptions, which is the approach taken in the official compiler. 
+
+% Issue with polymorphism? e.g. (fun x y -> x < y) is polymorphic, but need strongly typed non-polymorphic form in Wasm??
+% Just need to generate both an integer and FP version of it?
+% Will also need to leave out some primitive operations? e.g. opening files etc. depending on what OCaml allows as part of Stdlib/pervasives.
+
+% NEED TO DECIDE SPECIFIC SUBSET TO IMPLEMENT - e.g. issues with uncommon primitive operations, look at pervasives file (deprecated, look at stdlib)
+% Don't want to include debugging primitives initially such as __LOC__ or __FILE__
+% May not want all FP operations or string concatenation etc.
+% Will leave out all exceptions/raising
+
+% May be able to do primitives by compiling equivalent C program into Wasm itself and making calls into that
+%As a large part of the official OCaml compiler's front-end is being used, the compiler will accept most OCaml language features. Parts being excluded are the module and class langauge features as they are a significant extension to the core functional language, and exceptions due to the lack of support for them in WebAssembly. I will also leave out some of the standard library operations such as the debugging expressions and some of the floating point operations, which are implemented as calls to a C library in OCaml and can be added later as an extension.
+
+% Runtime system in direct webassembly or higher level language like C compiled down to Wasm?
+The last essential part of the compiler is the back end. This will consist of WebAssembly code generation from the intermediate representation as well as a runtime system. The runtime system will provide functions for memory allocation, creating closures, and OCaml primitives such as comparisons. This will probably be written in WebAssembly's text format, although  parts that turn out to be more complex than expected can be written in
+C and compiled to WebAssembly instead.
+
+%NEW: Explaining GC earlier on
+Garbage collection will be ignored initially as it is not needed for testing small programs. WebAssembly lacks reference types and the stack is managed implicitly rather than being part of a program's linear memory, so a solution must maintain a shadow stack of any references in use. This can significantly increase code size and memory usage for programs not requiring garbage collection, so it will be left as an extension task.
+%I will leave out garbage collection initially as it is not needed for testing small programs. There are proposals to add garbage collection and reference types to WebAssembly, but it remains a significant challenge until these are completed. The stack is managed implicity rather than being part of a program's linear memory, so a solution must maintain a shadow stack in linear memory of any references in use. This slows execution speed and potentially increases the memory usage of small programs not requiring garbage collection.
+
+%This can likely be written in WebAssembly's text format initially, but parts may need to be written in another language such as C and compiled to WebAssembly if the runtime system is extended with more complex features such as a garbage collector.
+
+%The compiler will also require a runtime system to allocate heap memory in WebAssembly. A simple allocator can likely be written directly in WebAssembly, although one extension is to add a garbage collector, which will require storing the stack in WebAssembly's linear memory object and make the allocator much more complex, at which point it will likely be written in a language such as C which can already be complied to WebAssembly. % NOTE - Garbage collection/allocation and whole runtime system could be written in JS instead, is this a good idea?
+% Runtime system may also include make_closure !!!
+
+After building a working compiler, I will add optimisations to both the intermediate code and WebAssembly generation stages. The start of my project will involve researching compiler optimisations to implement in more detail but possible analysis techniques and optimisations include:
+% Justify which ones will be done first and which are required/extensions
+% Also explain that others not mentioned may end up being implemented if they will not take more than a couple weeks to do and are expected to have a significant or interesting effect
+% Want to check that none of these are done by compiler front end - if any are, explain this as reason for not implmenting them and look at disabling them in the compiler to be able to test impact
+
+% Possible sources of ideas:
+% https://www.cl.cam.ac.uk/teaching/projects/archive/2020/ci240-dissertation.pdf page 13 - curried calls and standard library function calls (especially if polymorphic)
+
+% Look at actual optimisation options on real compliers: https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/using-optimisation.html
+
+% Points for research/study so include selecting/understanding optimisations as an early part of the project
+\begin{itemize}
+% Optimisation involves analysis (to show changes valid) + transformation (often only small changes)
+
+\item Live variable analysis
+% LVA - Variable is live at a point in program if its value then affects future behaviour (i.e. not just going to be overwritten later). Can be undecideable (e.g. if statement updates variable but never actual happens). Have to be careful with references (variable varaibles, assume they could point to any possible value). Involves looking forward in call graph at future usages
+% Allows register allocation by colouring - initially give every variable a different location, create graph with edges between simultaneuously live variables, colour graph (assign locations) so all adjacent nodes have different locations (allows reusing local i within function). Exact answer is NP-complete
+
+% AVAIL - Available expression analysis - an expression has already been computed on every path leading to it and no assignments/side-effects prevent that previous value being used. (allows storing and reusing intermediate values)
+% Used for CSE (Common subexpression elimination) - AVAIL allows broader elimination than regular CSE which only works within basic blocks. Just make sure all past computations put value in same temporary, and use that where e would have been recalculated. Often not worth it if value will spill into a memory store. Can do greater CSE across large computation for one value rather than just CSE on single operations.
+% COPY PROPAGATION also avoids lots of move instructions between temporaries (e.g. realising local.1, 2 and 3 are all storing the same thing, so just use 1 if they are not otherwise updated)
+% Also possible to perform ***Partial Redundancy Elimination*** (whereas CSE removes total redundancy) e.g. change loop {... = a+b; ...; ... = a + b} to ... = a + b; loop {...; ... = a + b} where expression at start of loop is then removed by CSE, using either value before loop or at end of loop
+
+%\item Control flow analysis % Determine superset of values expressions can hold to aid later optimisations such as eliminating dead code
+% e.g. fun f x = if x = 1 then 2 else 3   ( can only be 2 or 3, no side effects )
+% if f y = 5 then e1 else e2   (now know we can replace this with just e2)
+% Often called Constraint Based Analysis
+
+\item Dead code and common subexpression elimination % Unreachable code elimination - graph based structure massively over estimates, constant propagation can help make arithmetic decideable and simplify branches e.g. if f(x) = 5 then e1 else e2  - may be able to reason that f(x) cannot be 5, but may be undecideable
+% Unreachable procedures - similar process but in larger blocks (can have a procedure graph), similar issue about undecideability, affected by inlining
+
+\item Peephole optimisations
+
+\item Constant propagation and folding
+
+\item Inline expansion
+
+\item Tail call optimisation
+
+%\item Eta reduction % Replace 'let g x = f x' with just 'let g = f'
+% https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/using-optimisation.html (fdo-eta-reduction)
+
+
+% \item Curried call optimisation? % Avoid layer of indirection with curried calls by converting application to its own function, e.g.:
+% fun f x y = x + y
+% let g = f 3
+
+% Can replace currying indirection with just 'let g = fun y -> f 3 y'
+
+% \item Eta reduction? % Replace direct function applications with let bindings then evaluate e.g. (fun x -> e1) e2 becomes bind x to e2 directly then evaluate e1, no need for a closure etc.
+% Just the same as inline expansion.
+
+% Float let bindings inwards (so closer to use site, can help with unnecessary allocation where never executed). Can be detrimental as it is sometimes better to move outwards to group several let bindings together (can improve allocator/garbage collector overhead), heuristic required
+
+% Lambda lifting as an optimisations?? Requires good heuristics. Normally lambda lifting used instead of closure conversion - move all functions to top level but give them more arguments and modify and call sites
+
+\end{itemize}
+
+% NOT NEEDED? PUT IN ACTUAL DISS PREPARATION/IMPLEMENTATION
+%\subsection*{Testing}
+%I will write unit tests as the project progresses to test individual components as they are built and to prevent edge cases being forgotten about, particularly when it comes to making optimisations later in the project. This will use a framework such as OUnit or Expect-test to write clean tests and provide useful output when tests fail. I will also have some end to end tests in the form of OCaml programs using specific langauge features with excepted otuputs. These can then be run in a browser, likely requiring writing a small Javascript wrapper to run the tests, demonstrating that the compiler works as a whole. 
+
+\subsection*{Performance Evaluation}
+My project will include a set of benchmark programs, testing both the validity and performance of a range of the implemented language features. As well as the OCaml programs, I will need to create a testing framework to execute the produced WebAssembly in a browser, requiring a small amount of HTML and JavaScript. The testing framework will also record the code size, execution time and memory usage of each of the programs. 
+
+I will collect this data with different sets of optimisations enabled to determine how each optimisation affects these metrics and how multiple optimisation passes interact with each other. This data will be compared with the performance of alternative solutions to running functional code in browsers. One alternative is the JavaScript produced by the Js\_of\_ocaml tool, another is to write the programs in Grain.
+ %as compiling Haskell programs using Asterius.
+
+
+%Part of my research at the start of the project will involve looking for suitable existing benchmark programs in OCaml. These would need to use a range of langauge features within the subset of OCaml I hope to implement, and not all be prohibitively large so that they can be used without requiring a garbage collector. Failing this, I will write my own OCaml programs to simulate a range of tasks. \\
+%I will then evaluate the resulting WebAssembly in terms of code size, execution time and memory usage. This will be repeated with different selections of optimisations enabled to determine how each optimisation affects these three factors and to identify and interesting effects when multiple different optimisations are enabled. \\
+%As well as comparing the final compiler's output against itself with optimisations disabled, it would be interesting to see how it performs against other ways of executing the same programs on the Web. In particular, I intend to compile the same programs with \verb|js_of_ocaml| and compare the resulting Javascript code. It may also be interesting to test a more imperative style OCaml program which can easily be translated to a language such as C++, then look at how my compiler performs against the output of existing WebAssembly compilers such as using \verb|Emscripten|.
+
+% Should be "modest but verifiable" so can be "as certain as possibly they can be met". Anything potentially challenging should be put under extensions (polymorphism/more complex parts of OCaml langauge?)
+\section*{Success Criteria}
+
+The following should be achieved:
+
+\begin{itemize}
+
+\item Implement a compiler for the specified subset of OCaml to WebAssembly.
+
+\item Produce a set of test programs to verify that the output of the WebAssembly code matches the original OCaml.
+
+\item Implement a testing framework to run JavaScript or WebAssembly code and measure its execution speed, memory usage and code size.
+
+%\item Devise workloads to test the performance of the compiler.
+
+\item Compare the performance of my compiler with an existing solution to running functional code in browsers.
+
+%\item Measure the impact of at least three optimisations in terms of the metrics described, including how the optimisations interact with each other.
+
+\end{itemize}
+
+
+\section*{Possible Extensions}
+% Should garbage collection be done in Wasm or as part of external Javascript runtime system?? Same for object allocation
+\begin{itemize}
+
+\item Many optimisations, for example function inlining, make a trade-off between execution speed and code size or other pairs of metrics. It would be interesting to research heuristics for deciding when to make these optimisations to improve the balance between each of the metrics. Similarly, I could research and implement additional optimisations to target specific problems.
+
+\item As explained earlier, there are several challenges with implementing garbage collection in WebAssembly. Researching existing solutions in other compilers for WebAssembly would help me to build my own implementation. This would allow running longer and more complex test programs.
+
+%WebAssembly lacks garbage collection, although there are proposals to add this as well as reference types. The stack is also managed implicitly and is not part of a program's linear memory, making garbage collection challenging. However, it is possible by maintaining a shadow stack in linear memory of any references and treating these as the root set for garbage collection. Implementing a simple garbage collector would allow running longer test programs, and techniques to achieve this could be taken from existing compilers to WebAssembly for garbage collected languages.
+
+% I hope to implement a basic garbage collector, using either reference counting or a copying collector. The addition of a garbage collector would also allow testing much larger programs and measuring the impact garbage collection has on performance. This could be further extended to use more advanced techniques, such as a generational collector, which would create opportunities for optimising the performance of the garbage collector too.
+
+% Should polymorphism be considered an extension?
+\item The subset of OCaml supported could be extended. I only intend to implement a small subset of the primitive operations initially so extending this would allow for a greater variety of test programs. Classes and objects would also allow testing more object-oriented style programs, and module support would create the possibility of compiling multiple interacting files.
+
+% I do not intend to implement all of the floating point operations initially but these will likely be added as an extension. Classes and objects would be interesting to include, and module support would allow multiple files to be compiled into interacting WebAssembly files. I am unlikely to add exceptions since, as mentioned earlier, WebAssembly lacks support for them and compilers such as in \verb|Emscipten| typically implement them by moving function calls to a Javascript wrapper to perform the try/catch.
+% (https://brionv.com/log/2019/10/24/exception-handling-in-emscripten-how-it-works-and-why-its-disabled-by-default/)
+ % Exceptions are either done as Javascript wrapping code and heavily modified functions, or need to pass references around for almost all functions and check every return value is [Not exception flag, value], else re "throw" exception pointer
+
+\end{itemize}
+
+% Points for research/study so include selecting/understanding optimisations as an early part of the project
+\section*{Timetable and Milestones}
+% Should have 10 work blocks, each taking about a fortnight
+% First 1-2 should be preparation work/research, last 3 should be dissertation writing (can move some of writing earlier into timetable)
+% Should have identifiable objectives/deliverables, especially around deadlines.
+% e.g. Progress report will likely be in 5th block
+\subsection*{26\textsuperscript{th} Oct - 8\textsuperscript{th} Nov}%1
+Set up the tools needed to work on the project. This includes creating a repository on GitHub to backup my code and dissertation, and creating a HTML/JavaScript framework to run WebAssembly code, which I will test with some programs compiled from C using Emscripten.\\ % These programs will help to improve my familiarity with the structure of WebAssembly code. \\
+I will also research potential optimisations and heuristics to implement, prioritising them by their expected complexity to implement and impact on the compiler. \\
+\textbf{Milestone: }% Produce a document summarising my research into optimisations and explaining how they have been prioritised. 
+Be able to run WebAssembly programs. Have an ordering for optimisations to implement later in the project.
+
+% with the required front-end parts of the OCaml compiler, and installing an OCaml testing framework, Emscripten and the WebAssembly Binary Toolkit. This will allow me to compile C programs to WebAssembly and check that I can inspect the generated code and run it in a browser.
+ %I can also look at how I will measure metrics such as execution speed and memory usage while working out how to run the WebAssembly produced.
+
+%With the front-end of the OCaml compiler set up, I can begin exploring the intermediate data structures such as the typed AST produced for sample OCaml programs. These will later be used to test that my compiler handles different language features correctly.
+
+% NEED TO DECIDE SPECIFIC SUBSET TO IMPLEMENT - e.g. issues with uncommon primitive operations, look at pervasives file (deprecated, look at stdlib)
+% Don't want to include debugging primitives initially such as __LOC__ or __FILE__
+
+% May be able to do primitives by compiling equivalent C program into Wasm itself and making calls into that
+\subsection*{9\textsuperscript{th} Nov - 22\textsuperscript{nd} Nov}%2 % May be too much for 2 weeks?
+%Study the structure of WebAssembly programs and write a set of OCaml programs using different language features, to examine the typed AST the OCaml compiler produces for each of them. 
+Study the intermediate data structures used by the OCaml compiler when compiling sample programs with different language features. These programs will be helpful later to check that output WebAssembly correctly handles a range of language features. Also research the intermediate representation used by other compilers to WebAssembly, such as Asterius for compiling Haskell and the standard compiler for Grain. \\ % https://github.com/appcypher/awesome-wasm-langs %Luwa (for compiling Lua)
+Use this information to design an intermediate representation for translating the OCaml compiler's typed AST. \\
+\textbf{Milestone: }Produce an intermediate representation datatype. %and a document describing the decisions made based on my research. 
+
+%Use this knowledge to design an intermediate representation for translating between the two structures and performing optimisations. Begin implementing translation from the typed AST to this intermediate representation, as I should have a better understanding of which language features to focus on immediately and which to leave as extensions.
+% May have an idea if polymorphism is sensible to implement at this stage or not.
+% Similarly objects and floating point primitives such as sin/cos
+
+\subsection*{23\textsuperscript{rd} Nov - 6\textsuperscript{th} Dec}%3
+Implement translation to the intermediate representation. This work package is lighter due to also having a unit of assessment exam to complete during this fortnight. \\
+\textbf{Milestone: }Be able to translate the sample programs to my intermediate representation.
+
+%Finish implementing translation to the intermediate representation and begin implementing WebAssembly code generation. This will also involve developing a runtime system to provide functions for operations such as memory allocation, creating closures, and performing equality tests.
+
+%I am allocating three weeks to this since the take-home exam for my unit of assessment falls in the middle of it, so I will likely need to spend significant time focusing on that instead. 
+
+\subsection*{7\textsuperscript{th} Dec - 20\textsuperscript{th} Dec}%4
+Implement WebAssembly code generation from the intermediate representation. This will require a runtime system to provide operations such as memory allocation and some of the OCaml primitives such as testing equality. \\
+%Continue implementing code generation and the runtime system if this has not yet been achieved. At this point I should be able to compile my initial OCaml programs into WebAssembly and execute them in a browser. This is therefore a good point to refactor the code as necessary and add any missing unit tests before I begin implementing optimisations.
+\textbf{Milestone: }%Produce a document explaining the runtime system and the code generation phase. 
+Compile the sample OCaml programs and run them as WebAssembly.
+
+%%% TODO: HAVE A FUCKING BREAK!
+\subsection*{21\textsuperscript{st} Dec - 3\textsuperscript{rd} Jan}%5
+I will take time off from the project for Christmas. 
+
+%Continue working on code generation and the runtime system if that is not yet complete. If it is, use this time to extend the subset of OCaml being implemented.\\
+%\textbf{Milestone: }Can compile OCaml programs to WebAssembly and run them in a browser. 
+
+%%%Create a set of benchmark programs to test the compiler's performance, using existing test suites if they appear suitable and use just the implemented subset of OCaml. Build a testing framework to compile these benchmarks and collect data on the output code size, execution time and memory usage. The framework should also allow me to evaluate WebAssembly code produced by other means, and equivalent test programs written in JavaScript. \\
+
+
+% Implmenet way to time/measure memory usage and code size. Needs to be a single automated script
+% Add benchmark programs to the project and automate compiling them and collecting metrics about their size and performance. Collect data on the compiler's baseline performance.
+
+
+%\textbf{Milestone: }Collect data for the benchmark programs and equivalent programs written in JavaScript or in other languages and compiled to WebAssembly with tools such as Asterius for Haskell. Produce a document summarising the data gathered.
+
+
+% NOT PRECISE? WHAT ABOUT BEING ABLE TO MEASURE DIRECT JAVASCRIPT?
+
+
+%Begin implementing optimisations and collect data on how they affect the performance metrics. Once at least three of these have been implemented, I will have met my success criteria.
+
+\subsection*{4\textsuperscript{th} Jan - 17\textsuperscript{th} Jan}%6  
+Slack time to catch up on previous milestones if necessary. Otherwise, I will implement optimisations based on the prioritisation at the start of the project.\\
+%Catch up on any outstanding work from previous weeks. Once this is complete, begin implementing the analysis/optimisation passes researched at the start of the project, following their prioritisation. \\
+%Implement a garbage collector as part of the runtime system. This will initially be a minimal solution but may be extended to a more efficient approach depending on how long that takes. Update the benchmark tests to include programs large enough to invoke the garbage collector, and collect data on the compiler's performance both with and without optimisations being performed.
+\textbf{Milestone: }Working compiler for the subset of OCaml to WebAssembly.
+
+%Produce a document summarising the data gathered for both my compiler and the alternatives.
+
+%Collect data with the optimisations enabled and produce a document describing the observed impact of the optimisations on the test programs.
+% TODO: Should look at extending subset covered here, so that later optimisations can affect that too?
+
+\subsection*{18\textsuperscript{th} Jan - 31\textsuperscript{st} Jan}%7
+Create a set of benchmark programs to test the compiler's performance, using existing test suites if they appear suitable. Build a testing framework to compile these benchmarks and collect data on the output code size, execution time and memory usage. The testing framework must also be able to evaluate WebAssembly produced by other means such as compiling Grain, and equivalent JavaScript programs. \\
+Translate the benchmarks into Grain and compile them to WebAssembly. Repeat data collection for this code, and again for the JavaScript output by the Js\_of\_ocaml tool.\\
+%Collect data for any remaining benchmark programs. At this point I will have met my success criteria and will begin implementing optimisations based on their prioritisation at the start of the project. Each optimisation will require collecting additional data to show its impact on the compiler.\\
+\textbf{Milestone: }Collect and plot data for both my compiler and the alternatives. 
+%Success criteria met.% Repeat data collection for any optimisations added. 
+
+\subsection*{1\textsuperscript{st} Feb - 14\textsuperscript{th} Feb}%8
+Prepare the progress report and presentation. Once these are ready, implement optimisations and collect data on their impact. If some optimisations were already implemented  during the slack work package, I may want to look at adding heuristics to balance execution speed, code size and memory usage. \\
+%Once those are ready and if all of the core tasks have been completed, research ways of implementing a simple garbage collector. This will involve studying the approaches taken by other compilers to WebAssembly in order to develop an efficient solution.\\
+%I will also finish off outstanding tasks such as implementing additional high priority optimisations, improving the garbage collector, or extending the set of benchmark programs, now that I have a significant amount of data on the impact of optimisations implemented so far.
+\textbf{Milestone: }Submit the progress report. Rehearse the presentation and have delivered it depending on the date assigned for presentations. Repeat data collection for optimisations. %Success criteria have been met.
+
+\subsection*{15\textsuperscript{th} Feb - 28\textsuperscript{th} Feb}%9
+Slack time for catching up on data collection and adding optimisations. If I already have data for several optimisations, research how existing compilers from garbage collected languages to WebAssembly perform garbage collection. If this looks feasible in the time remaining, begin implementing a garbage collector, otherwise focus on the other extensions. \\
+%Implement a garbage collector if it looks feasible with the time available, otherwise look at implementing the other extensions. If a garbage collector is completed, add benchmark programs which require garbage collection and collect data to evaluate the impact it has on performance. \\
+\textbf{Milestone: }Success criteria met. Data collected with optimisations enabled.
+%Decide whether to implement garbage collection and, if so, which garbage collection technique to use.
+%Produce a document explaining the approaches taken by other compilers and the decisions made about implementing garbage collection.
+
+%Implement lower priority optimisations and heuristics for when to apply existing optimisations. Choices about which to implement and the heuristics to use can be driven by the data collected so far. Collect additional data to evaluate the effect of these changes.
+
+\subsection*{1\textsuperscript{st} March - 14\textsuperscript{th} March}%10
+%Slack time for the optimisations and research in the previous two work packages.
+Implement extensions. Improving the optimisations implemented, the subset of OCaml covered, or adding garbage collection should all allow me to collect  some new data demonstrating the area extended.\\
+%If I have achieved all of the previous milestones, implement some of the other extensions such as increasing the subset of OCaml covered or adding more specific optimisations.\\
+\textbf{Milestone: }Collect data for either new test programs or showing the impact of the optimisations added.
+%Document the final subset of OCaml covered and explain which optimisations were included or left out. Summarise any additional data collected.
+%Extend the subset of OCaml supported, accompanying any changes with additional testing and benchmark programs.
+
+\subsection*{15\textsuperscript{th} Match - 28\textsuperscript{th} March}%11
+Write the introduction and preparation chapters of the dissertation. Finish making additions to the compiler. \\
+%I may now be able to make optimisations to target any newly added langauge features, in which case I will implement these and repeat data collection with the new optimisations enabled.
+\textbf{Milestone: }Submit draft chapters to my DoS and supervisor.
+
+
+\subsection*{29\textsuperscript{th} Match - 11\textsuperscript{th} April}%12
+%Begin writing the remaining chapters of the dissertation and start submitting drafts of chapters to my supervisor. Finish making any significant additions to the compiler.
+Write the implementation and evaluation chapters. Make changes to the previous chapters based on the feedback received. \\
+\textbf{Milestone: }Submit the next two draft chapters to my DoS and supervisor.
+
+
+\subsection*{12\textsuperscript{th} April - 25\textsuperscript{th} April}%13
+Write the conclusion of the dissertation and ensure that the bibliography and any appendices are complete. Continue making changes based on the feedback received. \\
+\textbf{Milestone: }Submit draft of whole dissertation to my DoS and supervisor.
+
+\subsection*{26\textsuperscript{th} April - 9\textsuperscript{th} May}%14
+Slack time to catch up on writing the dissertation and acting on feedback.\\% If this is not needed, I will just check over the whole dissertation. \\
+% Make any final checks and modifications to my dissertation. \\
+\textbf{Milestone: }Submit dissertation (due 12:00 14\textsuperscript{th} May).
+%Make any remaining changes to my dissertation and submit the final version. % 5 days to spare
+% ACTUAL DEADLINE IS 14th May
+
+\section*{Resources Required}
+I intend to use my own Windows laptop (8GB RAM, 2.5GHz CPU, 1TB HDD, 256GB SSD) to work on the project. I accept full responsibility for this machine, and I have made contingency plans to protect myself against hardware and/or software failure. My code and dissertation will be backed up regularly to GitHub and OneDrive. In the event of my laptop being damaged or lost, I will use the MCS machines as a backup. \\
+I will be using the WebAssembly Binary Toolkit to manipulate text and binary WebAssembly code, and opam (the OCaml package manager) to run building and testing packages and the Js\_of\_ocaml tool. I have checked that I can build and use both on the MCS machines, which already have IDEs and browsers installed. My project will contain parts of the front-end of the OCaml compiler, which is available on GitHub. %under the GNU Lesser General Public License.
+
+%I will be using opam, the OCaml package manager, to run the latest version of the OCaml compiler along with building/testing packages and the Js\_of\_ocaml tool, and the WebAssembly Binary Toolkit to manipulate text and binary WebAssembly code. I have checked that I can build and use both of these tools on the MCS machines, which already have IDEs and browsers installed. My project will make use of the front-end of the OCaml compiler, available on GitHub under the GNU Lesser General Public License. \\
+% For comparing against other ways of running functional code on the web, js\_of\_ocaml is available through opam and compilers to WebAssembly for Haskell and some other languages can be cloned and built from GitHub.
+
+\end{document}
+
