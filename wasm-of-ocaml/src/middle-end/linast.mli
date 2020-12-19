@@ -67,6 +67,8 @@ type annotation = Pure (* whole term/body pure *) | Fields of annotations list
   | Immutable
   (* Assertion: Since tree is linearised and nothing assumed about function args, imms only occur where in scope *)
   | FieldImms of (imm_expr option) list
+  (* Mark a term as always throwing a particular CFail i *)
+  | Fail of int32
 (* TODO: Can do much more complex analysis for whether mutable fields can be copied or not based on if anything
          could have actually assigned to them or not
    TODO: Analysis pass to propagate annotations through use of idents *)

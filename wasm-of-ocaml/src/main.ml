@@ -25,6 +25,7 @@ let main () =
   Analyse.analyse_constant_propagation ir;
   (* Basic optimisation pass, only removes assignments OCaml already warns about until CSE/const propagation added *)
   let ir = OptConstants.optimise ir in
+  let ir = OptFails.optimise ir in (* Optimising constants removes dead branches, leaves useless try/catches *)
   let ir = OptCSE.optimise ir in
   let ir = OptDeadAssignments.optimise ir in
 

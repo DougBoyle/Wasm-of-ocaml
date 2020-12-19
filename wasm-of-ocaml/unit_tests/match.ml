@@ -1,4 +1,4 @@
-(* First match can be used to check dead branch elimination (other require multiple passes to resolve branch)
+(* First match can be used to check dead branch elimination (others require multiple passes to resolve branch)
 Before:
 (let
   (compound/119 =
@@ -11,8 +11,14 @@ Before:
 
 After:
 (let
-  (compound/119 = (try (fail 8) with (8) 1) -- TODO: Also simplify static exceptions when they always occur
+  (compound/119 = (try (fail 8) with (8) 1) --- Gets simplified by optFails.ml
    export a/84 = compound/119
+  ...
+
+After also simplifying unnecessary try/catch blocks:
+(let
+  (compound/119 = 1
+   export a/84 = compound/119    --- Another round of constant propagation will simplify even further
   ...
 *)
 let a = match 2 with
