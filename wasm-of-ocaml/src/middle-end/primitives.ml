@@ -41,7 +41,7 @@ let prim_table = Misc.create_hashtable 31 [
     "caml_sqrt_float", Unary(FSqrt);
 
     (* Reference operations just mapped to other expressions *)
-    "%makemutable", CompoundUnary(fun imm -> (Compound.makeblock 0l [imm], []));
+    "%makemutable", CompoundUnary(fun imm -> (Compound.makeblock 0 [imm], []));
     "%field0", CompoundUnary(fun imm -> (Compound.field imm 0, []));
     "%setfield0", CompoundBinary(fun imm1 imm2 -> (Compound.setfield imm1 0 imm2, []));
     "%incr", CompoundUnary(let v1 = Ident.create_local "old_value" and v2 = Ident.create_local "new_value" in

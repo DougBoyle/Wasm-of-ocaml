@@ -90,7 +90,7 @@ type compound_expr_desc =
   | CField of imm_expr * int
   | CArraySet of imm_expr * imm_expr * imm_expr
   | CArrayGet of imm_expr * imm_expr
-  | CMakeBlock of int32 * imm_expr list (* Tuples, References, Datatypes (constant/block). Mutable flag needed or not? *)
+  | CMakeBlock of int * imm_expr list (* Tuples, References, Datatypes (constant/block). Mutable flag needed or not? *)
   | CGetTag of imm_expr
   (* if(i, e_1, e_2) evals e_1 if i=0 else e_2 in Wasm *)
   (* In OCaml, true/false are constant blocks 1/0 respectively, mapped to 2/0 by my program, so need to be careful when
@@ -104,7 +104,7 @@ type compound_expr_desc =
   (* TODO: Should switch take a construct, or take an int/getTag and perform more general switch tests *)
   (* Extending to integers helpful, but doesn't help when later want floats too. OCaml still falls back to ifthenelse for
      arbitrary integers, only uses switch if all small. *)
-  | CSwitch of imm_expr * (int32 * linast_expr) list * (linast_expr option)
+  | CSwitch of imm_expr * (int * linast_expr) list * (linast_expr option)
   (* Evaluate body, escape to second expression if constant pattern/guard expression fails. *)
   (* int32 marker may or may not be needed, either to track nesting depth (need extra 'depth' arg in many functions)
      or just to uniquely identify where to fail to in ImmMatchFail. Giving multiple jump options can speed up matches. *)

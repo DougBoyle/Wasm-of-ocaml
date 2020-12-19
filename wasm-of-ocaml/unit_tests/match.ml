@@ -1,3 +1,20 @@
+(* First match can be used to check dead branch elimination (other require multiple passes to resolve branch)
+Before:
+(let
+  (compound/119 =
+     (try (switch 2 case tag 0: 0
+                    case tag 1: 0
+                    default: (fail 8))
+      with (8) 1)
+   export a/84 = compound/119
+   ...
+
+After:
+(let
+  (compound/119 = (try (fail 8) with (8) 1) -- TODO: Also simplify static exceptions when they always occur
+   export a/84 = compound/119
+  ...
+*)
 let a = match 2 with
   | 0 -> 0
   | 1 -> 0

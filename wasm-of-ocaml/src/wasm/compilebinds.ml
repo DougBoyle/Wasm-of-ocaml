@@ -147,7 +147,7 @@ let rec compile_comp env (c : compound_expr) =
   (* Switches left till bottom level to potentially make use of Br_Table *)
   | CSwitch(arg, branches, default) -> let compiled_arg = compile_imm env arg in
     MSwitch(compiled_arg,
-       List.map (fun (lbl, body) -> (lbl, compile_linast env body)) branches,
+       List.map (fun (lbl, body) -> (Int32.of_int lbl, compile_linast env body)) branches,
        match default with Some e -> compile_linast env e | None -> [MFail (-1l)])
   | CIf(cond, thn, els) ->
     MIf(compile_imm env cond, compile_linast env thn, compile_linast env els)
@@ -170,7 +170,7 @@ let rec compile_comp env (c : compound_expr) =
   | CSetField (obj, idx, v) -> MDataOp(MSet(Int32.of_int idx, compile_imm env v), compile_imm env obj)
   | CField (obj, idx) -> MDataOp(MGet(Int32.of_int idx), compile_imm env obj)
   | CMakeBlock (tag, args) ->
-      MAllocate(MData(tag, List.map (compile_imm env) args))
+      MAllocate(MData(Int32.of_int tag, List.map (compile_imm env) args))
   | CArraySet(obj, idx, v) ->
     MDataOp(MArraySet(compile_imm env idx, compile_imm env v), compile_imm env obj)
   | CArrayGet(obj, idx) -> MDataOp(MArrayGet(compile_imm env idx), compile_imm env obj)

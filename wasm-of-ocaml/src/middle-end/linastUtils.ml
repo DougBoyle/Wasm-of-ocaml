@@ -59,13 +59,13 @@ end
 let unit_value = Imm.const (Asttypes.Const_int 0)
 
 let get_const_constructor_tag = function
-  | Cstr_constant i -> i (* TODO: Should be an int32 instead? *)
+  | Cstr_constant i -> i
   | _ -> failwith "Not a constant constructor"
 
 (* Assign constant/block constructor tags to disjoint, contiguous values *)
 let unify_constructor_tag desc = match desc.cstr_tag with
-  | Cstr_constant i -> Int32.of_int i
-  | Cstr_block i -> Int32.of_int (i + desc.cstr_consts)
+  | Cstr_constant i -> i
+  | Cstr_block i -> i + desc.cstr_consts
   | _ -> raise NotSupported
 
 type linast_setup =

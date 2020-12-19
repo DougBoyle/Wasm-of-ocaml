@@ -89,7 +89,7 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
     | CMakeBlock (i, imms) ->
       let print_imms ppf args =
         List.iter (fun e -> fprintf ppf "@ %a" print_imm e) args in
-      fprintf ppf "@[<2>(makeblock %li%a)@]" i print_imms imms
+      fprintf ppf "@[<2>(makeblock %i%a)@]" i print_imms imms
     | CGetTag imm -> fprintf ppf "tag %a" print_imm imm
     | CIf (imm, ast1, ast2) -> fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" print_imm imm print_ast ast1 print_ast ast2
     | CWhile (cond, body) -> fprintf ppf "@[<2>(while@ %a@ %a)@]" print_ast cond print_ast body
@@ -104,7 +104,7 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
             List.iter
               (fun (n, e) ->
                 if !spc then fprintf ppf "@ " else spc := true;
-                fprintf ppf "@[<hv 1>case tag %li:@ %a@]" n print_ast e)
+                fprintf ppf "@[<hv 1>case tag %i:@ %a@]" n print_ast e)
               cases ;
             begin match default with
             | None  -> ()

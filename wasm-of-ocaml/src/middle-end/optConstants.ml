@@ -91,29 +91,73 @@ let leave_compound (compound : compound_expr) = match compound.desc with
           | Some (Some imm) -> {compound with desc=CImm imm}
           | _ -> compound)
       | _ -> failwith "Filter failed to find just FieldImms")
-
   (* No use looking at ArrayGet, can't yet make any guarentees about the field *)
-
   | _ -> compound
 
-(* Not necessary as ident won't be reused once out of scope, but helps keep table small
-   TODO: By doing this, can't optimise bindings passed through an exit to a handler
-         (not yet done by pattern match).
-         Implicitly passing out values is starting to look like an issue, any way to avoid this scope issue? *)
-let leave_linast linast = (match linast.desc with
-  | LLet(id, _, body, rest) -> (match body.desc with
-    | CImm {desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
-    | _ -> ())
-  | _ -> ()
-  ); linast
+(* ------------- Dead branch elimination ------------- *)
+(* TODO: Also optimise expressions like 'try fail i with i => e' ---> 'e'
+         Gets produced whenever branch is eliminated and replaced with default case *)
 
-(* Allows replacing getField with whatever the field was originally declared as whenever that is known.
-  Assertion: Since tree is linearised and nothing assumed about function args, imms only occur where in scope.
-  Specialised analysis pass rather than doing along with propagateAnalysis, some work repeated.
-  Attempt to do proper merging of annotations for cases/if statements. i.e. If two fields are equal,
-  keep that information even if other fields are not. *)
+let can_simplify_branch : compound_expr -> bool = function
+  | {desc=CIf({desc=ImmConst _}, _, _)} -> true
+  | {desc=CSwitch({desc=ImmConst _}, _, _)} -> true
+  | _ -> false
 
+let simplify_branch : compound_expr -> linast_expr = function
+  | {desc=CIf({desc=ImmConst (Asttypes.Const_int i)}, branch1, branch2)} -> if i > 0 then branch1 else branch2
+  | {desc=CSwitch({desc=ImmConst (Asttypes.Const_int i)}, cases, default)} ->
+    (match List.assoc_opt i cases with
+      | Some body -> body
+      | None -> match default with Some body -> body
+               (* Pattern match failure *)
+               | None -> LinastUtils.LinastExpr.compound (LinastUtils.Compound.fail (-1l)))
+  | _ -> failwith "Cannot simplify this compound"
 
+(* mkleaf creates terminal linast, allows using same function for seq and let bindings *)
+let rec rewrite_tree mkleaf branch rest = match branch.desc with
+  | LCompound compound -> mkleaf compound rest
+  | LSeq (compound, body) -> LinastUtils.LinastExpr.seq compound (rewrite_tree mkleaf body rest)
+  | LLet (id, global, compound, body) ->
+    LinastUtils.LinastExpr.mklet id global compound (rewrite_tree mkleaf body rest)
+  | LLetRec (binds, body) -> LinastUtils.LinastExpr.mkletrec binds (rewrite_tree mkleaf body rest)
+
+let leave_linast linast = match linast.desc with
+  (* Dead branches - good idea to do in same pass as optConstants or not? *)
+  (* Branches optimised at linast level as tree may need 're-linearising'. By of if statement is linast *)
+  | LCompound compound when can_simplify_branch compound -> simplify_branch compound
+  (* May need to 're-linearise' the tree now that we have pulled a Linast_expr out of a compound *)
+  | LSeq (compound, rest) when can_simplify_branch compound ->
+    let branch = simplify_branch compound in
+    let mkleaf = LinastUtils.LinastExpr.seq in
+    (match branch.desc with (* Keep annotations on top-level linast, rewrite_sequence generates a new one *)
+      | LCompound compound -> {linast with desc=LSeq(compound, rest)}
+      | LSeq (compound, body) -> {linast with desc=LSeq(compound, rewrite_tree mkleaf body rest)}
+      | LLet (id, global, compound, body) ->
+        {linast with desc=LLet(id, global, compound, rewrite_tree mkleaf body rest)}
+      | LLetRec (binds, body) -> {linast with desc=LLetRec(binds, rewrite_tree mkleaf body rest)}
+    )
+  (* Not necessary as ident won't be reused once out of scope, but removing helps keep table small
+     TODO: By doing this, can't optimise bindings passed through an exit to a handler
+           (not yet done by pattern match).
+           Implicitly passing out values is starting to look like an issue, any way to avoid this scope issue? *)
+  | LLet (id, global, compound, rest) when can_simplify_branch compound ->
+    (match compound.desc with (* remove from table *)
+      | CImm {desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
+      | _ -> ());
+    let branch = simplify_branch compound in
+    let mkleaf = LinastUtils.LinastExpr.mklet id global in
+    (match branch.desc with (* Keep annotations on top-level linast, rewrite_sequence generates a new one *)
+      | LCompound compound -> {linast with desc=LLet (id, global, compound, rest)}
+      | LSeq (compound, body) -> {linast with desc=LSeq(compound, rewrite_tree mkleaf body rest)}
+      | LLet (id', global', compound', body) ->
+        {linast with desc=LLet(id', global', compound', rewrite_tree mkleaf body rest)}
+      | LLetRec (binds, body) -> {linast with desc=LLetRec(binds, rewrite_tree mkleaf body rest)}
+    )
+  | LLet(id, _, body, rest) -> (match body.desc with (* remove from table *)
+     | CImm {desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
+     | _ -> ()); linast
+  (* TODO: Same for LLet and Seq (not for LLetRec as that must be a function, not an if/switch *)
+  | _ -> linast
 
 let optimise linast =
   Ident.Tbl.clear constant_idents;

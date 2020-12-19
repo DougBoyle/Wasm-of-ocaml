@@ -183,7 +183,7 @@ and apply_array_rule fail v vs matrix =
     let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
     let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
     let (expr, setup) = compile_matrix fail (new_vals @ vs) new_matrix in
-    (Int32.of_int n, binds_to_anf (new_val_binds @ setup) (LinastExpr.compound expr))
+    (n, binds_to_anf (new_val_binds @ setup) (LinastExpr.compound expr))
     in
   let get_length = function
     | ({pat_desc=Tpat_array l}::_,_,_) -> List.length l
@@ -267,7 +267,7 @@ and apply_const_int_rule fail v vs matrix ints_used total =
      | (_::ps,act,g) -> (ps, act, g)
      | _ -> failwith "Wrong rule applied") rows in
     let (expr, setup) = compile_matrix fail vs new_matrix in
-    (Int32.of_int n, binds_to_anf setup (LinastExpr.compound expr)) in
+    (n, binds_to_anf setup (LinastExpr.compound expr)) in
   let cases = List.map specialise_const_int_matrix ints_used in
   if total then (Compound.mkswitch v cases None, []) else
   (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.fail fail))), [])
