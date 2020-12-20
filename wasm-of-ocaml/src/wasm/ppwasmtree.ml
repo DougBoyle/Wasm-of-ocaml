@@ -85,7 +85,6 @@ let rec print_instr ppf = function
         binds in
      fprintf ppf  "@[<2>(store@ (@[<hv 1>%a@]))@]" bindings binds
     | MDrop -> fprintf ppf "drop"
-    | MTagOp(_, _) | MArityOp(_, _, _) -> failwith "Not expecting to see tag/arity operations"
 
 and print_block ppf (block : instr list) =
     let print_body ppf instrs =

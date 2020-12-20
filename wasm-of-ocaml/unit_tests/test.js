@@ -25,6 +25,7 @@ if (process.argv.length > 2){
 	 // console.log(imports.ocamlRuntime.alloc(0));
   } catch (err) {
     console.log(err);
+    console.log(err.message);
   }
 })();
 } else {
@@ -50,12 +51,12 @@ if (process.argv.length > 2){
 			  try {
 				instance.exports["OCAML$MAIN"]();
 			  } catch (err) {
-				  if (err instanceof WebAssembly.RuntimeError){
+				  if (err instanceof WebAssembly.RuntimeError && err.message == "unreachable"){
 					console.log('\x1b[92m%s\x1b[0m', filename + " passed");
 					continue;
-				  } else{
-					 console.log("ERROR: Some other error occured during execution");
-					 throw(err);
+				  } else {
+				  	console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Exception '" + err.message + "' occured");
+				  	continue;
 				  }
 			  }
 			  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Did not trap");

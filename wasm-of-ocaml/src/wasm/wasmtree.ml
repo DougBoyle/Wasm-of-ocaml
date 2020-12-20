@@ -80,26 +80,8 @@ type closure_data = {
 
 type allocation_type =
   | MClosure of closure_data
-  | MData of int32 * immediate list (* Generalise tuples/adts/records etc. all into same type. Closures are separate *)
-  (* | MTuple of immediate list
-  | MADT of immediate * immediate * immediate list (* Type Tag, Variant Tag, Elements *)  *)
+  | MData of int32 * immediate list
  (* | MString of string -- Leave strings for now *)
-
-(* TODO: What does each of these do? *)
-type tag_op =
-  | MCheckTag
-  | MAssertTag
-  | MAddTag
-  | MRemoveTag
-
-(* TODO: Purpose? *)
-type arity_operand =
-  | MLambdaArity
-  | MDataArity
-
-type arity_op =
-  | MGetArity
-  | MAssertArity of int32
 
 (* Arrays represented identically but with tag being the length *)
 type data_op =
@@ -116,9 +98,6 @@ type instr =
   | MCallKnown of int32 * immediate list (* Optimized path for statically-known function names *)
   | MCallIndirect of immediate * immediate list
   | MAllocate of allocation_type
-  (* Are these ever actually used? Seem to only give errors *)
-  | MTagOp of tag_op * (* tag_type * *) immediate
-  | MArityOp of arity_operand * arity_op * immediate
   | MIf of immediate * block * block
   | MWhile of block * block
   (* Ident no longer needed - should be encoded as (2?) local variables to get/set? *)
