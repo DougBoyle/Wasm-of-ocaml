@@ -1,0 +1,17 @@
+\chapter{Introduction}
+% Have a brief description of project at the top
+
+% Don't have other projects open when writing, ensures I use my own words
+\section{Motivation}
+% Javascript or JavaScript
+WebAssembly was developed to provide a more efficient platform for web applications. Until recently, JavaScript was the only language available for writing interactive web pages, and it is still the most popular choice. The first disadvantage of JavaScript is that code is sent in text format and is then compiled to bytecode  and interpreted, or Just-In-Time compiled to native code. Therefore, the client has to download a larger file and there is a significant overhead in loading the file. \\
+%
+The second issue with JavaScript comes from its dynamic typing system. Varaibles can be arbitrarily assigned values of different types or have properties added or removed. This greatly restricts the types of optimisations that can be made and means that almost all operations require runtime type-checks and potentially throw exceptions if a variable no longer has the expected type, all of which adds to runtime overhead. It also tries to be flexible as a programming language, implicitly casting objects to the necessary type where possible. This can result in hard to detect bugs which slow down development. For example, arrays can be cast to booleans and \verb|![]| returns \verb|false|, suggesting that \verb|[]| gets treated as \verb|true|, yet \verb|[] == false| returns \verb|true| which suggests the opposite. This can lead to the conditions of \verb|if| statements having unexpected semantics which take a long time to debug. 
+% [] has boolean value true but Number value 0. [] == false sees an object and a boolean and conversion table specifies that these get compared as numbers.
+% So both get converted to 0 and 0 == 0 
+% See: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#Loose_equality_using
+
+Since OCaml is a strongly-typed language, runtime type-checks are rarely necessary so compiling OCaml to JavaScript, as done by the Js\_of\_ocaml too, introduces inefficiencies which would be nice to avoid. WebAssembly is also strongly-typed, so a compiler with a WebAssembly backend provides a more efficient way to compile OCaml code to run on the web. 
+
+\section{Overview of WebAssembly}
+WebAssembly has both a text format for \verb|.wast| files and a binary format for \verb|.wasm| files. This means that code can be easily inspected in the text format but downloaded and executed as the binary format, reducing the size of files and overhead to run them.
