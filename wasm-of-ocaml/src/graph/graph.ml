@@ -4,9 +4,13 @@
 open Wasm
 open Wasm.Types
 
+module Set32 = Set.Make(Int32)
+
 (* Currently, 'call' instructions just point to the following instruction rather than between other functions/imports.
    Do to possible branching at 'if' blocks, can have an unlimited number of possible successors *)
-type instr = {it : instr'; pred : instr list ref; succ : instr list ref}
+(* So far, just use to detect unused locals. Will be more useful when CSE + constant propagation added *)
+(* TODO: Could probably do with an 'iter/map' function to traverse blocks efficiently? *)
+type instr = {it : instr'; pred : instr list ref; succ : instr list ref; live : Set32.t ref}
 and instr' =
   | Unreachable
   | Nop

@@ -33,10 +33,14 @@ let main () =
   let wasm_ast = Compilebinds.transl_program ir in
   if !print_wasmtree then
     (Ppwasmtree.print_program Format.std_formatter wasm_ast; Format.print_newline(); Format.print_newline());
-  let wasm = Compilewasm.compile_wasm_module wasm_ast in
+  (* Now that this produces a graph, should rename as such *)
+  let graph = Compilewasm.compile_wasm_module wasm_ast in
 
   (* Wasm level optimisations *)
-  let wasm = OptWasmDeadAssign.optimise wasm in
+  let graph = Deadlocals.optimise graph in
+
+  let wasm = Graph.translate_to_wasm graph in
+  Compilewasm.validate_module wasm;
 
   let binary = Wasm.Encode.encode wasm in
   let f = open_out_bin output_file in
