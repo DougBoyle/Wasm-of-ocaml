@@ -787,6 +787,8 @@ let compile_wasm_module prog =
     elems;
     types;
   } in
+  (* Graph generated, but not actually used for anything currently *)
+  Graph.generate_graph ret;
   let ret = translate_to_wasm ret in
   validate_module ret;
   ret
