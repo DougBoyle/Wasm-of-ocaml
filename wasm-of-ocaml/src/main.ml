@@ -34,6 +34,10 @@ let main () =
   if !print_wasmtree then
     (Ppwasmtree.print_program Format.std_formatter wasm_ast; Format.print_newline(); Format.print_newline());
   let wasm = Compilewasm.compile_wasm_module wasm_ast in
+
+  (* Wasm level optimisations *)
+  let wasm = OptWasmDeadAssign.optimise wasm in
+
   let binary = Wasm.Encode.encode wasm in
   let f = open_out_bin output_file in
   output_string f binary; close_out f;

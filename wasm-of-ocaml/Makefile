@@ -1,4 +1,4 @@
-dirs = src/ocaml/file_formats,src/ocaml/lambda,src/ocaml/driver,src/ocaml/typing,src/ocaml/utils,src/ocaml/parsing,src/middle-end,src/wasm,src
+dirs = src/ocaml/file_formats,src/ocaml/lambda,src/ocaml/driver,src/ocaml/typing,src/ocaml/utils,src/ocaml/parsing,src/middle-end,src/wasm,src/wasmopt,src
 all:
 	ocamlbuild -pkg wasm -Is $(dirs) main.byte
 ir:
