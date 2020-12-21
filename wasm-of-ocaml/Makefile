@@ -1,12 +1,16 @@
-dirs = src/ocaml/file_formats,src/ocaml/lambda,src/ocaml/driver,src/ocaml/typing,src/ocaml/utils,src/ocaml/parsing,src/middle-end,src/wasm,src/wasmopt,src
+INCLUDES=-I src/ocaml/file_formats -I src/ocaml/lambda -I src/ocaml/driver -I src/ocaml/typing \
+        -I src/ocaml/utils -I src/ocaml/parsing -I src/middle-end -I src/wasm \
+        -I src/wasmopt -I src/graph -I src
 all:
-	ocamlbuild -pkg wasm -Is $(dirs) main.byte
+	ocamlbuild -pkg wasm $(INCLUDES) main.byte
 ir:
-	ocamlbuild -Is $(dirs) linast.cmi
+	ocamlbuild $(INCLUDES) linast.cmi
+graph:
+	ocamlbuild -pkg wasm $(INCLUDES) graph.byte
 linear:
-	ocamlbuild -Is $(dirs) linearise.byte
+	ocamlbuild $(INCLUDES) linearise.byte
 wasm:
-	ocamlbuild -pkg wasm -Is $(dirs) compilebinds.byte
+	ocamlbuild -pkg wasm $(INCLUDES) compilebinds.byte
 unittest:
 	make all
 	for f in unit_tests/*.ml ; do ./main.byte -d unit_tests/out $$f || exit 1 ; done
