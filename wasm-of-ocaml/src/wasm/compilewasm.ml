@@ -7,7 +7,8 @@ open Wasm
 (* Associate a dummy location to a value - Wasm.Ast.instr = instr' Source.phrase so every part needs location *)
 let add_dummy_loc (x : 'a) : 'a Source.phrase = Source.(x @@ no_region)
 (* for Graph terms *)
-let add_dummy_edges instr = {Graph.it=instr; Graph.pred = ref []; Graph.succ = ref []; live = ref Graph.Set32.empty}
+let add_dummy_edges instr = {Graph.it=instr; Graph.pred = ref []; Graph.succ = ref [];
+  Graph.id = Graph.get_id (); live = ref Graph.Set32.empty}
 
 (* Needed as Wasm Ast represents module names (e.g. in import list) as "name" type, which is actually int list *)
 let encode_string : string -> int list = Utf8.decode

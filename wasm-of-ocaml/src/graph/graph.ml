@@ -6,11 +6,14 @@ open Wasm.Types
 
 module Set32 = Set.Make(Int32)
 
+let id = ref 0
+let get_id () = incr id; !id
+
 (* Currently, 'call' instructions just point to the following instruction rather than between other functions/imports.
    Do to possible branching at 'if' blocks, can have an unlimited number of possible successors *)
 (* So far, just use to detect unused locals. Will be more useful when CSE + constant propagation added *)
-(* TODO: Could probably do with an 'iter/map' function to traverse blocks efficiently? *)
-type instr = {it : instr'; pred : instr list ref; succ : instr list ref; live : Set32.t ref}
+(* TODO: Could probably do with an 'iter/map' function to traverse blocks efficiently? *) (* id uniquely identifies node *)
+type instr = {it : instr'; pred : instr list ref; succ : instr list ref; live : Set32.t ref; id : int}
 and instr' =
   | Unreachable
   | Nop
@@ -199,5 +202,11 @@ let rec process_instrs on_exit labels = function
     | [] -> link_to instr on_exit
     | instrs -> link_to instr instrs; process_instrs on_exit labels rest)
 
+(* Whenever an optimisation happens which can remove/insert nodes, either need to patch up or regenerate graph *)
+(* TODO: Add regenerate function and functions to add/remove from succ/pred lists (keeping unique membership) *)
 let rec generate_graph module_ =
   List.iter (fun {body} -> process_instrs [] [] body) module_.funcs
+
+(* For searching/updating predecessor/successor lists. Optimisations can modify both the actual operation
+   and the successors/predecessors of a node (e.g. if an instruction is removed) so need a field for comparisons only. *)
+let rec instr_eq {id=id1} {id=id2} = id1 = id2
