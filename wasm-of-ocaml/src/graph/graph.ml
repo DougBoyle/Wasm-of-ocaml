@@ -155,7 +155,6 @@ let link_to instr goes_to =
    'Block' instructions shouldn't be linked in to anything? Will need a function to traverse through blocks to get start *)
 (* on_exit is successors of the current block i.e. instructions to link to if end of block reached.
    Can't get from Labels as jump != fall through for Loop blocks *)
-(* TODO: If every case finishes with a recursive call on rest, just change to an iter? *)
 (* TODO: Should 'unreachable' be treated specially? Seeing as it can never actually be reached, should unlink any edges *)
 let rec process_instrs on_exit labels = function
   (* TODO: Probably need a 1-element list case? *)

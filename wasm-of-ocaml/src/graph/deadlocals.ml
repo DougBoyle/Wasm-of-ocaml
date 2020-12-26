@@ -63,6 +63,40 @@ let rec optimise_instrs = function
   | instr::instrs -> instr::(optimise_instrs instrs)
   | [] -> []
 
-let optimise ({funcs} as module_) =
+(* Scan over function to find all locals which are accessed at least once. Remove all others.
+   Cannot remove the first 2 locals as they are the function arguments. Currently, always 2, but
+   check type to ensure compatibility if some functions modified to not take closure. *)
+let rec used_locals set = function
+  | [] -> set
+  | ({it=LocalTee {it=i} | LocalSet {it=i} | LocalGet {it=i}})::rest ->
+    used_locals (Set32.add i set) rest
+  | {it=Block(_, body)|Loop(_, body)}::rest  ->
+    used_locals (used_locals set body) rest
+  | {it=If(_, body1, body2)}::rest ->
+    used_locals (used_locals (used_locals set body1) body2) rest
+  | _::rest -> used_locals set rest
+
+let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; body} =
+  (* Must not modify locals which are function arguments. Until functions without closures added, always 2,
+     but checked here to ensure compatibility if that ever changes *)
+  let num_args = match List.nth types (Int32.to_int ftype.it) with
+    {it=Wasm.Types.FuncType (args, _)} -> List.length args in
+  let used = used_locals (Set32.of_list (List.init num_args Int32.of_int)) body in
+  (* Set.elements is guarenteed to return elements in sorted order *)
+  let mapping = List.mapi (fun i x -> (x, Int32.of_int i)) (Set32.elements used) in
+  let rec map instr = {instr with it = match instr.it with
+    | LocalGet ({it=i} as var) -> LocalGet{var with it = List.assoc i mapping}
+    | LocalSet ({it=i} as var) -> LocalSet{var with it = List.assoc i mapping}
+    | LocalTee ({it=i} as var) -> LocalTee{var with it = List.assoc i mapping}
+    | Block(typ, body) -> Block(typ, List.map map body)
+    | Loop(typ, body) -> Loop(typ, List.map map body)
+    | If(typ, body1, body2) -> If(typ, List.map map body1, List.map map body2)
+    | x -> x
+    } in
+  (* types of locals filtered to keep the ones that have mappings i.e. just remove the unused ones *)
+  {ftype; locals=List.filteri (fun i _ -> List.mem_assoc (Int32.of_int i) mapping) locals; body=List.map map body}
+
+let optimise ({funcs; types} as module_) =
   List.iter (fun {body} -> analyse_liveness (List.rev body)) funcs;
-  {module_ with funcs=List.map (fun ({body} as f) -> {f with body=optimise_instrs body}) funcs}
+  let new_funcs = List.map (fun ({body} as f) -> {f with body=optimise_instrs body}) funcs in
+  {module_ with funcs=List.map (map_remaining_locals types) new_funcs}
