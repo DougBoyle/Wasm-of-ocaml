@@ -642,8 +642,7 @@ let compile_imports env =
       idesc;
     } in
   let imports = List.map compile_import runtime_imports in
-  (List.append
-    imports
+   (imports @
     (* Single memory/table required by a Wasm module -- imported rather than created itself? *)
     [
       add_dummy_loc {

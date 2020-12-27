@@ -4,7 +4,69 @@
 open Graph
 open GraphUtils
 
-(* Function to find point in code where previous argument started being constructed *)
+(* So that types/functions tables don't need to be passed around. Only ever optimising one program at a time *)
+let mod_tbls = ref Graph.empty_module
+
+(* Function to find point in code where previous argument started being constructed
+ Idea is that code is something like:
+   [instrs to form 1st arg] @ [instrs to form 2nd arg] @ [Binary operation] @ Drop
+ Might be that 2nd arg comes from a function call so can't be optimised, so we really want to handle as:
+   [instrs to form 1st arg] @ [Drop] @ [instrs to form 2nd arg] @ [Drop]
+ Can then separately try to optimise each of them.
+ Working out where to 'insert' the drop requires walking over instructions in reverse to see where
+ stack height is 1 less. Latest such point (earliest in reverse) is when 1st arg is fully constructed.
+ In case where it is actually [1st arg] @ [get i; set j] @ ...
+ then this is repeated to move the drop back, since it can't be the 'set j' that needs removing.
+ Hence always end up at the required position.
+ *)
+ (* Instructions iterated over and returned in reverse order (hence instructions that reduce stack increase n) *)
+let rec split_stack n instrs = if n = 0 then ([], instrs)
+  else if n < 0 then failwith "Stack structure error"
+  else match instrs with
+    | [] -> failwith "Stack structure error"
+    (* Grouped by how they change the height of the stack, very similar to how propagate_drop works *)
+    (* Shouldn't have instructions after anyway. May want to make this an error instead *)
+    | {it=Unreachable | Return | Br _ | BrTable _}::rest -> ([], instrs)
+    (* Doesn't change height of stack. Nop should already have been removed *)
+    | ({it=Nop | Convert _ | Load _ | Unary _ | Test _ | LocalTee _ | MemoryGrow} as instr)::rest ->
+      let above, rest = split_stack n rest in (instr::above, rest)
+    (* reduce height of the stack by 1 *)
+    (* Only need to consider conditional branches, should never have instructions after unconditional one.
+       TODO: Check semantics make sense when conditional branches included, may want to be able to abort?
+       In theory could cause a problem, but don't think this occurs in practice due to constructions used
+       [1st arg] @ [tee; get (copy arg)] @ [test arg; shortcut_result; br_if] @ [2nd arg] ... *)
+    | ({it=Drop | BrIf _ | Binary _ | Compare _ | LocalSet _ | GlobalSet _} as instr)::rest ->
+      let above, rest = split_stack (n + 1) rest in (instr::above, rest)
+    (* reduce height of stack by 2 *)
+    | ({it=Select | Store _} as instr)::rest ->
+      let above, rest = split_stack (n + 2) rest in (instr::above, rest)
+    (* increase height of stack by 1 *)
+    | ({it=LocalGet _ | GlobalGet _ | MemorySize | Const _} as instr)::rest ->
+      let above, rest = split_stack (n - 1) rest in (instr::above, rest)
+    (* Blocks and calls require checking type info. Need to pass the module to the function? *)
+    | ({it=Block(typ, _) | Loop(typ, _) | If(typ, _, _)} as instr)::rest ->
+      let new_n = match typ with
+        (* actually quite heavily constrained in MVP e.g. Blocks can't take arguments *)
+        | Wasm.Ast.VarBlockType {it} ->
+          (match List.nth (!mod_tbls).types (Int32.to_int it) with
+           {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results))
+        (* leaves stack unchanged *)
+        | Wasm.Ast.ValBlockType None -> n
+        (* puts a value on the stack *)
+        | Wasm.Ast.ValBlockType (Some _) -> n - 1
+      in let above, rest = split_stack new_n rest in (instr::above, rest)
+    (* Doesn't actually occur - need to look up type of func (i is the func index) *)
+    (* Easy to calculate since we know imports only contains functions *)
+    | ({it=Call {it}} as instr)::rest ->
+      let func = List.nth (!mod_tbls).funcs ((Int32.to_int it) - (List.length Compilewasm.runtime_imports)) in
+      let new_n = match List.nth (!mod_tbls).types (Int32.to_int func.ftype.it) with
+        {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results)
+      in let above, rest = split_stack new_n rest in (instr::above, rest)
+    (* Need to look up type in types (i is the type index) *)
+    | ({it=CallIndirect {it}} as instr)::rest ->
+      let new_n = match List.nth (!mod_tbls).types (Int32.to_int it) with
+        {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results)
+      in let above, rest = split_stack new_n rest in (instr::above, rest)
 
 (* TODO: Work out way to test this? *)
 (* reverse function body is 'drop_instr' 'rest' where 'rest' is 2nd argument *)
@@ -12,14 +74,18 @@ let rec propagate_drop drop_instr = function
   | [] -> [drop_instr]
   (* Can't reach drop anyway, so just remove *)
   | ({it=Unreachable|Return} as instr)::rest -> remove_instr drop_instr; instr::rest
-  (* Nops should already have been removed/never introduced *)
-  (* Just call twice. Check if first call managed to move Drop. If not, avoid repeating *)
-  (* TODO: Ideally want to skip the first Drop back to the position in the code its value is generated,
-           then don't need to rely on being able to optimise the top one (i.e. Same as for Set) *)
-  | ({it=Drop} as instr)::rest -> (match propagate_drop instr rest with
-    | {it=Drop}::_ -> drop_instr::instr::rest (* Couldn't optimise the Drop *)
-    | rest -> propagate_drop drop_instr rest
-  )
+  (* Shouldn't be generating Nops anyway *)
+  | ({it=Nop} as instr)::rest ->
+    remove_instr instr; propagate_drop drop_instr rest
+  | ({it=Drop} as instr)::rest ->
+    (* Skip past the construction of the argument to Drop. *)
+    let dropped, remaining = split_stack 1 rest in
+    (match remaining with
+      (* Significantly more complex to reinsert drop instruction if at start of block, so just ignore *)
+      | [] -> drop_instr::(propagate_drop instr rest)
+      | nxt::rest -> remove_instr drop_instr;
+        (propagate_drop instr dropped) @ (propagate_drop (add_after nxt Drop) remaining)
+    )
   (* Drop the selecting i32, and the two values it is selecting between. (Don't think select is actually used) *)
   | ({it=Select} as instr)::rest ->
     remove_instr instr;
@@ -32,14 +98,20 @@ let rec propagate_drop drop_instr = function
   (* Can't optimise 'Call' without knowing that function is immutable (future optimisation) *)
   | ({it=LocalGet _ | GlobalGet _ | MemorySize | Const _} as instr)::rest ->
     remove_instr drop_instr; remove_instr instr; rest
-  (* TODO: Local/GlobalSet requires looking further back for what was on stack behind the set instruction's args *)
   | ({it=LocalTee x} as instr)::rest -> remove_instr drop_instr; {instr with it=LocalSet x}::rest
-  (* TODO: Fix up graph (remove load). Assumes no out of bounds memory accesses, should be true for compiled Wasm.
-           Also assumes conversions always succeed (not used anyway). *)
+  (* Assumes no out of bounds memory accesses, should be true for compiled Wasm.
+     Also assumes conversions always succeed (not used anyway). *)
   | ({it=Load _ | Test _ | Unary _ | Convert _} as instr)::rest ->
     remove_instr instr; propagate_drop drop_instr rest
- (* | ({it=Store _} as instr)::rest ->   Same issue as Set *)
-  (* TODO: Fix graph *)
+  | ({it=LocalSet _ | GlobalSet _} as instr)::rest ->
+    (* Skip past the construction of the argument to Set *)
+    let set, remaining = split_stack 1 rest in
+    (match remaining with
+      (* Significantly more complex to reinsert drop instruction if at start of block, so just ignore *)
+      | [] -> drop_instr::instr::rest
+      | nxt::rest -> remove_instr drop_instr;
+        instr::set @ (propagate_drop (add_after nxt Drop) remaining)
+    )
   | ({it=Compare _ | Binary _} as instr)::rest ->
     remove_instr instr;
     let drop = add_after drop_instr Drop in
@@ -52,4 +124,5 @@ let rec remove_drops = function
   | instr::rest -> instr::(remove_drops rest)
 
 let optimise ({funcs} as module_) =
+  mod_tbls := module_;
   {module_ with funcs=List.map (fun ({body} as f) -> {f with body=List.rev (remove_drops  (List.rev body))}) funcs}

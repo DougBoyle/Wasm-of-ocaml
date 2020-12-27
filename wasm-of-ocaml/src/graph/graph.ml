@@ -62,7 +62,7 @@ type module_ = (* TODO: Remove from this representation all the ones I don't use
   funcs : func list;
   elems : Ast.var list Ast.segment list;
   data : string Ast.segment list;
-  imports : Ast.import list;
+  imports : Ast.import list; (* TODO: Can simplify this, always import the same functions + memory *)
   exports : Ast.export list;
 }
 
