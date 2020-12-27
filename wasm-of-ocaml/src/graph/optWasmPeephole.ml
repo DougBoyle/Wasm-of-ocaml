@@ -2,14 +2,7 @@
    tee i can possibly be removed as a dead assignment, whereas set i; get i can't.
    For now, don't optimise inside of blocks due to complications with branches *)
 open Graph
-
-(* match up pred/succ on instructions either side of Set/Get pair being replaced.
-   The first instruction (set) is kept so only the successors of second actually need modifying *)
-let merge_instrs first second =
-  List.iter
-  (fun instr ->
-    instr.pred := first::(List.filter (fun i -> not(instr_eq i second)) (!(instr.pred))))
-  (!(second.succ))
+open GraphUtils
 
 let rec getset = function
   | [] -> []
@@ -22,6 +15,8 @@ let rec getset = function
     {instr with it=Loop(typ, getset body)}::(getset rest)
   | ({it=If(typ, body1, body2)} as instr)::rest ->
     {instr with it=If(typ, getset body1, getset body2)}::(getset rest)
+  (* TODO: Also remove Nops while here. Look at deadlocals for function to remove an instruction.
+           Put all the graph manipulation functions in one utilities file *)
   | instr::rest -> instr::(getset rest)
 
 

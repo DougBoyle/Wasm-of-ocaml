@@ -39,6 +39,7 @@ let main () =
   (* Wasm level optimisations *)
   let graph = OptWasmPeephole.optimise graph in
   let graph = Deadlocals.optimise graph in
+  let graph = OptWasmDrop.optimise graph in
 
   let wasm = Graph.translate_to_wasm graph in
   Compilewasm.validate_module wasm;
