@@ -1,1 +1,34 @@
-\chapter{Preparation}
+\chapter{Preparation} % Typically a mix of background info and initial steps of actual implementation
+% Written as if none of the project has actually happened yet? Or written as a reflection of thoughts at the time i.e. I decided that this would be the best choice
+Before implementing the compiler, I researched techniques used by other compilers to handle similar language constructs, particularly the more complex features of OCaml not looked at during the IB compilers course. I also considered which best practices to use to ensure that each stage of the project was managable and to identify difficulties early on.
+
+\section{Starting Point}
+
+
+
+\section{Research Undertaken}
+For implementing a minimal working compiler, I first looked at the approaches taken with the OCaml compiler's Lambda intermediate langauge, and the structure of the Grain compiler. Looking at how translation is done in the OCaml compiler helped to verify that I understood the semantics of the layer above I was translating from, as well as deciding the best way to handle translation of specific elements such as the primitive operations OCaml provides. Grain is a much newer language and is still quickly growing. It supports a subset of OCaml's features but with its own syntax. As it is a much simpler langauge, this was easier to study for working out how to structure translation as a whole, in particular the collections of utility functions I might need for working with my intermediate representation. 
+
+For selecting optimisations to implement, I looked at both the part IB Compilers and part II Optimising Compilers courses for explanations of a range of optimisations. The Grain compiler also implements a few optimisation passes which were helpful to read through and understand. Additionally, there are multiple approaches to pattern matching and the Grain and OCaml compilers differ in the approaches taken. The OCaml compiler implements a backtracking algorithm, which aims to minimise the size of the pattern matching code produced, whereas the Grain compiler implements a decision tree algorithm which ensures each pattern is examined at most once. Both approaches are then heavily optimised to improve the alternate factor. Each compiler references papers on the technique it uses % TODO: Include references? Or leave more till the implementation stage? e.g. Backtracking vs decision tree
+and these were useful references when it came to optimising my own compiler. 
+
+\section{Software Engineering Strategy}
+The implementation of the compiler can be cleanly separated into building a minimal working compiler, and adding optimisations on top of that. The first of these lends itself to an incremental development strategy, as a compiler can be split into several key stages where the interface from one stage to the next significantly affects the complexity of the next stage. A compiler is typically divided into a front-end for parsing and type-checking, a middle-end for translation to a suitable intermediate representation and performing optimisations, and a back-end for generating WebAssembly code. I ultimately determined that my compiler should have two separate IRs, and so worked through these stages one at a time, starting from the typed output of the OCaml compiler front-end. 
+
+% Also added language features this way
+After achieving a working compiler, iterative design becomes far more practical since I cannot accurately predict the benefit of different optimisations without repeated data collection on a range of benchmarks. For both stages of development, I decided to use a Kanban board to keep track of tasks. % By associating segments of work to numbered tickets, it would be easier to find specific changes once far into the project. 
+By keeping a backlog of tickets, this was an easy way to track extra features that needed implementing as I developed the compiler, and to keep ideas and issues grouped by the piece of work they affected. It also meant that I could see how long I had been working on each ticket, which was useful for identifying the tasks I needed to dedicate more time to or subdivide into more manageable tasks.
+
+\section{Testing}
+% Primarily test-driven development with Ocaml unit test samples for each feature. Sort of an integration test
+% TODO: Specific unit tests for mock IR programs to check specific components e.g. free vars, number of locals needed
+% More specific tests to check that optimisations handle complex cases correctly.
+Language features were added to the compiler using test driven development. Before adding a new primitive or language construct, a simple OCaml program would be written using that feature and the output of the OCaml top-level on that file would be recorded. Once the feature was implemented, a short piece of JavaScript would compile and run each of these test programs and compare their output to what was expected. This ensured that any edge cases I though of both before and during implementing the feature could be recorded and tested, and these then became regression tests as future features or optimisations were added.
+
+Optimisations were similarly tested against all prior test programs, and additional tests were added for where these optimisations were more likely to make a mistake. % More detail in implementation section?
+
+% Should go at the top as this was the first form of testing?
+% TODO: Is this worth mentioning? Probably the first thing I want to cut out
+Testing individual translation stages was challenging since I did not want to spend a large amount of time writing an interpreter for my IR, which would itself be prone to errors in handling the semantics of the IR, and checking the exact output of the translation would be impractical as the unoptimised compiler would introduce several unnecessary assignments and checks. Therefore, I initially checked these stages by adding pretty-printing code for the IR and manually inspecting the output for some of the test programs. The simplifications made by each IR made translated programs relatively easy to follow, and this was only necessary until the minimum compiler pipeline was implemented, then programs could be run as WebAssembly and be tested much easier. \\
+% TODO: ACTUALLY DO THIS!
+I still wrote unit tests for the more complex utility functions involved in translation, which could be more easily verified. This included tests for identifying the free variables of a block of code (important for constructing closures) and for the number of separate values allocated at once (important for determining the number of local variables a function requires). This should be inflexible values so are not affected by the compiler initially being inefficient, hence later optimisations would not invalidate these tests.
