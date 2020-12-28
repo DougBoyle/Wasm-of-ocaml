@@ -67,11 +67,12 @@ type annotation = Pure (* whole term/body pure *) | Fields of annotations list
   | Immutable
   (* Assertion: Since tree is linearised and nothing assumed about function args, imms only occur where in scope *)
   | FieldImms of (imm_expr option) list
+  | Tag of int (* same as FieldImms but for tracking the tag. No option since annotation removed if None *)
   (* Mark a term as always throwing a particular CFail i *)
   | Fail of int32
 (* TODO: Can do much more complex analysis for whether mutable fields can be copied or not based on if anything
          could have actually assigned to them or not
-   TODO: Analysis pass to propagate annotations through use of idents *)
+   TODO: Analysis pass to propagate annotations through use of idents i.e. Graph based CSE *)
 and annotations = (annotation list) ref
 
 and imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}

@@ -9,6 +9,25 @@ let print_wat = ref false
 If compiling multiple files together, remove this so cmi's can be used in type checking. *)
 let _ = Clflags.dont_write_files := true
 
+(* Optimisations *)
+(* With this order, analysis of fields won't be lifted up to other terms.
+   analyse_constants doesn't rely on pure/immutable annotations so should be done first?
+   TODO: Write some test programs and figure this out! *)
+let ir_analysis = [
+  AnalyseFields.analyse_constant_propagation;
+  AnalyseTags.analyse_tags;
+  AnalysePurity.analyse;
+]
+let analyse_ir program = List.iter (fun analyse -> analyse program) ir_analysis
+
+let ir_passes = [OptConstants.optimise; OptFails.optimise; OptCSE.optimise; OptDeadAssignments.optimise]
+let optimise_ir program =
+  List.fold_left (fun progam optimise -> optimise progam) program ir_passes
+
+let graph_passes = [OptWasmPeephole.optimise; Deadlocals.optimise; OptWasmDrop.optimise]
+let optimise_graph program =
+  List.fold_left (fun progam optimise -> optimise progam) program graph_passes
+
 let main () =
   let filename = !input in
   let output_prefix = Filename.remove_extension filename in
@@ -19,15 +38,10 @@ let main () =
   with x -> (Location.report_exception Format.err_formatter x; exit 1) in
   let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
 
-  (* Simple analysis pass *)
-  PropagateAnalysis.analyse ir;
-  (* Attempt to analyse how immediates passed around memory *)
-  Analyse.analyse_constant_propagation ir;
-  (* Basic optimisation pass, only removes assignments OCaml already warns about until CSE/const propagation added *)
-  let ir = OptConstants.optimise ir in
-  let ir = OptFails.optimise ir in (* Optimising constants removes dead branches, leaves useless try/catches *)
-  let ir = OptCSE.optimise ir in
-  let ir = OptDeadAssignments.optimise ir in
+  (* Analyse purity + how constants are passed around *)
+  analyse_ir ir;
+  (* Perform IR level optimisations *)
+  let ir = optimise_ir ir in
 
   if !print_ir then (Pplinast.print_ast Format.std_formatter ir; Format.print_newline();  Format.print_newline());
   let wasm_ast = Compilebinds.transl_program ir in
@@ -37,9 +51,7 @@ let main () =
   let graph = Compilewasm.compile_wasm_module wasm_ast in
 
   (* Wasm level optimisations *)
-  let graph = OptWasmPeephole.optimise graph in
-  let graph = Deadlocals.optimise graph in
-  let graph = OptWasmDrop.optimise graph in
+  let graph = optimise_graph graph in
 
   let wasm = Graph.translate_to_wasm graph in
   Compilewasm.validate_module wasm;

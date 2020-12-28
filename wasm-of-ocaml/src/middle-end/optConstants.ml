@@ -1,7 +1,6 @@
 (* CSE only replaces Idents with other Idents, this can replace Idents with Constants.
    i.e. let x = 5 in let y = x in ... => let x = 5 in let y = 5 in ...
-   If x was only being used to assign y, will now be removed as a dead assignment
-   TODO: Constant folding i.e. simplifying unops/binops etc. Complex analysis could optimise GetTag too. *)
+   If x was only being used to assign y, will now be removed as a dead assignment *)
 open Linast
 open Asttypes
 
@@ -82,7 +81,10 @@ let leave_compound (compound : compound_expr) = match compound.desc with
 
   (* Do actual changing of tree structure here so that analyse.ml can just be a side-effect function *)
   (* Separates analysis from optimisations *)
-  (* | CGetTag imm -> compound *) (* TODO: Add analysis for this too, change FieldImms to take a tag option? *)
+  | CGetTag imm -> (match List.find_opt (function Tag _ -> true | _ -> false) (!(imm.annotations)) with
+    | Some (Tag i) -> {compound with desc=CImm (LinastUtils.Imm.const (Asttypes.Const_int i))}
+    | None -> compound
+    | _ -> failwith "Find returned an annotation of the wrong kind")
   | CField (imm, idx) ->
     (* Returns a value, so can't wrap in a List.iter *)
     (match List.find_opt (function FieldImms _ -> true | _ -> false) (!(imm.annotations)) with
@@ -95,8 +97,6 @@ let leave_compound (compound : compound_expr) = match compound.desc with
   | _ -> compound
 
 (* ------------- Dead branch elimination ------------- *)
-(* TODO: Also optimise expressions like 'try fail i with i => e' ---> 'e'
-         Gets produced whenever branch is eliminated and replaced with default case *)
 
 let can_simplify_branch : compound_expr -> bool = function
   | {desc=CIf({desc=ImmConst _}, _, _)} -> true
@@ -156,7 +156,6 @@ let leave_linast linast = match linast.desc with
   | LLet(id, _, body, rest) -> (match body.desc with (* remove from table *)
      | CImm {desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
      | _ -> ()); linast
-  (* TODO: Same for LLet and Seq (not for LLetRec as that must be a function, not an if/switch *)
   | _ -> linast
 
 let optimise linast =
