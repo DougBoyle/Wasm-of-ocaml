@@ -100,7 +100,6 @@ let get_handler_env i env = match Hashtbl.find_opt handler_envs i with
   | Some e -> Hashtbl.remove handler_envs i; Ident.Set.union env e
   | None -> env
 
-(* TODO: Helper functions to enable translating to wasm (and also optimisation passes later) *)
 (* Env is variables bound in body of expression *)
 let rec free_vars env (e : linast_expr) =
   match e.desc with
@@ -175,7 +174,5 @@ and count_vars_comp c =
   | CSwitch(_, cases, default) ->
    let max_case = List.fold_left max 0 (List.map (fun (_, b) -> count_vars b) cases) in
    (match default with None -> max_case | Some c -> max max_case (count_vars c))
-(*  | CApp(_, args) -> List.length args  Don't believe this case is necessary  *)
-  (* An over-estimate, safe to do but can get more precise by tracking bindings made when each exit reached *)
   | CMatchTry (_, e1, e2) -> (count_vars e1) + (count_vars e2)
   | _ -> 0

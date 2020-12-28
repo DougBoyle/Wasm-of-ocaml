@@ -18,6 +18,8 @@ unittest:
 rt:
 	wat2wasm src/runtime.wast
 	mv runtime.wasm samples/runtime.wasm
+lintest:
+	ocamlbuild -pkg ounit2 $(INCLUDES) -I ounit test_linast_utils.byte
 cleanout:
 	rm benchmarks/out/*.wasm
 	rm benchmarks/js/*.js
