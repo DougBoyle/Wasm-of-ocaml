@@ -46,8 +46,6 @@ type unop =
   | FUnNeg
   | FSqrt (* Available directly in Webassembly *)
 
-(* TODO: Also need constants for max_int and min_int *)
-
 type imm_expr_desc =
   | ImmIdent of Ident.t
   | ImmConst of Asttypes.constant
@@ -104,9 +102,6 @@ type compound_expr_desc =
   | CFor of Ident.t * imm_expr * imm_expr * direction_flag * linast_expr
   (* No stringswitch for now - Wasm doesn't have strings so may not implement any string manipulation until later *)
   (* Will match both constant and block tags. Guards are encoded as part of the enclosed expression *)
-  (* TODO: Should switch take a construct, or take an int/getTag and perform more general switch tests *)
-  (* Extending to integers helpful, but doesn't help when later want floats too. OCaml still falls back to ifthenelse for
-     arbitrary integers, only uses switch if all small. *)
   | CSwitch of imm_expr * (int * linast_expr) list * (linast_expr option)
   (* Evaluate body, escape to second expression if constant pattern/guard expression fails. *)
   (* int32 marker may or may not be needed, either to track nesting depth (need extra 'depth' arg in many functions)

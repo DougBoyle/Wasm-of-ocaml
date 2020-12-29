@@ -178,7 +178,7 @@ let rec process_instrs on_exit labels = function
     | [] -> process_instrs on_exit ((0l, on_exit)::(enter_block labels)) body1;
             process_instrs on_exit ((0l, on_exit)::(enter_block labels)) body2
     | instrs -> process_instrs instrs ((0l, instrs)::(enter_block labels)) body1;
-                process_instrs instrs ((0l, instrs)::(enter_block labels)) body1;
+                process_instrs instrs ((0l, instrs)::(enter_block labels)) body2;
                 process_instrs on_exit labels rest
   )
   (* Branches *)

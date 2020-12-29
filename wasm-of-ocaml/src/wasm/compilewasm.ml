@@ -18,7 +18,6 @@ let encode_string : string -> int list = Utf8.decode
 type env = {
   num_args: int;
   func_offset: int;
-  global_offset: int;
   (*  OCaml runtime should only contain functions, so don't need to track globals *)
   (* No modules so only imports are from runtime functions, don't need to remember offset of imports *)
  func_types : Wasm.Types.func_type list ref;
@@ -63,7 +62,6 @@ let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length ru
 let init_env = {
   num_args=0;
   func_offset=0;
-  global_offset=0;
   func_types=ref [];
   backpatches=ref [];
   handler_heights = [];
@@ -169,7 +167,7 @@ let untag tag = [
   Graph.Binary(Values.I32 Ast.IntOp.Xor);
 ]
 
-(* Wasm package changed from GetLocal to LocalGet (likewise for the rest) since Grain's version *)
+(* Locals in a function are ordered as [arguments (first is closure), swap locals, locals] *)
 let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
   let (++) a b = Int32.(add (of_int a) b) in
   match b with
@@ -196,7 +194,7 @@ let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
       [Graph.LocalSet(slot)]
   | MGlobalBind(i) ->
     (* Global bindings need to be offset to account for any imports *)
-    let slot = add_dummy_loc (env.global_offset ++ i) in
+    let slot = add_dummy_loc i in
     if is_get then
       [Graph.GlobalGet(slot)]
     else

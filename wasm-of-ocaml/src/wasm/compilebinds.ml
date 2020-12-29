@@ -31,13 +31,10 @@ let next_lift () = let v = !lift_index in incr lift_index; v
 (* Track global variables *)
 let global_table = ref (Ident.empty: int32 Ident.tbl)
 let global_index = ref 0
-(* TODO: What is this doing? Why is there both a global_index and getter_index?? *)
 let global_exports () = let tbl = !global_table in
   Ident.fold_all
   (fun ex_name ex_global_index acc -> {ex_name; ex_global_index}::acc) tbl []
 
-(* Each global also gets a function to get it *)
-(* TODO: Replace functions with direct access - can just export globals themselves *)
 let next_global id =
   match Ident.find_all (Ident.name id) (!global_table) with
     | [(_, ret)] -> ret
@@ -61,7 +58,7 @@ type work_element = {
     body : work_body;
     env : compile_env;
     arity : int;
-    idx : int; (* TODO: Work out what a "lambda lifted" idx is *)
+    idx : int;
     stack_size : int;
 }
 
@@ -158,11 +155,6 @@ let rec compile_comp env (c : compound_expr) =
     let end_bind = MLocalBind(Int32.of_int (env.stack_idx + 1)) in (* Don't re-evaluate limits of loop *)
     let new_env = {env with binds=Ident.add id start_bind env.binds; stack_idx=env.stack_idx + 2} in
     MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish, compile_linast new_env body)
-  (* TODO: Understnad what Grain used box/unbox and tuples for here. Passing tuple as list of args to function?
-  | CPrim1(Box, arg) ->
-    MAllocate(MTuple [compile_imm env arg])
-  | CPrim1(Unbox, arg) ->
-    MTupleOp(MTupleGet(Int32.zero), compile_imm env arg) *)
   | CUnary(op, arg) ->
     MUnary(op, compile_imm env arg)
   | CBinary(op, arg1, arg2) ->
@@ -174,7 +166,7 @@ let rec compile_comp env (c : compound_expr) =
   | CArraySet(obj, idx, v) ->
     MDataOp(MArraySet(compile_imm env idx, compile_imm env v), compile_imm env obj)
   | CArrayGet(obj, idx) -> MDataOp(MArrayGet(compile_imm env idx), compile_imm env obj)
-  (* TODO: Strings/floats *)
+  (* TODO: Strings *)
   | CGetTag(obj) ->
     MDataOp(MGetTag, compile_imm env obj)
   | CMatchTry (i, body1, body2) ->

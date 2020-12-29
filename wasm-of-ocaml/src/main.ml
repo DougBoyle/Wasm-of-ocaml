@@ -24,7 +24,11 @@ let ir_passes = [OptConstants.optimise; OptFails.optimise; OptCSE.optimise; OptD
 let optimise_ir program =
   List.fold_left (fun progam optimise -> optimise progam) program ir_passes
 
-let graph_passes = [OptWasmPeephole.optimise; Deadlocals.optimise; OptWasmDrop.optimise]
+let graph_passes = [
+   OptWasmPeephole.optimise;
+   Deadlocals.optimise;
+   OptWasmDrop.optimise
+]
 let optimise_graph program =
   List.fold_left (fun progam optimise -> optimise progam) program graph_passes
 
