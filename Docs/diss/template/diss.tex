@@ -16,6 +16,9 @@
 \usepackage{verbatim}
 \usepackage{docmute}   % only needed to allow inclusion of proposal.tex
 
+\usepackage[backend=bibtex, sorting=ynt]{biblatex}
+\addbibresource{diss.bib}
+
 %% START OF DOCUMENT
 \begin{document}
 
@@ -185,7 +188,6 @@ None.
 
 \clearpage
 \include{chapters/conclusion}
-
 %As you might imagine: summarizes the dissertation, and draws
 %any conclusions. Depending on the length of your work, and
 %how well you write, you may not need a summary here.
@@ -197,8 +199,10 @@ None.
 \appendix
 \singlespacing
 
-\bibliographystyle{unsrt}
-%\bibliography{dissertation}
+
+%\bibliographystyle{unsrt}
+%\bibliography{diss}
+\printbibliography[title={Bibliography}]
 
 \chapter{Project Proposal}
 \clearpage

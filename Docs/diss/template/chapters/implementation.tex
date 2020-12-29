@@ -1,1 +1,52 @@
 \chapter{Implementation}
+
+\section{Administrative Normal Form}
+% Reference for ANF?
+From OCaml's Typedtree data structure, the first pass of the compiler translates programs to administrative normal form (also called A-normal form or just ANF), which linearises the syntax tree so that the operands to operations are always constants or idnetifiers, with the exception of control flow construsts such as if/while statements. For example:
+
+\begin{verbatim}
+f(g(x), h(x+y))
+\end{verbatim}
+would be translated to
+\begin{verbatim}
+let v0 = g(x) in
+  let t = x + y in 
+    let v1 = h(t) in
+      f(v0, v1)
+\end{verbatim}
+
+Temporary values are now explicit and the linear structure makes optimisations such as common subexpression elimination and dead assignment elimination easier to implement in this form. Code which may execute zero or many times cannot be completely linearised, for example the subexpressions for the body of a while loop must be evaluated within the while loop, since they are never evaluated if the condition is false. \\
+Linearising is implemented using three mutually recursive functions which compile immediates (constants/identifiers), compound terms such as \verb|x + y|, and top level terms such as \verb|let x = e in e'| or \verb|e; e'|. The first two of these return a pair of the actual term needed, and a list of any setup operations extracted as part of linearising the expression being compiled. Compiling a top level term then converts this result and list of setup operations into a tree which performs all of the setup then evaluates the result.
+% Give actual examples of code translation/algorithm cases?
+% OCaml primitives handling?
+
+This is achieved by translation to the \verb|Linast| (Linear AST) datatype, which also replaces patterns in the Typedtree with the code needed to evaluate them. This includes combining the cases of a match or function into a single expression, making use of switch statements on integers where possible. Pattern matching was initially done with a naive method of trying each pattern in sequence, moving on to the next if that failed. \\
+% How much to explain vs just reference the paper? Not my ideas so no marks to be gained, or want to show complexity for implementing difficult algorithm?
+Once a working compiler was achieved, this was replaced with a more efficient approach which is the first algorithm described by Fessant and Maranget \cite{ocamlpatternmatch}.  The idea is to represent each pattern as a row of an $n \times m$ matrix, with an action associated with each row in the event that pattern matches, and a vector of values to perform pattern matching against. Pattern matching is then divided into a number of cases based on the first column of the matrix. For example, if every pattern in the first column is a constructor pattern, the matrix can be 'specialised' for each possible constructor. This involves filtering out only the rows $c(q_1, \dots, q_k) \ p_2 \ \dots\ p_m$ which match a constructor $c$, then unwrapping the sub-patterns to get new rows $q_1 \ \dots\ q_k \ p_2 \ \dots\ p_m$. This gives the matrix to use for pattern matching, after a switch statment determines that the first values is constructor $c$, so doing this for each possible constructor will give a switch statement which performs pattern matching. 
+
+% Guards?
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Compiling Identifiers}
+After any optimisations are performed, the linearised tree is then compiled to a lower intermediate form. The tree is replaced with a list of instructions, and identifiers are resolved into integer indexes for argument, local, global or closure bound variables. 
+% Give more detail about blocks in WebAssembly
+Conversion to a list of instructions is straightforward since WebAssembly contains nested blocks. \verb|Block| constructs in WebAssembly contain a list of instructions and introduce a label at the end of the block, which can be jumped to from within the block. \verb|If| blocks are similar but contain two lists of instructions, and \verb|Loop| blocks have the label at the start of the block, allowing code to be repeated. 
+Rather than map to these straight away, programs are still described using \verb|if| and \verb|while| constructs, which are easily mapped to WebAssembly at the code generation stage. % Put examples when we get there, not here
+
+This stage also lifts any function declarations to the top level of the program, since closures and environments are now explicit, so the result is a list of functions. The complexity here is in determining the free variables of a function and the number of local stack variables needed by the function body, both of which are done by simple recursive algorithms. The number of locals needed is the maximum needed at any point in the function body. This increases by one after each let binding is evaluated, and for loops also require two to remember the current and end values for the loop (for loops in OCaml have a very constrained \verb"for var = i [up|down]to j do ... done" syntax). 
+
+% Currying removed at this point. Wasn't being used anyway so why do I allow it at all? Does it actually provide any benefit to me?
+
+\section{Code Generation}
+WebAssembly generation is then straightforward, as each of the constructs and primitive operators in my lower IR are all simple to implement. The variable bindings in the lower IR were separated into argument, local, global and closure bindings. Argument and global bindings translate directly to Local and Global operations respectively. The locals in a function are laid out as function arguments, then swap space locals used to implement some of the operations in WebAssembly, then locals allocated above for let bindings and loops. Therefore, local bindings are offset by the number of swap spaces and function arguments. The first argument to each function is its closure, so closure bindings first get local 0 then do a load from that address, with an offset selecting the correct variable from the closure. 
+
+I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append and some of the integer primitives. These are declared as imports to the WebAssembly module and each function index in my IR must be offset by the number of runtime functions imported. Additionally, the memory for the module is also imported from the runtime since it is managed by the allocation function from the runtime imports. Lastly, each of the globals and functions from the module is exported. Every function is exported so that values representing closures can be returned from WebAssembly. As integers are encoded by shifting them left by one, and so that pointers to closures can be used to call functions in WebAssembly from JavaScript, I added a JavaScript wrapper which uses knowledge of how values are represented in memory to be able to pass values back into compiled functions, or return integer values back to a JavaScript caller.
+
+Although I did not implement a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are not needed. I therefore tag integers as 10 or 00 by shifting them left one, function as 11, and other blocks from tuples or constructors as 01. In the last case, data blocks are represented as a variant tag, their arity, then the elements they contain. As OCaml limits the number of different constructors supported% Reference required
+, the variant tag is guaranteed to be a non-negative integer. Therefore, -1 was used to encode floats, which were separately represented as -1 followed by the 64-bit float value. This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
+
+% Describe graphs
+
+
+
+
