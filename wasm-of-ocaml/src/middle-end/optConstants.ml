@@ -35,8 +35,21 @@ let eval_unary = function
   | _ -> failwith "Type mismatch between constant and operator"
 
 let eval_binary = function
-  (* The comparison operations can also take floats.
-     Type checking should have ensured we never see 1 int 1 float, so comparisons defined for whole constant *)
+  (* Type checking should have ensured we never see 1 int 1 float *)
+  (* floats have to be handled separately (except for testing physical equality),
+     since they should be compared by value, not by their strings (representation in Asttypes) e.g. 2.0 = 2.00.
+     Writing equality tests of floats in real programs is a bad practice.
+     May not behave exactly as OCaml in case of NaNs *)
+  | (Eq, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) = (Float.of_string str2) then 1 else 0)
+  | (Neq, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) <> (Float.of_string str2) then 1 else 0)
+  | (LT, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) < (Float.of_string str2) then 1 else 0)
+  | (GT, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) > (Float.of_string str2) then 1 else 0)
+  | (LTE, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) <= (Float.of_string str2) then 1 else 0)
+  | (GTE, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) >= (Float.of_string str2) then 1 else 0)
+  | (Compare, Const_float str1, Const_float str2) -> Const_int (compare (Float.of_string str1) (Float.of_string str2))
+  | (Min, Const_float str1, Const_float str2) -> if (Float.of_string str1) < (Float.of_string str2) then Const_float str1 else Const_float str2
+  | (Max, Const_float str1, Const_float str2) -> if (Float.of_string str1) > (Float.of_string str2) then Const_float str1 else Const_float str2
+
   | (Eq, c1, c2) -> Const_int (if c1 = c2 then 1 else 0)
   | (Neq, c1, c2) -> Const_int (if c1 <> c2 then 1 else 0)
   | (LT, c1, c2) -> Const_int (if c1 < c2 then 1 else 0)
@@ -44,9 +57,9 @@ let eval_binary = function
   | (LTE, c1, c2) -> Const_int (if c1 <= c2 then 1 else 0)
   | (GTE, c1, c2) -> Const_int (if c1 >= c2 then 1 else 0)
   | (Compare, c1, c2) -> Const_int (compare c1 c2)
-
   | (Min, c1, c2) -> min c1 c2
   | (Max, c1, c2) -> max c1 c2
+
   | (Eq_phys, c1, c2) -> Const_int (if c1 == c2 then 1 else 0)
   | (Neq_phys, c1, c2) -> Const_int (if c1 != c2 then 1 else 0)
   (* boolean *)

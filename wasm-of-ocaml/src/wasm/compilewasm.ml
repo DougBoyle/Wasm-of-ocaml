@@ -1,4 +1,4 @@
-open Wasmtree
+open Bindstree
 open Wasm
 (* TODO: Use concatList to enable pre/post append efficiently *)
 (* Grain uses deque package: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatDeque.html

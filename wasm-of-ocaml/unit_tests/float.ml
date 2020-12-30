@@ -9,3 +9,4 @@ let b = a = 2.0
 let c = a = 1.99
 let d = sqrt 4.0
 let e = d = 2.0
+let f = 2.0 = 2.00 (* Any folding of floats must be done on values, not strings *)

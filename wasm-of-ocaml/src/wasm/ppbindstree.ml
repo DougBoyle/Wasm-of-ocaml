@@ -1,5 +1,5 @@
 open Format
-open Wasmtree
+open Bindstree
 
 let print_typ ppf = function
   | I32Type -> fprintf ppf "i32"

@@ -125,15 +125,15 @@ type export = {
   ex_global_index: int32;
 } 
 
-type wasm_function = {
+type binds_function = {
   index: int32;
   arity: int32; (* Note from grain code to do: Proper typing of arguments *)
   body: block;
   stack_size: int;
 } 
 
-type wasm_program = {
-  functions: wasm_function list;
+type binds_program = {
+  functions: binds_function list;
   exports: export list;
   main_body: block;
   main_body_stack_size: int;

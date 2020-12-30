@@ -2,7 +2,7 @@
 (* Need to check conventions here line up with what compilewasm does
    e.g. putting values into closures/handling function args *)
 
-open Wasmtree
+open Bindstree
 open Linast
 open LinastUtils
 
@@ -227,7 +227,7 @@ let compile_remaining_worklist () =
     {index=Int32.of_int index; arity=Int32.of_int arity; body; stack_size;}::funcs in
   List.rev (fold_left_worklist compile_one [])
 
-let transl_program (program : linast_expr) : wasm_program =
+let transl_program (program : linast_expr) : binds_program =
   let env = initial_env in
   let main_body_stack_size = count_vars program in
   let main_body = compile_linast env program in

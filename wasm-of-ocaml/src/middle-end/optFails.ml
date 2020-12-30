@@ -11,7 +11,6 @@ let copy_fail from_annots to_annots =
   | Some (Fail i) -> mark_failing i to_annots
   | _ -> ()
 
-(* This should be half of leave_linast? *)
 let rec rewrite_fail i body handler = match body.desc with
   | LCompound {desc=CMatchFail j}
   (* Below cases should never actually occur, just included for completeness.

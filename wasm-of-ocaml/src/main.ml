@@ -1,9 +1,17 @@
+(* Command line options/arguments *)
 let input  = ref ""
 let output = ref ""
 
+(* Display intermediate representations *)
 let print_ir = ref false
 let print_wasmtree = ref false
 let print_wat = ref false
+
+(* Optimisation settings *)
+let opt_ir = ref true
+let num_passes_ir = ref 1 (* TODO: Determine best choice *)
+let opt_graph = ref true
+let num_passes_graph = ref 1
 
 (* Prevents .cmi files being generated.
 If compiling multiple files together, remove this so cmi's can be used in type checking. *)
@@ -18,11 +26,25 @@ let ir_analysis = [
   AnalyseTags.analyse_tags;
   AnalysePurity.analyse;
 ]
-let analyse_ir program = List.iter (fun analyse -> analyse program) ir_analysis
+let ir_passes = [
+  ("const", OptConstants.optimise);
+  ("fails", OptFails.optimise);
+ ("cse",  OptCSE.optimise);
+  ("deadassign", OptDeadAssignments.optimise);
+  ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
+]
 
-let ir_passes = [OptConstants.optimise; OptFails.optimise; OptCSE.optimise; OptDeadAssignments.optimise]
 let optimise_ir program =
-  List.fold_left (fun progam optimise -> optimise progam) program ir_passes
+  if !opt_ir then
+    let rec optimise program = function
+      | 0 -> program
+      | n ->
+        (* Analyse purity + how constants are passed around *)
+        List.iter (fun analyse -> analyse program) ir_analysis;
+        optimise (List.fold_left (fun program (name, optimise) ->
+        optimise program) program ir_passes) (n-1) in
+    optimise program (!num_passes_ir)
+  else program
 
 let graph_passes = [
    OptWasmPeephole.optimise;
@@ -30,7 +52,12 @@ let graph_passes = [
    OptWasmDrop.optimise
 ]
 let optimise_graph program =
-  List.fold_left (fun progam optimise -> optimise progam) program graph_passes
+  if !opt_graph then
+    let rec optimise program = function
+      | 0 -> program
+      | n -> optimise (List.fold_left (fun program optimise -> optimise program) program graph_passes) (n-1)
+    in optimise program (!num_passes_graph)
+  else program
 
 let main () =
   let filename = !input in
@@ -42,15 +69,13 @@ let main () =
   with x -> (Location.report_exception Format.err_formatter x; exit 1) in
   let ir = Linearise.translate_structure_with_coercions (tree, coercions) in
 
-  (* Analyse purity + how constants are passed around *)
-  analyse_ir ir;
   (* Perform IR level optimisations *)
   let ir = optimise_ir ir in
 
   if !print_ir then (Pplinast.print_ast Format.std_formatter ir; Format.print_newline();  Format.print_newline());
   let wasm_ast = Compilebinds.transl_program ir in
   if !print_wasmtree then
-    (Ppwasmtree.print_program Format.std_formatter wasm_ast; Format.print_newline(); Format.print_newline());
+    (Ppbindstree.print_program Format.std_formatter wasm_ast; Format.print_newline(); Format.print_newline());
   (* Now that this produces a graph, should rename as such *)
   let graph = Compilewasm.compile_wasm_module wasm_ast in
 
@@ -68,7 +93,12 @@ let main () =
 let _ = Arg.parse [("-d", Arg.Set_string output, "Specify output directory");
                    ("-ir", Arg.Set print_ir, "Print Linast IR program produced");
                    ("-wt", Arg.Set print_wasmtree, "Print Wasmtree produced");
-                   ("-wat", Arg.Set print_wat, "Print output wat file")]
+                   ("-wat", Arg.Set print_wat, "Print output wat file");
+                   ("-Nopt-ir", Arg.Clear opt_ir, "Disable IR level optimisations");
+                   ("-passes-ir", Arg.Set_int num_passes_ir, "Set number of IR passes");
+                   ("-Nopt-graph", Arg.Clear opt_ir, "Disable Graph level optimisations");
+                   ("-passes-graph", Arg.Set_int num_passes_graph, "Set number of graph passes");
+                   ]
     (fun f -> if (!input) = "" then input := f else raise (Arg.Bad "Only one file allowed"))
     "Usage: main.byte [<file>]"
 
