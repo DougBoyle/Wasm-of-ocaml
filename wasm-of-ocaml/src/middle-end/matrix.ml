@@ -13,6 +13,9 @@
          then introduce wildcards until this is achieved. Main cause is unions in constructor rule. *)
 open Typedtree
 
+type context = (pattern list * pattern list) list
+type jump_handlers = ((pattern list list * int32) list)
+
 let rec take n l = if n = 0 then ([], l) else
   match l with [] -> assert false (* Should never happen *)
     | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
@@ -32,6 +35,9 @@ let empty_construct constructor_desc =
     (Tpat_construct (mknoloc (Longident.Lident (constructor_desc.Types.cstr_name)),
        constructor_desc, omegas constructor_desc.cstr_arity))
 
+let initial_context = [([], [[omega]])]
+let initial_handlers total = if total then [] else [([[omega]], -1)]
+
 (* ----------- pattern manipluation ------------- *)
 
 (* Using lub defined in parmatch.ml. No reason to duplicate this (although fairly simple).
@@ -44,7 +50,7 @@ let lub_opt (prefix1, fringe1) (prefix2, fringe2) =
 
 (* ------------ context operations --------------- *)
 (* constructor is an instance of Types.constructor_description.
-   TODO: Handle arrays/tuples/records *)
+   TODO: Handle arrays/tuples/records and also constants (constant constructors are just constants) *)
 let rec specialise_ctx constructor = function
   | (prefix, {pat_desc=Tpat_any|Tpat_var _}::tail)::rows ->
     ((empty_construct constructor)::prefix, (omegas constructor.cstr_arity) @ tail)
@@ -142,6 +148,26 @@ let specialise_handlers constructor handlers =
   List.map (fun (mat, i) -> (specialise_matrix constructor mat, i)) handlers
 
 (* mat needed to avoid _weak type error *)
-let push_handlers handlers = List.map (fun (mat, i) -> (push_matrix, i)) handlers
+let push_handlers handlers = List.map (fun (mat, i) -> (push_matrix mat, i)) handlers
 
 (* Don't believe the other operations are needed on trap handlers. *)
+
+(* ------------------- Other utilities ------------------ *)
+
+(* Requires the env from pattern.pat_env *)
+let lookup_constructors signature example_pat =
+  match signature.Types.cstr_res.desc with
+    | Tconstr (path,_,_) ->
+       (* find_type_descrs returns a pair of constructor_descrs and label_descrs *)
+       fst (Env.find_type_descrs path example_pat.pat_env)
+    | _ -> failwith "attempted to lookup constructor descriptions for non-constructor pattern"
+
+let make_constructor_pattern example_pat desc =
+  Parmatch.pat_of_constr example_pat desc
+
+(* Parmatch.orify is not exported by mli, didn't want to start changing mli files of compiler *)
+let make_or_pattern pat1 pat2 =
+  {pat_desc = Tpat_or (pat1, pat2, None); pat_loc = Location.none; pat_extra = [];
+   pat_type = pat1.pat_type ; pat_env = pat1.pat_env;
+   pat_attributes = [];
+  }

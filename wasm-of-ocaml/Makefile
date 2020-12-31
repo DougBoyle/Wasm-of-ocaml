@@ -12,7 +12,7 @@ linear:
 wasm:
 	ocamlbuild -pkg wasm $(INCLUDES) compilebinds.byte
 matrix:
-	ocamlbuild $(INCLUDES) matrix.byte
+	ocamlbuild $(INCLUDES) compileMatchOpt.byte
 unittest:
 	make all
 	for f in unit_tests/*.ml ; do ./main.byte -d unit_tests/out $$f || exit 1 ; done
