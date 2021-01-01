@@ -47,8 +47,11 @@ let lub_opt (prefix1, fringe1) (prefix2, fringe2) =
   try Some (Parmatch.lubs prefix1 prefix2, Parmatch.lubs fringe1 fringe2)
   with Parmatch.Empty -> None
 
-let lub_mat_opt mat1 amt2 =
-  try Some (Parmatch.lubs mat1 amt2)
+let lub_pat_opt pat1 pat2 =
+  try Some (Parmatch.lub pat1 pat2)
+  with Parmatch.Empty -> None
+let lub_mat_opt mat1 mat2 =
+  try Some (Parmatch.lubs mat1 mat2)
   with Parmatch.Empty -> None
 
 (* ------------ context operations --------------- *)
@@ -176,3 +179,7 @@ let make_or_pattern pat1 pat2 =
    pat_type = pat1.pat_type ; pat_env = pat1.pat_env;
    pat_attributes = [];
   }
+
+(* for removing action/guard information when putting into handlers *)
+let get_just_patterns matrix =
+  List.map (fun (pats, _, _) -> pats) matrix

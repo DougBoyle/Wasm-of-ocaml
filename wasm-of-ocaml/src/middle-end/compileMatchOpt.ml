@@ -61,11 +61,16 @@ let rec is_variable_pattern pat = match pat.pat_desc with
   | Tpat_any | Tpat_var(_, _) -> true
    | Tpat_alias(p, _, _) -> is_variable_pattern p
   | _ -> false
+let is_variable_row = function
+  | (p::_, _, _) -> is_variable_pattern p
+  | _ -> failwith "Cannot check for variable_row on empty row"
 
 let is_constructor_pattern pat = match pat.pat_desc with
   | Tpat_constant _ | Tpat_tuple _ | Tpat_construct(_, _, _) | Tpat_record(_, _) | Tpat_array _ -> true
   | _ -> false
-
+let is_constructor_row = function
+  | (p::_, _, _) -> is_constructor_pattern p
+  | _ -> failwith "Cannot check for constructor_row on empty row"
 
 let rec apply_variable_rule (value : Linast.imm_expr) (pats, (action, action_setup), guard) =
   match pats with
@@ -96,9 +101,108 @@ let rec apply_mixture_rule matrix =
     | _ -> failwith "Mixture rule ran into a matrix it couldn't process"
 *)
 
+(* if no OR pattern, returns None
+   if some OR pattern, returns ([rows_above], last_of_pat, rest_of_row, [rows_below]) *)
+let rec split_at_last_or_row = function
+  | [] -> None
+  | ((({pat_desc=Tpat_or (_, _, _)} as pat)::pats, act, g) as row)::rest ->
+    (match split_at_last_or_row rest with
+      | None -> Some ([], pat, (pats, act, g), rest)
+      | Some (before, or_pat, or_row, after) -> Some (row::before, or_pat, or_row, after))
+  | row::rest -> Option.map
+   (fun (before, or_pat, or_row, after) -> (row::before, or_pat, or_row, after))
+   (split_at_last_or_row rest)
+
+(* The two conditions described in the paper.
+  Effectively says that a match of the head of the OR row need not consider remaining rows after *)
+(* or_row is OR pattern row with the head removed *)
+let can_apply_or_rule or_pat or_row g rest =
+  List.for_all (function (p::(row : Typedtree.pattern list), _, _) ->
+    (* First patterns incompatible *)
+    (lub_pat_opt or_pat p) = None ||
+    (* Other patterns more precise and OR row can't fail due to guard.
+       Later rows are still necessary as first pattern may match some values the OR pattern doesn't. *)
+    (g = None && Parmatch.le_pats or_row row)
+    | _ -> failwith "malformed matrix when considering or rule"
+  ) rest
+
+(* acc is the reversed list of the longest prefix of matrix to all satisfy test *)
+let rec collect_rows test acc = function
+  | [] -> acc, []
+  | (row::rest) as matrix ->
+    if test row then collect_rows test (row::acc) rest else acc, matrix
+(*
+ Corresponds to cases i, ii, iii on page 11, right column in paper
+ Attempt to construct 3 matrices mat_C, mat_O, mat_R where:
+ If mat_O empty then can just apply constructor (/variable) rule to mat_C, and split with mat_R.
+ If mat_O not empty, can first apply OR rule to mat_C @ mat_O then the more basic rule, and again split with mat_R
+
+ mat_C and mat_R kept in reverse order for efficiency,
+ mat_O kept in actual order for correctness of OR rule test
+*)
+(* if is_or_pat, cannot move row into mat_C *)
+let move_up_row is_or_pat (mat_C, mat_O, mat_R) ((pats, _, _) as row) =
+  (* Incompatible with all of O and R (can assume guards always succeed) *)
+  if (not is_or_pat) &&
+    List.for_all (fun (other_row, _, _) -> (lub_mat_opt pats other_row) = None) (mat_O @ mat_R) then
+    (row::mat_C, mat_O, mat_R)
+  (* Incompatible with all of R, and adding to O allows applying OR rule *)
+  else if List.for_all (fun (other_row, _, _) -> (lub_mat_opt pats other_row) = None) mat_R &&
+    (match split_at_last_or_row (mat_O @ [row]) with None -> false
+     | Some (before, or_pat, (pats, action, g), after) -> can_apply_or_rule or_pat pats g after) then
+    (mat_C, mat_O @ [row], mat_R)
+  (* Can't optimise, add to R *)
+  else (mat_C, mat_O, row::mat_R)
+
+(* Split the matrix ready for the mixture rule *)
+let apply_constructor_split matrix =
+  (* Initial phase is the same as unoptimised version *)
+  (* Same naming of matrices used as in paper (right column page 10) *)
+  (* C is the top group of constructor patterns, constructors below incompatible variable patterns get moved into it.
+     O is matrix suitable for OR rule, so will apply that then the Constructor rule on C @ O
+     R is rows that don't fit either of these, so cannot move above in matrix. *)
+  let mat_C, mat_P' = collect_rows is_constructor_row [] matrix in
+  (* Attempt to extend the matrix where cases are incompatible *)
+  (* Only mat_O is kept in order, since order actually matters for applying the OR rule *)
+  let mat_C, mat_O, mat_R = List.fold_left
+   (fun (mat_C, mat_O, mat_R) row ->
+    if is_variable_row row then mat_C, mat_O, (row::mat_R) else
+    if is_constructor_row row then
+      move_up_row false (mat_C, mat_O, mat_R) row
+    else (* or pattern *)
+       move_up_row true (mat_C, mat_O, mat_R) row
+  ) (mat_C, [], []) mat_P' in
+  (List.rev mat_C) @ mat_O, (List.rev mat_R)
+
+(* as above but variable/constructor swapped *)
+let apply_variable_split matrix =
+  let mat_C, mat_P' = collect_rows is_variable_row [] matrix in
+  (* Attempt to extend the matrix where cases are incompatible *)
+  (* Only mat_O is kept in order, since order actually matters for applying the OR rule *)
+  let mat_C, mat_O, mat_R = List.fold_left
+   (fun (mat_C, mat_O, mat_R) row ->
+    if is_constructor_row row then mat_C, mat_O, (row::mat_R) else
+    if is_variable_row row then
+      move_up_row false (mat_C, mat_O, mat_R) row
+    else (* or pattern *)
+       move_up_row true (mat_C, mat_O, mat_R) row
+  ) (mat_C, [], []) mat_P' in
+  (List.rev mat_C) @ mat_O, (List.rev mat_R)
+
+(* Original pattern matching approach always separated OR patterns out on their own.
+   Instead, look for longest prefix OR rule can apply to by trying each one (naive search).
+   Like the two functions above but with C always empty *)
+(* Tests on the head of the first row select which function to call. So this one should only be
+   called if it can actually produce a useful matrix *)
+let apply_or_split matrix =
+  (* mat_C kept to reduce number of things needing to be re-declared *)
+  let mat_C, mat_O, mat_R = List.fold_left (move_up_row true) ([], [], []) matrix in
+  mat_O, (List.rev mat_R)
+
 let rec expand_ors pat = match pat.pat_desc with
   | Tpat_or(p1, p2, _) -> (expand_ors p1) @ (expand_ors p2)
   | _ -> [pat]
+
 
 (* p1|...|x|pk|...|pn -> p1|...|x *)
 let rec simplified_or_pattern pat = match pat.pat_desc with
@@ -111,6 +215,7 @@ let rec simplified_or_pattern pat = match pat.pat_desc with
     )
   | _ -> None
 
+(* TODO: Worth testing for redudant cases or not? *)
 (* For the first column, rewrite any aliases to just happen in the action, and simplify OR patterns *)
 let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = match values, patterns with
   | [], [] -> row
@@ -120,18 +225,6 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
     | Some p -> preprocess_row  values (p::ps, (action, action_setup), g))
   | [], p::ps -> failwith "Malformed row, value forgotten"
   | _, _ -> failwith "malformed row"
-
-(* if no OR pattern, returns None
-   if some OR pattern, returns ([rows_above], last_of_pat, rest_of_row, [rows_below]) *)
-let rec split_at_last_or_row = function
-  | [] -> None
-  | ((({pat_desc=Tpat_or (_, _, _)} as pat)::pats, act, g) as row)::rest ->
-    (match split_at_last_or_row rest with
-      | None -> Some ([], pat, (pats, act, g), rest)
-      | Some (before, or_pat, or_row, after) -> Some (row::before, or_pat, or_row, after))
-  | row::rest -> Option.map
-   (fun (before, or_pat, or_row, after) -> (row::before, or_pat, or_row, after))
-   (split_at_last_or_row rest)
 
 (* List of rows, each row is ([pattern list], ((action, action_setup), binds), (guard,setup) option)  *)
 (* TODO: May need an extra rule for variants and how to process them, shouldn't be difficult *)
@@ -175,7 +268,8 @@ let rec compile_matrix values matrix total handlers ctx =
                        | (p::ps,_,_) -> is_constructor_pattern p) matrix ->
      apply_constructor_rule total handlers ctx v vs matrix signature pat
 
-  | (v::vs, _) ->
+  (* p pattern only used for mixture rule (case 5) to determine process for splitting up matrix *)
+  | (v::vs, (p::_, _, _)::_) ->
     (match split_at_last_or_row matrix with
     (* Case 4. OR pattern. let row i be a row starting with an OR pattern.
      We require that either
@@ -185,12 +279,7 @@ let rec compile_matrix values matrix total handlers ctx =
      Any binds made in matching the OR'd pattern will escape scoping when used! *)
     (* Choice of which OR to split on doesn't change if matrix can be compiled without mix rule or not *)
     | Some (before, or_pat, ((pats, action, g) as rest_of_row), after) when
-      (List.for_all (fun (row_after, _, _) -> (lub_mat_opt (or_pat::pats) row_after) = None) after) ||
-      (g = None && List.for_all (fun (row_after, _, _) -> Parmatch.le_pats (or_pat::pats) row_after) after) ->
-      (* True => case a, false => case b.
-         Each handled identically but we don't need to keep the other rows for case a *)
-      let (first_pats, _, _) = List.hd after in
-      let after = if Parmatch.le_pats (or_pat::pats) first_pats then [] else after in
+      can_apply_or_rule or_pat pats g after ->
       let patterns = expand_ors or_pat in
       let new_fail = next_fail_count () in
       let new_rows = List.map
@@ -212,7 +301,29 @@ let rec compile_matrix values matrix total handlers ctx =
        union_jump_summary rest_jumps (pop_jump_summary or_jumps))
 
     (* Case 5, no other rule can be applied so must split matrix up into submatrices that can be processed by rules 1-4 *)
-    | _ -> failwith "Not implemented")
+    | _ ->
+      (* Use greedy approach from paper to split into an 'upper' and 'lower' matrix *)
+      let upper, lower =
+        if is_variable_pattern p then apply_variable_split matrix
+        else if is_constructor_pattern p then apply_constructor_split matrix
+        else apply_or_split matrix in
+
+      (* Combine the two matrices *)
+      let new_fail = next_fail_count () in
+      (* Always partial, adds an extra jump handler for the left out cases *)
+      let (upper_compound, upper_setup), upper_jumps =
+        compile_matrix values upper false ((get_just_patterns lower, new_fail)::handlers) ctx in
+      (* TODO: Verify that the handler will always be present in the jump summary. If not present,
+               suggests that the lower half of the matrix isn't actually necessary *)
+      (* Uses the context generated by all parts of compiling upper matrix which can fail to this handler *)
+      let (lower_compound, lower_setup), lower_jumps =
+        compile_matrix values lower total handlers (List.assoc new_fail upper_jumps) in
+      ((Compound.matchtry new_fail
+         (binds_to_anf upper_setup (LinastExpr.compound upper_compound))
+         (binds_to_anf lower_setup (LinastExpr.compound lower_compound)),
+       []),
+       union_jump_summary (List.remove_assoc new_fail upper_jumps) lower_jumps
+      ))
   | _ -> failwith "Malformed value vector/pattern matrix"
 
   (*
@@ -220,15 +331,7 @@ let rec compile_matrix values matrix total handlers ctx =
   | (v::vs, matrix) when List.exists
       (function ([], _,_) -> failwith "Not Possible to have empty list"
               | (p::ps,_,_) -> not(is_constructor_pattern p)) matrix ->
-     let m1, m2 = apply_mixture_rule matrix in
-     let new_fail = next_fail_count () in
-     let (expr1, setup1) = compile_matrix new_fail values m1 in
-     let (expr2, setup2) = compile_matrix fail values m2 in
-     (Compound.matchtry
-        new_fail
-        (binds_to_anf setup1 (LinastExpr.compound expr1))
-        (binds_to_anf setup2 (LinastExpr.compound expr2)),
-      [])
+     ...
 
  (* select correct constructor rule *)
  | (v::vs, ({pat_desc=Tpat_tuple l}::_,_,_)::_) ->
