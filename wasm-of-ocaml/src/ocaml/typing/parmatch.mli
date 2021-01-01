@@ -185,3 +185,4 @@ val check_ambiguous_bindings : value case list -> unit
 
 (* The tag used for open polymorphic variant types with an abstract row *)
 val some_private_tag : label
+

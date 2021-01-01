@@ -24,6 +24,11 @@ In this way, also naturally extend to jump summaries (reachable handlers)
 
 *)
 
+(*
+Parmatch.le_pats used to check when a row is redundant for OR patterns
+Parmatch.lubs used (in matrix.ml) to check compatibility
+*)
+
 
 open LinastUtils
 open Linast
@@ -116,13 +121,24 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
   | [], p::ps -> failwith "Malformed row, value forgotten"
   | _, _ -> failwith "malformed row"
 
-(* Add partial information later *)
-(* values is imm vector corresponding to the vector of patterns in each row *)
+(* if no OR pattern, returns None
+   if some OR pattern, returns ([rows_above], last_of_pat, rest_of_row, [rows_below]) *)
+let rec split_at_last_or_row = function
+  | [] -> None
+  | ((({pat_desc=Tpat_or (_, _, _)} as pat)::pats, act, g) as row)::rest ->
+    (match split_at_last_or_row rest with
+      | None -> Some ([], pat, (pats, act, g), rest)
+      | Some (before, or_pat, or_row, after) -> Some (row::before, or_pat, or_row, after))
+  | row::rest -> Option.map
+   (fun (before, or_pat, or_row, after) -> (row::before, or_pat, or_row, after))
+   (split_at_last_or_row rest)
+
 (* List of rows, each row is ([pattern list], ((action, action_setup), binds), (guard,setup) option)  *)
 (* TODO: May need an extra rule for variants and how to process them, shouldn't be difficult *)
 (* TODO: Encode fact that variables vector/length of row should match up by putting inside a
          structure with special getter functions, so only see exceptions in 1 place *)
 (* TODO: Check that, whenever head of handler list is gotten, it must actually exist *)
+(* TODO: Where is swapping of incompatible rows done in mixture rule? *)
 let rec compile_matrix values matrix total handlers ctx =
   let matrix = List.map (preprocess_row values) matrix in
   match (values, matrix) with
@@ -159,17 +175,47 @@ let rec compile_matrix values matrix total handlers ctx =
                        | (p::ps,_,_) -> is_constructor_pattern p) matrix ->
      apply_constructor_rule total handlers ctx v vs matrix signature pat
 
-  | _ -> failwith "Case not implemented yet"
+  | (v::vs, _) ->
+    (match split_at_last_or_row matrix with
+    (* Case 4. OR pattern. let row i be a row starting with an OR pattern.
+     We require that either
+       a) Every row after i is more precise than i, so is unused anyway (row i must not have guard)
+       b) Every row after i is incompatible with i
+     Can then split up matrix accordingly.
+     Any binds made in matching the OR'd pattern will escape scoping when used! *)
+    (* Choice of which OR to split on doesn't change if matrix can be compiled without mix rule or not *)
+    | Some (before, or_pat, ((pats, action, g) as rest_of_row), after) when
+      (List.for_all (fun (row_after, _, _) -> (lub_mat_opt (or_pat::pats) row_after) = None) after) ||
+      (g = None && List.for_all (fun (row_after, _, _) -> Parmatch.le_pats (or_pat::pats) row_after) after) ->
+      (* True => case a, false => case b.
+         Each handled identically but we don't need to keep the other rows for case a *)
+      let (first_pats, _, _) = List.hd after in
+      let after = if Parmatch.le_pats (or_pat::pats) first_pats then [] else after in
+      let patterns = expand_ors or_pat in
+      let new_fail = next_fail_count () in
+      let new_rows = List.map
+        (fun pat -> (pat :: (omegas (List.length pats)), ((Compound.fail new_fail, []), []), None))
+        patterns in
+      (* First recursive call. Original matrix but with OR row expanded to alway exit *)
+      let (rest_comp, rest_setup), rest_jumps =
+        (* Only difference to case b is that the 'after' rows still need to be compiled *)
+        compile_matrix values (before @ new_rows @ after) total handlers ctx in
+      (* Remaining patterns of the OR row in the event it matches *)
+      (* TODO: Check that variables escaping scoping still work correctly here, particularly guards *)
+      let (or_comp, or_setup), or_jumps = compile_matrix vs [rest_of_row] total
+        (push_handlers (extract_handlers or_pat handlers))
+        (push_ctx (extract_ctx or_pat ctx)) in
+      ((Compound.matchtry new_fail
+          (binds_to_anf rest_setup (LinastExpr.compound rest_comp))
+          (binds_to_anf or_setup (LinastExpr.compound or_comp)),
+        []),
+       union_jump_summary rest_jumps (pop_jump_summary or_jumps))
+
+    (* Case 5, no other rule can be applied so must split matrix up into submatrices that can be processed by rules 1-4 *)
+    | _ -> failwith "Not implemented")
+  | _ -> failwith "Malformed value vector/pattern matrix"
+
   (*
-
-  (* OR rule -> Compile([v], expanded_or_matrix); Compile(vs, rest_of_row) *)
-  | (v::vs, [(({pat_desc=Tpat_or(_, _, _)} as p)::ps, act, g)]) ->
-    let patterns = expand_ors p in
-    let (or_match, or_setup) = compile_matrix fail [v]
-      (List.map (fun p -> ([p], ((Compound.imm unit_value, []), []), None)) patterns) in
-    let (rest, rest_setup) = compile_matrix fail vs [(ps, act, g)] in
-    (rest, or_setup @ (BEffect(or_match))::rest_setup)
-
   (* mixture rule *)
   | (v::vs, matrix) when List.exists
       (function ([], _,_) -> failwith "Not Possible to have empty list"
@@ -439,3 +485,4 @@ and apply_float_rule fail v vs matrix =
     (Compound.mkif (Imm.id testid) body (binds_to_anf rest_setup (LinastExpr.compound rest)),
      [BLet(testid, test_result);])) cases (Compound.fail fail, [])
 *)
+

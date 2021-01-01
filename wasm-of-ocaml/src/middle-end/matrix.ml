@@ -47,6 +47,9 @@ let lub_opt (prefix1, fringe1) (prefix2, fringe2) =
   try Some (Parmatch.lubs prefix1 prefix2, Parmatch.lubs fringe1 fringe2)
   with Parmatch.Empty -> None
 
+let lub_mat_opt mat1 amt2 =
+  try Some (Parmatch.lubs mat1 amt2)
+  with Parmatch.Empty -> None
 
 (* ------------ context operations --------------- *)
 (* constructor is an instance of Types.constructor_description.
@@ -150,7 +153,9 @@ let specialise_handlers constructor handlers =
 (* mat needed to avoid _weak type error *)
 let push_handlers handlers = List.map (fun (mat, i) -> (push_matrix mat, i)) handlers
 
-(* Don't believe the other operations are needed on trap handlers. *)
+let extract_handlers pat handlers =
+  (* Note that this could actually result in (i, []), then entry could be removed *)
+  List.map (fun (mat, i) -> (extract_matrix pat mat, i)) handlers
 
 (* ------------------- Other utilities ------------------ *)
 
