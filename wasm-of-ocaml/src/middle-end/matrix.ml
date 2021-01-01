@@ -34,6 +34,8 @@ let empty_construct constructor_desc =
   add_dummy_data
     (Tpat_construct (mknoloc (Longident.Lident (constructor_desc.Types.cstr_name)),
        constructor_desc, omegas constructor_desc.cstr_arity))
+let empty_tuple arity =
+  add_dummy_data (Tpat_tuple (omegas arity))
 
 let initial_context = [([], [[omega]])]
 let initial_handlers total = if total then [] else [([[omega]], -1)]
@@ -57,19 +59,36 @@ let lub_mat_opt mat1 mat2 =
 (* ------------ context operations --------------- *)
 (* constructor is an instance of Types.constructor_description.
    TODO: Handle arrays/tuples/records and also constants (constant constructors are just constants) *)
-let rec specialise_ctx constructor = function
+(* TODO: Would be better to have a generalised specialise_ctx function which takes an enum for which to apply,
+         means I don't have to define specialise_mat/handlers/etc. for each type of construct *)
+type specialise_type =
+  | Construct of Types.constructor_description
+  | Tuple of int (* arity *)
+
+let rec specialise_ctx_constructor constructor = function
   | (prefix, {pat_desc=Tpat_any|Tpat_var _}::tail)::rows ->
     ((empty_construct constructor)::prefix, (omegas constructor.cstr_arity) @ tail)
-    ::(specialise_ctx constructor rows)
+    ::(specialise_ctx_constructor constructor rows)
   | (prefix, {pat_desc=Tpat_construct(_, desc, pats)}::tail)::rows
     (* Is this the correct comparison to be performing? *)
      when desc.cstr_tag = constructor.cstr_tag ->
     ((empty_construct constructor)::prefix, pats @ tail)
-    ::(specialise_ctx constructor rows)
+    ::(specialise_ctx_constructor constructor rows)
   (* Different constructor *)
   | (_, {pat_desc=Tpat_construct(_, _, _)}::_)::rows ->
-    specialise_ctx constructor rows
+    specialise_ctx_constructor constructor rows
   | _ -> failwith "This specialise case not implemented" (* Indicates a typing error if this is reached? *)
+
+(* specialisation for tuples is simple, as array must have a tuple in every position, no missing case *)
+let specialise_ctx_tuple arity ctx =
+  List.map
+    (function (prefix, {pat_desc=Tpat_tuple _}::tail) -> (empty_tuple arity)::prefix, (omegas arity) @ tail
+      | _ -> failwith "Not a tuple pattern, cannot specialise")
+     ctx
+
+let specialise_ctx kind ctx = match kind with
+  | Construct desc -> specialise_ctx_constructor desc ctx
+  | Tuple arity -> specialise_ctx_tuple arity ctx
 
 (* TODO: Handle arrays/tuples/records *)
 let collect_ctx ctx = List.map
@@ -85,7 +104,39 @@ let push_ctx ctx =
 let pop_ctx ctx =
   List.map (function (p::prefix, tail) -> (prefix, p::tail) | _ -> failwith "Cannot pop empty prefix") ctx
 
-let union_ctx = (@)
+(* Only used for contexts, where ordering of rows is irrelevant *)
+let rec remove_redundant_rows acc = function
+  | [] -> acc
+  | ((prefix, fringe) as row)::rows ->
+    remove_redundant_rows
+    (if List.exists
+      (fun (prefix', fringe') -> Parmatch.le_pats (prefix' @ fringe') (prefix @ fringe))
+        (acc @ rows) then acc else row::acc)
+    rows
+
+let rec reset_col i = function
+  | [] -> failwith "fringe index out of range"
+  | p::ps -> if i = 0 then omega :: ps else p::(reset_col (i-1) ps)
+
+let union_ctx ctx1 ctx2 =
+  (* simplification/approximation if context grows too large, paper suggests a max size of 32 rows *)
+  (* Unaware of any heuristic for choosing which columns to reset, so just work through fringe.
+     Prefix avoided due to needing to keep constructors used for collection later. Could detect
+     whole columns of all the same constructor and omega patterns, but leave for now unless it proves necessary *)
+  (* Contexts getting too large is only an issue in specific cases.
+     If can't simplify any further without looking at prefix, just give up and return the context as is *)
+  let rec simplify_fringe i ctx =
+    (* small enough to return *)
+    if List.length ctx < 32 then ctx else
+    (* first try to remove redundant rows *)
+    let ctx = remove_redundant_rows [] ctx in
+    if List.length ctx < 32 then ctx else
+    (* Can reset a column *)
+    if i < List.length (snd (List.hd ctx)) then
+    simplify_fringe (i+1) (List.map (fun (prefix, fringe) -> (prefix, reset_col i fringe)) ctx)
+    else ctx (* give up trying to simplify *)
+  in simplify_fringe 0 (ctx1 @ ctx2)
+
 (* Potential explosion in number of rows? *)
 (* Over all pairs of rows from each context, keep lub of rows whenever compatible *)
 let intersect_ctx ctx1 ctx2 =
@@ -101,8 +152,8 @@ let extract_ctx pat ctx =
 (* Jump summary is a list of (i, ctx) pairs for each handler the output could jump to *)
 (* TODO: Check which ones are actually needed *)
 
-let rec specialise_jump_summary constructor jumps =
-  List.map (fun (i, ctx) -> (i, specialise_ctx constructor ctx)) jumps
+let rec specialise_jump_summary kind jumps =
+  List.map (fun (i, ctx) -> (i, specialise_ctx kind ctx)) jumps
 
 let collect_jump_summary jumps =
  List.map (fun (i, ctx) -> (i, collect_ctx ctx)) jumps
@@ -134,13 +185,11 @@ let mat_to_ctx mat = List.map (fun row -> ([], row)) mat
 let ctx_to_mat ctx = List.map snd ctx
 
 (* Rewriting is more efficient, especially in simple cases. How great an actual benefit though? *)
-let specialise_matrix constructor mat =
-  ctx_to_mat (specialise_ctx constructor (mat_to_ctx mat))
+let specialise_matrix kind mat =
+  ctx_to_mat (specialise_ctx kind (mat_to_ctx mat))
 
 (* mat needed to avoid _weak type error *)
 let push_matrix mat = List.map (List.tl) mat
-
-let union_matrix = (@)
 
 let intersect_matrix mat1 mat2 =
   ctx_to_mat (intersect_ctx (mat_to_ctx mat1) (mat_to_ctx mat2))

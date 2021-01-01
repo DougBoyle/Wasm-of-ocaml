@@ -85,22 +85,6 @@ let rec apply_variable_rule (value : Linast.imm_expr) (pats, (action, action_set
           (ps, (action, new_bind @ action_setup), guard)
         | _ -> failwith "Not possible to apply variable rule")
 
-(*
-let rec apply_mixture_rule matrix =
-  let rec split_by_test test acc = function
-    | [] -> acc, []
-    | (((p::_, _, _) as row)::rest) as matrix -> if test p then
-      split_by_test test (row::acc) rest else acc, matrix
-    | _ -> failwith "Mixture rule given empty pattern, should have been picked up as success already"
-      in
-  match matrix with
-    | ((({pat_desc=Tpat_or(_, _, _)}::_, _, _) as row)::rest) -> [row], rest
-    | (((p::_, _, _) as row)::rest) -> if is_variable_pattern p then split_by_test is_variable_pattern [row] rest
-      else if is_constructor_pattern p then split_by_test is_constructor_pattern [row] rest
-      else failwith "Mixture rule ran into matrix it couldn't process"
-    | _ -> failwith "Mixture rule ran into a matrix it couldn't process"
-*)
-
 (* if no OR pattern, returns None
    if some OR pattern, returns ([rows_above], last_of_pat, rest_of_row, [rows_below]) *)
 let rec split_at_last_or_row = function
@@ -228,10 +212,7 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
 
 (* List of rows, each row is ([pattern list], ((action, action_setup), binds), (guard,setup) option)  *)
 (* TODO: May need an extra rule for variants and how to process them, shouldn't be difficult *)
-(* TODO: Encode fact that variables vector/length of row should match up by putting inside a
-         structure with special getter functions, so only see exceptions in 1 place *)
 (* TODO: Check that, whenever head of handler list is gotten, it must actually exist *)
-(* TODO: Where is swapping of incompatible rows done in mixture rule? *)
 let rec compile_matrix values matrix total handlers ctx =
   let matrix = List.map (preprocess_row values) matrix in
   match (values, matrix) with
@@ -256,20 +237,12 @@ let rec compile_matrix values matrix total handlers ctx =
         total (push_handlers handlers) (push_ctx ctx) in
     code, pop_jump_summary jump_summary
 
-  (* Case 3. Constructor rule. TODO: Handle pseudo-constructors i.e. constant/tuple/record/array *)
-  (* TODO: Also handle constant constructors specially i.e. cstr_nonconst != 0 *)
-  | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_)
-    when List.for_all (function ([], _,_) -> failwith "Not Possible to have empty list"
-                       | (p::ps,_,_) -> is_constructor_pattern p) matrix
-    && signature.cstr_nonconsts = 0 -> failwith "Constant constructors not implemented yet"
 
-  | (v::vs, (({pat_desc=Tpat_construct (_, signature, _)} as pat)::_,_,_)::_)
-    when List.for_all (function ([], _,_) -> failwith "Not Possible to have empty list"
-                       | (p::ps,_,_) -> is_constructor_pattern p) matrix ->
-     apply_constructor_rule total handlers ctx v vs matrix signature pat
-
+  (* case 4 or 5 i.e. not the constructor rule *)
   (* p pattern only used for mixture rule (case 5) to determine process for splitting up matrix *)
-  | (v::vs, (p::_, _, _)::_) ->
+  | (v::vs, (p::_, _, _)::_) when List.exists
+    (function ([], _,_) -> failwith "Not Possible to have empty list"
+     | (p::ps,_,_) -> not(is_constructor_pattern p)) matrix ->
     (match split_at_last_or_row matrix with
     (* Case 4. OR pattern. let row i be a row starting with an OR pattern.
      We require that either
@@ -324,19 +297,22 @@ let rec compile_matrix values matrix total handlers ctx =
        []),
        union_jump_summary (List.remove_assoc new_fail upper_jumps) lower_jumps
       ))
+
+  (* Case 3. Constructor rule. TODO: Handle pseudo-constructors i.e. constant/tuple/record/array *)
+  (* Remaining patterns determine which constructor rule to apply.
+     Guarenteed that each row starts with a constructor pattern *)
+  (* TODO: Also handle constant constructors specially i.e. cstr_nonconst != 0 *)
+  | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_)
+    when signature.cstr_nonconsts = 0 -> failwith "Constant constructors not implemented yet"
+  (* Actual constructor *)
+  | (v::vs, (({pat_desc=Tpat_construct (_, signature, _)} as pat)::_,_,_)::_) ->
+     apply_constructor_rule total handlers ctx v vs matrix signature pat
+  (* Tuple *)
+  | (v::vs, ({pat_desc=Tpat_tuple l}::_,_,_)::_) ->
+    apply_tuple_rule total handlers ctx v vs matrix (List.length l)
   | _ -> failwith "Malformed value vector/pattern matrix"
 
   (*
-  (* mixture rule *)
-  | (v::vs, matrix) when List.exists
-      (function ([], _,_) -> failwith "Not Possible to have empty list"
-              | (p::ps,_,_) -> not(is_constructor_pattern p)) matrix ->
-     ...
-
- (* select correct constructor rule *)
- | (v::vs, ({pat_desc=Tpat_tuple l}::_,_,_)::_) ->
-    apply_tuple_rule fail v vs matrix (List.length l)
-
  | (v::vs, ({pat_desc=Tpat_record (_, _)}::_,_,_)::_) ->
     apply_record_rule fail v vs matrix
 
@@ -374,16 +350,6 @@ let rec compile_matrix values matrix total handlers ctx =
  | _ -> failwith "Malformed matrix/vector input"
  *)
 
-(*
-and apply_tuple_rule fail v vs matrix len =
-  let new_val_ids = List.init len (fun _ -> Ident.create_local "tuple_arg") in
-  let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
-  let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
-  let new_rows = List.map
-  (function ({pat_desc=Tpat_tuple l}::ps,act,g) -> (l@ps, act,g) | _ -> failwith "Wrong rule applied") matrix in
-  let (expr, setup) = compile_matrix fail (new_vals @ vs) new_rows in
-  (expr, new_val_binds @ setup)
-*)
 
 (*
 and apply_array_rule fail v vs matrix =
@@ -412,6 +378,17 @@ and apply_array_rule fail v vs matrix =
   (Compound.mkswitch len_imm cases (Some (LinastExpr.compound (Compound.fail fail))), [len_bind])
 *)
 
+(* Tuple case is unchanged, simple since the tuple type only has one 'constructor' () *)
+and apply_tuple_rule total handlers ctx v vs matrix arity =
+  let new_val_ids = List.init arity (fun _ -> Ident.create_local "tuple_arg") in
+  let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
+  let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
+  let new_matrix = List.map
+  (function ({pat_desc=Tpat_tuple l}::ps,act,g) -> (l@ps, act,g) | _ -> failwith "Wrong rule applied") matrix in
+  let (expr, setup), jumps = compile_matrix (new_vals @ vs) new_matrix total
+    (specialise_handlers (Tuple arity) handlers) (specialise_ctx (Tuple arity) ctx) in
+  (expr, new_val_binds @ setup), (collect_jump_summary jumps)
+
 (* Example_pat needed for providing a copy of the environment to lookup missing constructors *)
 and apply_constructor_rule total handlers ctx v vs matrix signature example_pat =
   (* Now returns (tag * case body * jump_summary *)
@@ -429,7 +406,7 @@ and apply_constructor_rule total handlers ctx v vs matrix signature example_pat 
     let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
     let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
     let ((expr, setup), jumps) = compile_matrix (new_vals @ vs) new_matrix total
-       (specialise_handlers tag_desc handlers) (specialise_ctx tag_desc ctx) in
+       (specialise_handlers (Construct tag_desc) handlers) (specialise_ctx (Construct tag_desc) ctx) in
     (unify_constructor_tag tag_desc,
      binds_to_anf (new_val_binds @ setup) (LinastExpr.compound expr),
      jumps) in
@@ -449,7 +426,6 @@ and apply_constructor_rule total handlers ctx v vs matrix signature example_pat 
   let cases = List.map (fun (i, body, _) -> (i, body)) specialised_calls in
   let jump_summaries = List.map (fun (_, _, jumps) -> jumps) specialised_calls in
   (* Check semantics correct *)
-  (* TODO: Either in union code or here, reduce all contexts to max 32 rows *)
   let summary = List.fold_right
     (fun jumps result -> union_jump_summary result (collect_jump_summary jumps))
     jump_summaries [] in
@@ -512,6 +488,8 @@ and apply_constructor_rule total handlers ctx v vs matrix signature example_pat 
     ((Compound.mkswitch tag_imm cases
       (Some (LinastExpr.compound (Compound.fail fail_idx))), [tag_bind]),
      union_jump_summary summary [(fail_idx, ctx)])
+
+
 
 (*
 and apply_record_rule fail v vs matrix =
