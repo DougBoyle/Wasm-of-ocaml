@@ -226,7 +226,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
    let (arg, arg_setup) = translate_imm e in
    let matrix = List.map case_to_row cases in
    (* TODO: Include partial/total information? *)
-  let (body, setup) = compile_matrix fail_trap [arg] matrix in
+   let (body, setup), _ = CompileMatchOpt.compile_matrix [arg] matrix false (Matrix.initial_handlers false) Matrix.initial_context in
+  (* let (body, setup) = compile_matrix fail_trap [arg] matrix in *)
   (body, arg_setup @ setup)
 
   | Texp_letop {let_; ands; param; body; partial} -> translate_letop let_ ands param body partial

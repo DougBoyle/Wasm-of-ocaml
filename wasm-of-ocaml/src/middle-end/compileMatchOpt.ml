@@ -299,7 +299,7 @@ let rec compile_matrix values matrix total handlers ctx =
        union_jump_summary (List.remove_assoc new_fail upper_jumps) lower_jumps
       ))
 
-  (* Case 3. Constructor rule. TODO: Handle pseudo-constructors i.e. constant/tuple/record/array *)
+  (* Case 3. Constructor rule. TODO: Handle pseudo-constructors i.e. float/record/array *)
   (* Remaining patterns determine which constructor rule to apply.
      Guarenteed that each row starts with a constructor pattern *)
   | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_)
@@ -325,28 +325,6 @@ let rec compile_matrix values matrix total handlers ctx =
  | (v::vs, ({pat_desc=Tpat_array _}::_,_,_)::_) ->
     apply_array_rule fail v vs matrix
 
- (* Handle constant constructors specially *)
- | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_) when signature.cstr_nonconsts = 0 ->
-   let get_cstr_tag = function
-      | ({pat_desc=Tpat_construct (_, desc, _)}::_,_,_) -> get_const_constructor_tag desc.cstr_tag
-      | _ -> failwith "Can't apply constructor rule" in
-   let cstrs_used = List.fold_left (fun cstrs row -> let tag = get_cstr_tag row in
-     if List.mem tag cstrs then cstrs else tag::cstrs) [] matrix in
-   (* Replace with int tags *)
-   let matrix' = List.map (function (({pat_desc=Tpat_construct (_, desc, _)} as p)::ps,act,g) ->
-      ({p with pat_desc=Tpat_constant(Asttypes.Const_int (get_const_constructor_tag desc.cstr_tag))}::ps, act, g)
-      | _ -> failwith "Not a constructor pattern") matrix in
-    apply_const_int_rule fail v vs matrix' cstrs_used (List.length cstrs_used = signature.cstr_consts)
-
- (* TODO: May be better to use simple if/else if only 1 constant. Do in later optimisation pass? *)
- (* Can't handle float and integer constants together, since switch statements only work for ints *)
- | (v::vs, ({pat_desc=Tpat_constant (Const_int _)}::_,_,_)::_) ->
-    let get_const_int = function
-      | ({pat_desc=Tpat_constant (Const_int i)}::_,_,_) -> i
-      | _ -> failwith "Can't apply const_int rule" in
-    let ints_used = List.fold_left (fun ints row -> let n = get_const_int row in
-      if List.mem n ints then ints else n::ints) [] matrix in
-    apply_const_int_rule fail v vs matrix ints_used false
  | (v::vs, ({pat_desc=Tpat_constant (Const_float _)}::_,_,_)::_) ->
    apply_float_rule fail v vs matrix
  | (v::vs, ({pat_desc=Tpat_constant _}::_,_,_)::_) ->raise (NotImplemented __LOC__)

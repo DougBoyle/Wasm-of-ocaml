@@ -37,8 +37,8 @@ let empty_construct constructor_desc =
 let empty_tuple arity =
   add_dummy_data (Tpat_tuple (omegas arity))
 
-let initial_context = [([], [[omega]])]
-let initial_handlers total = if total then [] else [([[omega]], -1)]
+let initial_context = [([], [omega])]
+let initial_handlers total = if total then [] else [([[omega]], -1l)]
 
 (* ----------- pattern manipluation ------------- *)
 
@@ -61,6 +61,8 @@ let lub_mat_opt mat1 mat2 =
    TODO: Handle arrays/tuples/records and also constants (constant constructors are just constants) *)
 (* TODO: Would be better to have a generalised specialise_ctx function which takes an enum for which to apply,
          means I don't have to define specialise_mat/handlers/etc. for each type of construct *)
+(* Due to mixture rule using the whole context for the first recursive call, specialisation converts variable
+   patterns to patterns of a particular form known when that subcall is reached. i.e. makes the varible pattern more specific *)
 type specialise_type =
   | Construct of Types.constructor_description
   | Tuple of int (* arity *)
@@ -83,10 +85,12 @@ let rec specialise_ctx_constructor constructor = function
 
 (* specialisation for tuples is simple, as array must have a tuple in every position, no missing case *)
 let specialise_ctx_tuple arity ctx =
-  List.map
-    (function (prefix, {pat_desc=Tpat_tuple _}::tail) -> (empty_tuple arity)::prefix, (omegas arity) @ tail
-      | _ -> failwith "Not a tuple pattern, cannot specialise")
-     ctx
+  List.map (function
+    | (prefix, {pat_desc=Tpat_any|Tpat_var _}::tail) ->
+       (empty_tuple arity)::prefix, (omegas arity) @ tail
+    | (prefix, {pat_desc=Tpat_tuple pats}::tail) -> (empty_tuple arity)::prefix, pats @ tail
+    | _ -> failwith "Not a tuple pattern, cannot specialise")
+  ctx
 
 (* like constructor case, but arity is always 0 and each constant is a distinct constructor *)
 let rec specialise_ctx_constant c = function
@@ -104,12 +108,20 @@ let specialise_ctx kind ctx = match kind with
   | Tuple arity -> specialise_ctx_tuple arity ctx
   | Constant c -> specialise_ctx_constant c ctx
 
-(* TODO: Handle arrays/tuples/records *)
+(* TODO: Handle arrays/tuples/records/floats/constants *)
+(* Unlike specialise_ctx, collect_ctx doesn't take an extra argument so can process
+   each type of constructor in one function *)
 let collect_ctx ctx = List.map
- (function (({pat_desc=Tpat_construct(loc, desc, _)} as pat)::prefix, rest) ->
+ (function
+  | (({pat_desc=Tpat_construct(loc, desc, _)} as pat)::prefix, rest) ->
     let pats, others = take desc.cstr_arity rest in
-    (prefix, {pat with pat_desc=Tpat_construct(loc, desc, pats)}::others)
-  | _ -> failwith "Cannot collect context when prefix doesn't end in constructor"
+    prefix, {pat with pat_desc=Tpat_construct(loc, desc, pats)}::others
+  | (({pat_desc=Tpat_tuple empty_pats} as pat)::prefix, rest) ->
+    let pats, others = take (List.length empty_pats) rest in
+    prefix, {pat with pat_desc=Tpat_tuple pats}::others
+  | (({pat_desc=Tpat_constant _} as pat)::prefix, tail) ->
+    prefix, pat::tail
+  | _ -> failwith "Cannot collect context when prefix doesn't end in some form of constructor"
  ) ctx
 
 let push_ctx ctx =
