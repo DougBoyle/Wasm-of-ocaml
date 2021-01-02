@@ -216,6 +216,13 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
 (* TODO: Check how total used (just for checking for missing constructors/ints?) *)
 let rec compile_matrix values matrix total handlers ctx =
   let matrix = List.map (preprocess_row values) matrix in
+  (*
+  Printf.printf "Matrix:\n";
+  Ppmatrix.print_matrix matrix;
+  Printf.printf "Context:\n";
+  Ppmatrix.print_context ctx;
+  Printf.printf "\n";
+  *)
   match (values, matrix) with
   (* Besides the fail case here, have 5 rules to consider, as described in paper *)
   | (_, []) -> (* When does this occur? Take innermost handler *)
@@ -226,7 +233,9 @@ let rec compile_matrix values matrix total handlers ctx =
   (* Case 1. Successful match. Whether jump summary needed depends on
      if guard is present or not, jump summary is returned by include_guard *)
   | ([], ([], act, g)::rest) ->
-    let _, fail_idx = List.hd handlers in
+    (* If total, we could have that there are no handlers.
+       In this case we pass -1 as the fail index, as there shouldn't be a guard to include anyway *)
+    let fail_idx = match handlers with (_, i)::_ -> i | [] -> -1l in
     include_guard fail_idx ctx act g
 
   (* Case 2. Variable rule. Only change is correctly handling total information, handlers and context *)
@@ -304,7 +313,11 @@ let rec compile_matrix values matrix total handlers ctx =
      Guarenteed that each row starts with a constructor pattern *)
   | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_)
     when signature.cstr_nonconsts = 0 ->
-    apply_const_constructor_rule total handlers ctx v vs matrix signature.cstr_consts
+    (* Replace each constructor in the first column with the int it's represented as *)
+    let matrix' = List.map (function (({pat_desc=Tpat_construct (_, desc, _)} as p)::ps,act,g) ->
+      ({p with pat_desc=Tpat_constant(Const_int (get_const_constructor_tag desc.cstr_tag))}::ps, act, g)
+      | _ -> failwith "Not a constructor pattern") matrix in
+    apply_const_constructor_rule total handlers ctx v vs matrix' signature.cstr_consts
   (* Actual constructor *)
   | (v::vs, (({pat_desc=Tpat_construct (_, signature, _)} as pat)::_,_,_)::_) ->
      apply_constructor_rule total handlers ctx v vs matrix signature pat
@@ -488,7 +501,7 @@ and apply_const_constructor_rule total handlers ctx v vs matrix num_constrs =
 
   let get_const_int = function
     | ({pat_desc=Tpat_constant (Const_int i)}::_,_,_) -> i
-    | _ -> failwith "Can't apply const_int rule" in
+    | _ -> failwith "Can't apply const_constructor rule" in
   let ints_used = List.fold_left (fun ints row -> let n = get_const_int row in
     if List.mem n ints then ints else n::ints) [] matrix in
   (* (int * linast * jump_summary) list *)

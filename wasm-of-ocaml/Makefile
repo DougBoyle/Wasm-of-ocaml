@@ -15,7 +15,8 @@ matrix:
 	ocamlbuild $(INCLUDES) compileMatchOpt.byte
 unittest:
 	make all
-	for f in unit_tests/*.ml ; do ./main.byte -d unit_tests/out $$f || exit 1 ; done
+	set -e
+	for f in unit_tests/*.ml ; do ./main.byte -d unit_tests/out $$f || { echo $$f ; exit 1 ; }  ; done
 	node unit_tests/test.js
 rt:
 	wat2wasm src/runtime.wast
