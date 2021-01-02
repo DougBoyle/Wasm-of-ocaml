@@ -64,6 +64,7 @@ let lub_mat_opt mat1 mat2 =
 type specialise_type =
   | Construct of Types.constructor_description
   | Tuple of int (* arity *)
+  | Constant of Asttypes.constant (* works for both ints and floats (although shouldn't pattern match floats) *)
 
 let rec specialise_ctx_constructor constructor = function
   | (prefix, {pat_desc=Tpat_any|Tpat_var _}::tail)::rows ->
@@ -77,7 +78,8 @@ let rec specialise_ctx_constructor constructor = function
   (* Different constructor *)
   | (_, {pat_desc=Tpat_construct(_, _, _)}::_)::rows ->
     specialise_ctx_constructor constructor rows
-  | _ -> failwith "This specialise case not implemented" (* Indicates a typing error if this is reached? *)
+  | [] -> []
+  | _ -> failwith "Cannot apply constructor specialisation" (* Indicates a typing error if this is reached? *)
 
 (* specialisation for tuples is simple, as array must have a tuple in every position, no missing case *)
 let specialise_ctx_tuple arity ctx =
@@ -86,9 +88,21 @@ let specialise_ctx_tuple arity ctx =
       | _ -> failwith "Not a tuple pattern, cannot specialise")
      ctx
 
+(* like constructor case, but arity is always 0 and each constant is a distinct constructor *)
+let rec specialise_ctx_constant c = function
+  | (prefix, ({pat_desc=Tpat_any|Tpat_var _} as pat)::tail)::rows ->
+    ({pat with pat_desc = Tpat_constant c}::prefix, tail)::(specialise_ctx_constant c rows)
+  | (prefix, ({pat_desc=Tpat_constant d} as pat)::tail)::rows when c = d ->
+    (pat::prefix, tail)::(specialise_ctx_constant c rows)
+  | (_, {pat_desc=Tpat_constant _}::_)::rows ->
+    specialise_ctx_constant c rows
+  | [] -> []
+  | _ -> failwith "Cannot apply constant specialisation"
+
 let specialise_ctx kind ctx = match kind with
   | Construct desc -> specialise_ctx_constructor desc ctx
   | Tuple arity -> specialise_ctx_tuple arity ctx
+  | Constant c -> specialise_ctx_constant c ctx
 
 (* TODO: Handle arrays/tuples/records *)
 let collect_ctx ctx = List.map
