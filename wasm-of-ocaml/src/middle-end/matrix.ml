@@ -203,6 +203,7 @@ let intersect_ctx ctx1 ctx2 =
     List.fold_right (fun row2 ctx -> match lub_opt row1 row2 with Some row -> row::ctx | None -> ctx)
     ctx2 ctx) ctx1 []
 
+(* Work out the context when the constant/constructor which occurred was not one of the patterns *)
 let extract_ctx pat ctx =
   let (prefix, fringe) = List.hd ctx in
   intersect_ctx [(omegas (List.length prefix), pat :: (omegas ((List.length fringe) - 1)))] ctx

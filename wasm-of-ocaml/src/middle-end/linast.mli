@@ -76,7 +76,7 @@ and annotations = (annotation list) ref
 and imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}
 
 
-type partialFlag = Partial | Total
+type partialFlag = Typedtree.partial = Partial | Total
 type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be renamed *)
 
 type compound_expr_desc =

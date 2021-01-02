@@ -20,6 +20,23 @@ let get_id_from_pattern = function
     | {pat_desc=Tpat_var(id, _)} -> id
     | _ -> raise NotSupported
 
+(* Allows switching between basic and optimised pattern matching algorithms *)
+let use_optimised_pattern_compilation = ref true
+
+let matrix_to_compound total value matrix =
+  if !use_optimised_pattern_compilation
+  then
+    (* Optimised version *)
+    let is_total = total = Total in
+    let (body, setup), _ = CompileMatchOpt.compile_matrix [value] matrix
+      is_total (Matrix.initial_handlers is_total) Matrix.initial_context in
+    body, setup
+  else
+    (* Unoptimised version *)
+    CompileMatch.compile_matrix fail_trap [value] matrix
+
+
+
 (* TODO: Texp_extension_constructor and Texp_variant all left out initially, may implement later once working. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
@@ -102,10 +119,9 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
       let (value, value_setup) = translate_imm vb_expr in
       (* vb_expr used to fill in the rhs of the case to pass to check_partial.
          Only actually care about the lhs and pattern, rhs just needed to build a complete case *)
-      let is_total = (Typecore.check_partial vb_pat.pat_env vb_pat.pat_type vb_pat.pat_loc
-        [{c_lhs=vb_pat; c_guard=None; c_rhs=vb_expr}]) = Total in
-      let (body, setup), _ = CompileMatchOpt.compile_matrix [value] matrix
-        is_total (Matrix.initial_handlers is_total) Matrix.initial_context in
+      let partial = (Typecore.check_partial vb_pat.pat_env vb_pat.pat_type vb_pat.pat_loc
+        [{c_lhs=vb_pat; c_guard=None; c_rhs=vb_expr}]) in
+      let (body, setup) = matrix_to_compound partial value matrix in
       (body, value_setup @ setup)
 
   | Texp_let(Recursive, binds, body) ->
@@ -230,9 +246,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
       | _ -> raise NotSupported (* No exception patterns allowed *)) cases in
    let (arg, arg_setup) = translate_imm e in
    let matrix = List.map case_to_row cases in
-   let is_total = partial = Total in
-   let (body, setup), _ = CompileMatchOpt.compile_matrix [arg] matrix
-     is_total (Matrix.initial_handlers is_total) Matrix.initial_context in
+   let body, setup = matrix_to_compound partial arg matrix in
   (body, arg_setup @ setup)
 
   | Texp_letop {let_; ands; param; body; partial} -> translate_letop let_ ands param body partial
@@ -291,12 +305,7 @@ and translate_function param partial = function
         )
     | cases ->
      let matrix = List.map case_to_row cases in
-     (* TODO: Causes an error for app.ml
-      let _ = let f () = 0 in 0. Due to using () rather than _
-     *)
-     let is_total = partial = Total in
-     let (body, setup), _ = CompileMatchOpt.compile_matrix [Imm.id param] matrix
-       is_total (Matrix.initial_handlers is_total) Matrix.initial_context in
+     let body, setup = matrix_to_compound partial (Imm.id param) matrix in
      (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound body)), [])
 
 (* Taken from transl_core.transl_letop of OCaml compiler *)

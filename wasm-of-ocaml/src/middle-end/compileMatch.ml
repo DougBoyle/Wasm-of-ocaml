@@ -13,13 +13,22 @@ let next_fail_count () =
   fail_count := Int32.add 1l (!fail_count);
   !fail_count
 
-let include_guard fail ((action, action_setup), binds) = function
-  | None -> (action, binds @ action_setup)
-  | Some (comp, guard_setup) ->
+(* Use if-then-else rather than try/fail handlers to test each guard until an action succeeds *)
+let rec include_guard fail = function
+ (* out of cases, fail as above *)
+ | [] -> (Compound.fail fail, [])
+ (* No guard so guarenteed to succeed, can discard remaining rows *)
+ | ([], ((action, action_setup), binds), None)::_ -> (action, binds @ action_setup)
+ (* Test guard. If guard fails, recurse on remaining rows *)
+ | ([], ((action, action_setup), binds), Some (guard_comp, guard_setup))::rest ->
+    let rest_expr, rest_setup = include_guard fail rest in
     let id = Ident.create_local "guard" in
     let id_imm = Imm.id id in
-    (Compound.mkif (id_imm) (binds_to_anf action_setup (LinastExpr.compound action)) (LinastExpr.compound (Compound.fail fail)),
-     binds @ guard_setup @ [BLet(id, comp)])
+    (Compound.mkif (id_imm) (binds_to_anf action_setup (LinastExpr.compound action))
+     (binds_to_anf rest_setup (LinastExpr.compound rest_expr)),
+     binds @ guard_setup @ [BLet(id, guard_comp)])
+  | _ -> failwith "Value vector/pattern matrix mismatch. Pattern matrix expected to be empty"
+
 
 (* Aliases case still needed here as it is used by simplified_or_patterns i.e. before removal of aliases *)
 (* TODO: Variant patterns? *)
@@ -86,13 +95,11 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
 (* values is imm vector corresponding to the vector of patterns in each row *)
 (* List of rows, each row is ([pattern list], ((action, action_setup), binds), (guard,setup) option)  *)
 (* TODO: May need an extra rule for variants and how to process them, shouldn't be difficult *)
-(* TODO: Encode fact that variables vector/length of row should match up by putting inside a
-         structure with special getter functions, so only see exceptions in 1 place *)
 let rec compile_matrix fail values matrix =
   let matrix = List.map (preprocess_row values) matrix in
   match (values, matrix) with
   | (_, []) -> (Compound.fail fail, []) (* No valid patterns left *)
-  | ([], ([], act, g)::rest) -> include_guard fail act g (* Successful match, guard handled here *)
+  | ([], _) -> include_guard fail matrix (* All values matched *)
 
   (* OR rule -> Compile([v], expanded_or_matrix); Compile(vs, rest_of_row) *)
   | (v::vs, [(({pat_desc=Tpat_or(_, _, _)} as p)::ps, act, g)]) ->
