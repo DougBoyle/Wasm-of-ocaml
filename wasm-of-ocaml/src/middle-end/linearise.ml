@@ -253,7 +253,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   | _ -> raise NotSupported
 
 and case_to_row {c_lhs; c_guard; c_rhs} =
-  ([c_lhs], (translate_compound c_rhs, []), Option.map translate_compound c_guard)
+  ([c_lhs], (translate_compound c_rhs, []), Option.map translate_imm c_guard)
 
 and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   let (compound, setup) = translate_compound e in binds_to_anf setup (LinastExpr.compound compound)

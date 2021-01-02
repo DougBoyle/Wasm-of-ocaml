@@ -20,13 +20,11 @@ let rec include_guard fail = function
  (* No guard so guarenteed to succeed, can discard remaining rows *)
  | ([], ((action, action_setup), binds), None)::_ -> (action, binds @ action_setup)
  (* Test guard. If guard fails, recurse on remaining rows *)
- | ([], ((action, action_setup), binds), Some (guard_comp, guard_setup))::rest ->
+ | ([], ((action, action_setup), binds), Some (guard_imm, guard_setup))::rest ->
     let rest_expr, rest_setup = include_guard fail rest in
-    let id = Ident.create_local "guard" in
-    let id_imm = Imm.id id in
-    (Compound.mkif (id_imm) (binds_to_anf action_setup (LinastExpr.compound action))
+    (Compound.mkif (guard_imm) (binds_to_anf action_setup (LinastExpr.compound action))
      (binds_to_anf rest_setup (LinastExpr.compound rest_expr)),
-     binds @ guard_setup @ [BLet(id, guard_comp)])
+     binds @ guard_setup)
   | _ -> failwith "Value vector/pattern matrix mismatch. Pattern matrix expected to be empty"
 
 

@@ -16,15 +16,29 @@ Parmatch.le_pats used to check when a row is redundant for OR patterns
 Parmatch.lubs used (in matrix.ml) to check compatibility
 *)
 
-(* TODO: Add 'State' type to reduce number of variables passed to each function *)
-
-
 open LinastUtils
 open Linast
 open Typedtree
 open Types
 open Asttypes
 open Matrix
+
+(* each row is a list of patterns, the action to perform on a match,
+   any binds accumulated while processing matrix, and a possible guard to check *)
+type action_matrix =
+  (pattern list *
+  ((compound_expr * linast_setup list)* linast_setup list ) *
+  (imm_expr * linast_setup list) option) list
+
+(* Record of each of the arguments used by the algorithm. Stored in a record as they get
+   passed around together ofter *)
+type state = {
+  values : imm_expr;
+  matrix : action_matrix;
+  total : bool;
+  handlers : jump_handlers;
+  ctx : context;
+}
 
 (* Default value is -1 for trap, otherwise this is used to access an outer try/catch *)
 let fail_trap = -1l
@@ -41,13 +55,11 @@ let rec include_guard fail ctx = function
  (* No guard so guarenteed to succeed, can discard remaining rows *)
  | ([], ((action, action_setup), binds), None)::_ -> (action, binds @ action_setup), []
  (* Test guard. If guard fails, recurse on remaining rows *)
- | ([], ((action, action_setup), binds), Some (guard_comp, guard_setup))::rest ->
+ | ([], ((action, action_setup), binds), (Some (guard_imm , guard_setup)))::rest ->
     let (rest_expr, rest_setup), rest_jumps = include_guard fail ctx rest in
-    let id = Ident.create_local "guard" in
-    let id_imm = Imm.id id in
-    (Compound.mkif (id_imm) (binds_to_anf action_setup (LinastExpr.compound action))
+    (Compound.mkif (guard_imm) (binds_to_anf action_setup (LinastExpr.compound action))
      (binds_to_anf rest_setup (LinastExpr.compound rest_expr)),
-     binds @ guard_setup @ [BLet(id, guard_comp)]), rest_jumps
+     binds @ guard_setup), rest_jumps
   | _ -> failwith "Value vector/pattern matrix mismatch. Pattern matrix expected to be empty"
 
 (* Aliases case still needed here as it is used by simplified_or_patterns i.e. before removal of aliases *)
