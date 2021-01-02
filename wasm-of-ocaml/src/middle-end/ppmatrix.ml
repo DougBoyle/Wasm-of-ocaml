@@ -15,7 +15,7 @@ let rec print_pattern ppf pat = match pat.pat_desc with
   | Tpat_or _ -> fprintf ppf "_"
   | _ -> () (* unsupported pattern *)
 
-let print_row ppf (patterns, _, _) =
+let print_row ppf patterns =
   let ppf = Format.std_formatter in
   let spc = ref false in
   List.iter
@@ -26,6 +26,12 @@ let print_row ppf (patterns, _, _) =
 
 let print_matrix mat =
   let ppf = Format.std_formatter in
-  List.iter
-    (fprintf ppf "@[<hv 1>[%a]@]@." print_row)
+  List.iter (fun (patterns, _, _) ->
+    fprintf ppf "@[<hv 1>[%a]@]@." print_row patterns)
     mat
+
+let print_context ctx =
+  let ppf = Format.std_formatter in
+  List.iter (fun (prefix, fringe) ->
+      fprintf ppf "@[<hv 1>[%a]@ [%a]@]@." print_row prefix print_row fringe)
+      ctx

@@ -315,49 +315,14 @@ let rec compile_matrix values matrix total handlers ctx =
   (* Can't handle float and integer constants together, since switch statements only work for ints *)
   | (v::vs, ({pat_desc=Tpat_constant (Const_int _)}::_,_,_)::_) ->
     apply_const_int_rule total handlers ctx v vs matrix
-
+  | (v::vs, ({pat_desc=Tpat_constant (Const_float _)}::_,_,_)::_) ->
+    apply_float_rule total handlers ctx v vs matrix
+  | (v::vs, ({pat_desc=Tpat_constant _}::_,_,_)::_) ->raise (NotImplemented __LOC__)
+  | (v::vs, ({pat_desc=Tpat_array _}::_,_,_)::_) ->
+    apply_array_rule total handlers ctx v vs matrix
+  | (v::vs, ({pat_desc=Tpat_record (_, _)}::_,_,_)::_) ->
+    apply_record_rule total handlers ctx v vs matrix
   | _ -> failwith "Malformed value vector/pattern matrix"
-
-  (*
- | (v::vs, ({pat_desc=Tpat_record (_, _)}::_,_,_)::_) ->
-    apply_record_rule fail v vs matrix
-
- | (v::vs, ({pat_desc=Tpat_array _}::_,_,_)::_) ->
-    apply_array_rule fail v vs matrix
-
- | (v::vs, ({pat_desc=Tpat_constant (Const_float _)}::_,_,_)::_) ->
-   apply_float_rule fail v vs matrix
- | (v::vs, ({pat_desc=Tpat_constant _}::_,_,_)::_) ->raise (NotImplemented __LOC__)
- | _ -> failwith "Malformed matrix/vector input"
- *)
-
-
-(*
-and apply_array_rule fail v vs matrix =
-  let rec specialise_matrix n =
-    let rows = List.filter (function
-      | ({pat_desc=Tpat_array pl}::_,_,_) -> List.length pl = n
-      | _ -> failwith "Wrong rule applied") matrix in
-    let new_matrix = List.map (function
-     | ({pat_desc=Tpat_array pl}::ps,act, g) -> (pl @ ps, act, g)
-     | _ -> failwith "Wrong rule applied") rows in
-    let new_val_ids = List.init n (fun _ -> Ident.create_local "array_arg") in
-    let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
-    let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
-    let (expr, setup) = compile_matrix fail (new_vals @ vs) new_matrix in
-    (n, binds_to_anf (new_val_binds @ setup) (LinastExpr.compound expr))
-    in
-  let get_length = function
-    | ({pat_desc=Tpat_array l}::_,_,_) -> List.length l
-    | _ -> failwith "Can't apply constructor rule" in
-  let lengths_used = List.fold_left (fun lens row -> let n = get_length row in
-    if List.mem n lens then lens else n::lens) [] matrix in
-  let cases = List.map specialise_matrix lengths_used in
-  let len_id = Ident.create_local "array_len" in
-  let len_imm = Imm.id len_id in
-  let len_bind = BLet(len_id, Compound.gettag v) in
-  (Compound.mkswitch len_imm cases (Some (LinastExpr.compound (Compound.fail fail))), [len_bind])
-*)
 
 (* Tuple case is unchanged, simple since the tuple type only has one 'constructor' () *)
 and apply_tuple_rule total handlers ctx v vs matrix arity =
@@ -584,37 +549,72 @@ and apply_const_constructor_rule total handlers ctx v vs matrix num_constrs =
       (Some (LinastExpr.compound (Compound.fail fail_idx))), []),
      union_jump_summary summary [(fail_idx, ctx)])
 
-(*
-and apply_record_rule fail v vs matrix =
-    let get_label_pos (_, desc, _) = desc.lbl_pos in
+(* Like constructor rule but never exhaustive, and variant is just the length of the array *)
+and apply_array_rule total handlers ctx v vs matrix =
+  (* Now returns (tag * case body * jump_summary *)
+  let rec specialise_array_matrix n =
+    let rows = List.filter (function
+      | ({pat_desc=Tpat_array pl}::_,_,_) -> List.length pl = n
+      | _ -> failwith "Wrong rule applied") matrix in
+    let new_matrix = List.map (function
+     | ({pat_desc=Tpat_array pl}::ps,act, g) -> (pl @ ps, act, g)
+     | _ -> failwith "Wrong rule applied") rows in
+    let new_val_ids = List.init n (fun _ -> Ident.create_local "array_arg") in
+    let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
+    let new_val_binds = List.mapi (fun i id -> BLet(id, Compound.field v i)) new_val_ids in
+    let ((expr, setup), jumps) = compile_matrix (new_vals @ vs) new_matrix total
+       (specialise_handlers (Array n) handlers) (specialise_ctx (Array n) ctx) in
+    (n, binds_to_anf (new_val_binds @ setup) (LinastExpr.compound expr), jumps) in
+
+  let get_length = function
+    | ({pat_desc=Tpat_array l}::_,_,_) -> List.length l
+    | _ -> failwith "Can't apply constructor rule" in
+  let lengths_used = List.fold_left (fun lens row -> let n = get_length row in
+      if List.mem n lens then lens else n::lens) [] matrix in
+
+  (* (int * linast * jump_summary) list *)
+  let specialised_calls = List.map specialise_array_matrix lengths_used in
+  let len_id = Ident.create_local "array_len" in
+  let len_imm = Imm.id len_id in
+  let len_bind = BLet(len_id, Compound.gettag v) in
+  let cases = List.map (fun (i, body, _) -> (i, body)) specialised_calls in
+  let jump_summaries = List.map (fun (_, _, jumps) -> jumps) specialised_calls in
+  let summary = List.fold_right
+    (fun jumps result -> union_jump_summary result (collect_jump_summary jumps))
+    jump_summaries [] in
+  (* Unlike for constructors, never total (or close to total), more like const int rule in this aspect *)
+  let _, fail_idx = List.hd handlers in
+  ((Compound.mkswitch len_imm cases
+   (Some (LinastExpr.compound (Compound.fail fail_idx))), [len_bind]),
+   union_jump_summary summary [(fail_idx, ctx)])
+
+(* Record pattern doesn't directly include all fields (although each field description has an array of all of them)
+   so specialisation/collection can be done in terms of just the fields used. *)
+
+and apply_record_rule total handlers ctx v vs matrix =
     let rec get_labels_used acc = function
       | ({pat_desc=Tpat_record (l, _)}::_,_,_) ->
         (* TODO: Would be nice to put these in sorted order at end *)
-        List.fold_left (fun acc lbl -> let pos = get_label_pos lbl in
-        if List.mem pos acc then acc else pos::acc) acc l
+        List.fold_left (fun acc (_, desc, _) ->
+        if (List.find_opt (fun lbl -> lbl.lbl_pos = desc.lbl_pos) acc = None)
+        then desc::acc else acc) acc l
       | _ -> failwith "Can't apply record rule" in
+    (* Updated to be an actual list of labels, not just positions *)
     let labels_used = List.fold_left get_labels_used [] matrix in
     let new_val_ids = List.map (fun _ -> Ident.create_local "record_field") labels_used in
     let new_vals = List.map (fun id -> Imm.id id) new_val_ids in
-    let new_val_binds = List.map (fun (i, id) -> BLet(id, Compound.field v i))
+    let new_val_binds = List.map (fun (desc, id) -> BLet(id, Compound.field v desc.lbl_pos))
      (List.combine labels_used new_val_ids) in
 
-    let make_wildcard_pattern = function
-      | (_, _, p)::_ -> {p with pat_desc = Tpat_any}
-      | _ -> failwith "Typedtree says not possible, record patterns always has >0 sub-patterns" in
-    (* map each pattern list to patterns | Tpat_any for each label in labels used *)
-    let get_pattern wildcard lbl_list lbl_pos =
-      match List.find_opt (fun lbl -> get_label_pos lbl = lbl_pos) lbl_list with
-        | Some (_, _, p) -> p
-        | None -> wildcard in
-
-    let new_rows = List.map (* Each Tpat_record is replaced with a pattern for each label examined *)
+    let new_matrix = List.map (* Each Tpat_record is replaced with a pattern for each label examined *)
       (function ({pat_desc=Tpat_record (l, _)}::ps,act,g) ->
-         ((List.map (get_pattern (make_wildcard_pattern l) l) labels_used)@ps, act,g)
+         ((get_record_patterns l labels_used) @ ps, act, g)
         | _ -> failwith "Wrong rule applied") matrix in
-    let (expr, setup) = compile_matrix fail (new_vals @ vs) new_rows in
-    (expr, new_val_binds @ setup) (* Extract each of the fields then recursively match the pattern *)
-*)
+    let (expr, setup), jumps = compile_matrix (new_vals @ vs) new_matrix total
+      (specialise_handlers (Record labels_used) handlers) (specialise_ctx (Record labels_used) ctx) in
+    (* Like tuples, can only be one variant so final result is straightforward *)
+    (expr, new_val_binds @ setup), (collect_jump_summary jumps)
+
 
 (*
 (* TODO: Handle other constants *) (* Total=true when created from full constant constructor signature *)
@@ -634,9 +634,8 @@ and apply_const_int_rule fail v vs matrix ints_used total =
   (Compound.mkswitch v cases (Some (LinastExpr.compound (Compound.fail fail))), [])
 *)
 
-(*
 (* Can't switch on floats, so have to generate nested if-then-else *)
-and apply_float_rule fail v vs matrix =
+and apply_float_rule total handlers ctx v vs matrix =
   let specialise_float_matrix f =
     let rows = List.filter (function (* All constants must be floats due to type-checking *)
       | ({pat_desc=Tpat_constant c}::_,_,_) -> f = c
@@ -644,19 +643,27 @@ and apply_float_rule fail v vs matrix =
     let new_matrix = List.map (function
      | (_::ps,act,g) -> (ps, act, g)
      | _ -> failwith "Wrong rule applied") rows in
-    let (expr, setup) = compile_matrix fail vs new_matrix in
-    (f, binds_to_anf setup (LinastExpr.compound expr)) in
+    let (expr, setup), jumps = compile_matrix vs new_matrix total
+      (specialise_handlers (Constant f) handlers) (specialise_ctx (Constant f) ctx) in
+    (f, binds_to_anf setup (LinastExpr.compound expr), jumps) in
   let get_float = function
         | ({pat_desc=Tpat_constant c}::_,_,_) -> c
         | _ -> failwith "Can't apply float rule" in
   let floats_used = List.fold_left (fun floats row -> let f = get_float row in
     if List.mem f floats then floats else f::floats) [] matrix in
-  let cases = List.map specialise_float_matrix floats_used in
+  let specialised_calls = List.map specialise_float_matrix floats_used in
+  let cases = List.map (fun (i, body, _) -> (i, body)) specialised_calls in
+  let jump_summaries = List.map (fun (_, _, jumps) -> jumps) specialised_calls in
+  let summary = List.fold_right
+    (fun jumps result -> union_jump_summary result (collect_jump_summary jumps))
+    jump_summaries [] in
+  let _, fail_idx = List.hd handlers in
   (* Made awkward by wanting to return a compound *)
-  List.fold_right (fun (f, body) (rest, rest_setup) ->
+  (List.fold_right (fun (f, body) (rest, rest_setup) ->
     let test_result = Compound.binary Eq (Imm.const f) v in
     let testid = Ident.create_local "isequal" in
     (Compound.mkif (Imm.id testid) body (binds_to_anf rest_setup (LinastExpr.compound rest)),
-     [BLet(testid, test_result);])) cases (Compound.fail fail, [])
-*)
+     [BLet(testid, test_result);])) cases (Compound.fail fail_idx, []),
+   union_jump_summary summary [(fail_idx, ctx)])
+
 

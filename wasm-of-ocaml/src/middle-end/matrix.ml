@@ -1,17 +1,10 @@
 (* For all representation code + matrix modification utility functions *)
 
-(* Contexts (for now) represented as storing suffix in regular order, and prefix in reverse order.
+(* Contexts represented as storing suffix in regular order, and prefix in reverse order.
    Therefore, front of each list is around the current point '.' where all operations actually occur. *)
-(* Remember that contexts are actually quite easy to represent, as they don't have actions/guards.
-   Am I sure guards don't need considering, may need a flag for them? *)
-(* TODO: Processing of aliases? Ignored by context? Should not be putting any alias patterns into context
-         as they don't carry any information about what the value being matched could be.
-         May similarly want to repalce Tpat_var with Tpat_any and consider unifying pseudo-constructors? *)
 
-(* TODO: Handle contexts growing too large. Paper suggests maximum of 32 rows.
-         Add checks in multiple places to handle this. Can first check if any pattern contained in other,
-         then introduce wildcards until this is achieved. Main cause is unions in constructor rule. *)
 open Typedtree
+open Types
 
 type context = (pattern list * pattern list) list
 type jump_handlers = ((pattern list list * int32) list)
@@ -29,13 +22,14 @@ let add_dummy_data pat_desc =
 let omega = add_dummy_data Tpat_any
 let omegas n = List.init n (fun _ -> omega)
 (* Tpat_construct containing just omega patterns (used by specialisation *)
-(* TODO: Will also need to work on tuples/arrays/records *)
 let empty_construct constructor_desc =
   add_dummy_data
     (Tpat_construct (mknoloc (Longident.Lident (constructor_desc.Types.cstr_name)),
        constructor_desc, omegas constructor_desc.cstr_arity))
 let empty_tuple arity =
   add_dummy_data (Tpat_tuple (omegas arity))
+let empty_array arity =
+  add_dummy_data (Tpat_array(omegas arity))
 
 let initial_context = [([], [omega])]
 let initial_handlers total = if total then [] else [([[omega]], -1l)]
@@ -43,8 +37,7 @@ let initial_handlers total = if total then [] else [([[omega]], -1l)]
 (* ----------- pattern manipluation ------------- *)
 
 (* Using lub defined in parmatch.ml. No reason to duplicate this (although fairly simple).
-   Rewrite with options rather than Empty *)
-(* TODO: If only being used for intersection, can avoid options and just return the actual list *)
+   Rewritten with options rather than Empty *)
 let lub_opt (prefix1, fringe1) (prefix2, fringe2) =
   try Some (Parmatch.lubs prefix1 prefix2, Parmatch.lubs fringe1 fringe2)
   with Parmatch.Empty -> None
@@ -57,17 +50,16 @@ let lub_mat_opt mat1 mat2 =
   with Parmatch.Empty -> None
 
 (* ------------ context operations --------------- *)
-(* constructor is an instance of Types.constructor_description.
-   TODO: Handle arrays/tuples/records and also constants (constant constructors are just constants) *)
-(* TODO: Would be better to have a generalised specialise_ctx function which takes an enum for which to apply,
-         means I don't have to define specialise_mat/handlers/etc. for each type of construct *)
 (* Due to mixture rule using the whole context for the first recursive call, specialisation converts variable
    patterns to patterns of a particular form known when that subcall is reached. i.e. makes the varible pattern more specific *)
 type specialise_type =
   | Construct of Types.constructor_description
   | Tuple of int (* arity *)
+  | Array of int
   | Constant of Asttypes.constant (* works for both ints and floats (although shouldn't pattern match floats) *)
+  | Record of Types.label_description list (* used labels *)
 
+(* constructor is an instance of Types.constructor_description. *)
 let rec specialise_ctx_constructor constructor = function
   | (prefix, {pat_desc=Tpat_any|Tpat_var _}::tail)::rows ->
     ((empty_construct constructor)::prefix, (omegas constructor.cstr_arity) @ tail)
@@ -83,7 +75,7 @@ let rec specialise_ctx_constructor constructor = function
   | [] -> []
   | _ -> failwith "Cannot apply constructor specialisation" (* Indicates a typing error if this is reached? *)
 
-(* specialisation for tuples is simple, as array must have a tuple in every position, no missing case *)
+(* specialisation for tuples is simple as only one constructor and fixed arity *)
 let specialise_ctx_tuple arity ctx =
   List.map (function
     | (prefix, {pat_desc=Tpat_any|Tpat_var _}::tail) ->
@@ -91,6 +83,16 @@ let specialise_ctx_tuple arity ctx =
     | (prefix, {pat_desc=Tpat_tuple pats}::tail) -> (empty_tuple arity)::prefix, pats @ tail
     | _ -> failwith "Not a tuple pattern, cannot specialise")
   ctx
+
+let rec specialise_ctx_array arity = function
+  | (prefix, {pat_desc=Tpat_any|Tpat_var _}::tail)::rows ->
+    ((empty_array arity)::prefix, (omegas arity) @ tail)::(specialise_ctx_array arity rows)
+  | (prefix, {pat_desc=Tpat_array pats}::tail)::rows when (List.length pats = arity) ->
+    ((empty_array arity)::prefix, pats @ tail)::(specialise_ctx_array arity rows)
+  | (prefix, {pat_desc=Tpat_array _}::tail)::rows ->
+    specialise_ctx_array arity rows
+  | [] -> []
+  | _ -> failwith "Not an array pattern, cannot specialise"
 
 (* like constructor case, but arity is always 0 and each constant is a distinct constructor *)
 let rec specialise_ctx_constant c = function
@@ -103,12 +105,35 @@ let rec specialise_ctx_constant c = function
   | [] -> []
   | _ -> failwith "Cannot apply constant specialisation"
 
+let get_record_patterns lbl_list used_lbls =
+  List.map (fun used_lbl ->
+  match List.find_opt (fun (_, desc, _) -> desc.lbl_pos = used_lbl.lbl_pos) lbl_list with
+    | Some (_, _, p) -> p (* field checked by pattern *)
+    | None -> omega (* field not checked by this pattern, can be anything *)
+  ) used_lbls
+
+(* ordering of labels forced to be the same as lbls_used. Required for collection to work later *)
+let specialise_ctx_record lbls_used ctx =
+  (* Record matching each used field against _, indicates which fields to collect later *)
+  let num_lbls = List.length lbls_used in
+  let empty_record_pats = List.map (fun lbl_desc ->
+      (mknoloc (Longident.Lident (lbl_desc.lbl_name)), lbl_desc, omega)) lbls_used in
+  List.map (function
+  | (prefix, ({pat_desc=Tpat_any|Tpat_var _} as pat)::tail) ->
+    ({pat with pat_desc = Tpat_record(empty_record_pats, Closed)}::prefix, (omegas num_lbls) @ tail)
+  | (prefix, ({pat_desc=Tpat_record (l, closed)} as pat)::tail) ->
+    ({pat with pat_desc = Tpat_record (empty_record_pats, closed)}::prefix,
+     (get_record_patterns l lbls_used) @ tail)
+  | _ -> failwith "Cannot apply record specialisation"
+  ) ctx
+
 let specialise_ctx kind ctx = match kind with
   | Construct desc -> specialise_ctx_constructor desc ctx
   | Tuple arity -> specialise_ctx_tuple arity ctx
+  | Array arity -> specialise_ctx_array arity ctx
   | Constant c -> specialise_ctx_constant c ctx
+  | Record lbls -> specialise_ctx_record lbls ctx
 
-(* TODO: Handle arrays/tuples/records/floats/constants *)
 (* Unlike specialise_ctx, collect_ctx doesn't take an extra argument so can process
    each type of constructor in one function *)
 let collect_ctx ctx = List.map
@@ -119,8 +144,16 @@ let collect_ctx ctx = List.map
   | (({pat_desc=Tpat_tuple empty_pats} as pat)::prefix, rest) ->
     let pats, others = take (List.length empty_pats) rest in
     prefix, {pat with pat_desc=Tpat_tuple pats}::others
+  | (({pat_desc=Tpat_array empty_pats} as pat)::prefix, rest) ->
+    let pats, others = take (List.length empty_pats) rest in
+    prefix, {pat with pat_desc=Tpat_array pats}::others
   | (({pat_desc=Tpat_constant _} as pat)::prefix, tail) ->
     prefix, pat::tail
+  | (({pat_desc=Tpat_record (l, closed)} as pat)::prefix, rest) ->
+    let pats, others = take (List.length l) rest in
+    let new_record_pats = List.map
+      (fun ((loc, desc, _), pat) -> (loc, desc, pat)) (List.combine l pats) in
+    prefix, {pat with pat_desc=Tpat_record (new_record_pats, closed)}::others
   | _ -> failwith "Cannot collect context when prefix doesn't end in some form of constructor"
  ) ctx
 
