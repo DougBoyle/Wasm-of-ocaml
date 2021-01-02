@@ -28,8 +28,9 @@ let matrix_to_compound total value matrix =
   then
     (* Optimised version *)
     let is_total = total = Total in
-    let (body, setup), _ = CompileMatchOpt.compile_matrix [value] matrix
-      is_total (Matrix.initial_handlers is_total) Matrix.initial_context in
+    let (body, setup), _ = CompileMatchOpt.compile_matrix
+      {values=[value]; matrix; total=is_total; handlers=Matrix.initial_handlers is_total;
+       ctx=Matrix.initial_context} in
     body, setup
   else
     (* Unoptimised version *)
