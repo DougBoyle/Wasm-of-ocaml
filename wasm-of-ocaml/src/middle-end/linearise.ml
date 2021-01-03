@@ -7,6 +7,18 @@ open LinastUtils
 let rec take n l = if n = 0 then ([], l) else
   match l with [] -> assert false (* Should never happen *) | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
 
+(* c_rhs isn't actually examined to work out if a pattern is partial or not, since that only
+   depends on the pattern and guard, so a dummy expression is put in its place.  *)
+let check_if_binding_partial vb_pat =
+  let dummy = {exp_desc = Texp_unreachable; exp_loc = Location.none; exp_extra = [];
+    exp_type = {desc=Tnil; level=0; scope=0; id=0}; exp_env = Env.empty; exp_attributes = [];} in
+  (* Avoids repeating type checking warnings about partial matches *)
+  let result = ref false in
+  Warnings.without_warnings (fun _ ->
+    result :=  (Typecore.check_partial vb_pat.pat_env vb_pat.pat_type
+      vb_pat.pat_loc [{c_lhs=vb_pat; c_guard=None; c_rhs=dummy}]) = Total);
+  !result
+
 let translate_ident path = function
   | Val_prim p -> Imm.id (Primitives.translate_prim p)
   (* May need to handle some identifiers which point directly to runtime functions e.g. Stdlib!.min
@@ -27,16 +39,25 @@ let matrix_to_compound total value matrix =
   if !use_optimised_pattern_compilation
   then
     (* Optimised version *)
-    let is_total = total = Total in
     let (body, setup), _ = CompileMatchOpt.compile_matrix
-      {values=[value]; matrix; total=is_total; handlers=Matrix.initial_handlers is_total;
+      {values=[value]; matrix; total; handlers=Matrix.initial_handlers total;
        ctx=Matrix.initial_context} in
     body, setup
   else
     (* Unoptimised version *)
     CompileMatch.compile_matrix fail_trap [value] matrix
 
-
+let matrix_to_linast exported total value matrix =
+  if !use_optimised_pattern_compilation
+  then
+    (* Optimised version *)
+    let code, _ = CompileLetOpt.compile_matrix
+      {values=[value]; matrix; total; exported;
+       handlers=Matrix.initial_handlers total; ctx=Matrix.initial_context} in
+    code
+  else
+    (* Unoptimised version *)
+    CompileLet.compile_matrix ~exported:[] fail_trap [value] matrix
 
 (* TODO: Texp_extension_constructor and Texp_variant all left out initially, may implement later once working. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
@@ -115,15 +136,12 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
   (* Can probably rewrite as a fold *)
   | Texp_let(Nonrecursive, [], e) -> translate_compound e
   | Texp_let(Nonrecursive, {vb_pat;vb_expr}::rest, body) ->
-    let ((rest : Linast.compound_expr), rest_setup) = translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
-      let matrix = [([vb_pat], ((rest, rest_setup), []), None)] in
-      let (value, value_setup) = translate_imm vb_expr in
-      (* vb_expr used to fill in the rhs of the case to pass to check_partial.
-         Only actually care about the lhs and pattern, rhs just needed to build a complete case *)
-      let partial = (Typecore.check_partial vb_pat.pat_env vb_pat.pat_type vb_pat.pat_loc
-        [{c_lhs=vb_pat; c_guard=None; c_rhs=vb_expr}]) in
-      let (body, setup) = matrix_to_compound partial value matrix in
-      (body, value_setup @ setup)
+    let ((rest : Linast.compound_expr), rest_setup) =
+      translate_compound ({e with exp_desc=Texp_let(Nonrecursive, rest, body)}) in
+    let matrix = [([vb_pat], ((rest, rest_setup), []), None)] in
+    let (value, value_setup) = translate_imm vb_expr in
+    let (body, setup) = matrix_to_compound (check_if_binding_partial vb_pat) value matrix in
+    (body, value_setup @ setup)
 
   | Texp_let(Recursive, binds, body) ->
       (* Most potential recursion issues solved by the constrained form allowed for letrec expressions *)
@@ -247,7 +265,7 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
       | _ -> raise NotSupported (* No exception patterns allowed *)) cases in
    let (arg, arg_setup) = translate_imm e in
    let matrix = List.map case_to_row cases in
-   let body, setup = matrix_to_compound partial arg matrix in
+   let body, setup = matrix_to_compound (partial = Total) arg matrix in
   (body, arg_setup @ setup)
 
   | Texp_letop {let_; ands; param; body; partial} -> translate_letop let_ ands param body partial
@@ -300,13 +318,13 @@ and translate_function param partial = function
           | ({desc=CFunction(args, body);_} as comp, setup) ->
              let matrix = [([pat], body)] in
              (* Argument binding so 'exported' list not needed *)
-             let tree = CompileLet.compile_matrix ~exported:[] fail_trap [Imm.id param] matrix in
+             let tree = matrix_to_linast [] (partial = Total) (Imm.id param) matrix in
             ({comp with desc=CFunction(param::args, tree)}, setup)
           | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
         )
     | cases ->
      let matrix = List.map case_to_row cases in
-     let body, setup = matrix_to_compound partial (Imm.id param) matrix in
+     let body, setup = matrix_to_compound (partial = Total) (Imm.id param) matrix in
      (Compound.mkfun [param] (binds_to_anf setup (LinastExpr.compound body)), [])
 
 (* Taken from transl_core.transl_letop of OCaml compiler *)
@@ -386,9 +404,8 @@ let rec translate_structure exported = function
      let rest = translate_structure exported ({item with str_desc=Tstr_value(Nonrecursive, bind_list)}::items) in
      let matrix = [([vb_pat], rest)] in
      let (value, value_setup) = translate_imm vb_expr in
-     let tree = CompileLet.compile_matrix ~exported fail_trap [value] matrix in
+     let tree = matrix_to_linast exported (check_if_binding_partial vb_pat) value matrix in
      binds_to_anf ~exported value_setup tree
-
    | _ -> translate_structure exported items (* TODO: Should check which ones should/shouldn't be included *)
   )
 

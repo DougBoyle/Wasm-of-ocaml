@@ -288,7 +288,3 @@ let make_or_pattern pat1 pat2 =
    pat_type = pat1.pat_type ; pat_env = pat1.pat_env;
    pat_attributes = [];
   }
-
-(* for removing action/guard information when putting into handlers *)
-let get_just_patterns matrix =
-  List.map (fun (pats, _, _) -> pats) matrix

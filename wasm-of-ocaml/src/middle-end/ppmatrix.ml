@@ -30,6 +30,12 @@ let print_matrix mat =
     fprintf ppf "@[<hv 1>[%a]@]@." print_row patterns)
     mat
 
+let print_let_matrix mat =
+  let ppf = Format.std_formatter in
+  List.iter (fun (patterns, _) ->
+    fprintf ppf "@[<hv 1>[%a]@]@." print_row patterns)
+    mat
+
 let print_context ctx =
   let ppf = Format.std_formatter in
   List.iter (fun (prefix, fringe) ->
