@@ -23,7 +23,7 @@ const filesize = fs.statSync(filename).size;
         await run(filename, runArgs);
         const millis = performance.now() - t0;
         console.log(simple_name, "time", millis);
-    } else if (filename.endsWith(".c.wasm")){ // TODO: Output files in this format
+    } else if (filename.endsWith(".c.wasm")){
         var buffer = await readFile(filename);
         var module = await WebAssembly.compile(buffer);
         var instance = await WebAssembly.instantiate(module);

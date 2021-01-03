@@ -1,4 +1,5 @@
 #!/usr/bin/bash
+# run all benchmarks with different sets of optimisations enabled
 cd $(dirname $BASH_SOURCE)
 ITERS=5
 {

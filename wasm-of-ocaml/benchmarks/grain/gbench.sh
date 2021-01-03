@@ -6,5 +6,5 @@ do
 done
 for file in out/*.gr.wasm
 do
-  node wasmRunGrain.js $file
+  node ../runner.js $file
 done

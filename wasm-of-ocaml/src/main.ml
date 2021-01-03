@@ -9,9 +9,9 @@ let print_wat = ref false
 
 (* Optimisation settings *)
 let opt_ir = ref true
-let num_passes_ir = ref 1 (* TODO: Determine best choice *)
+let num_passes_ir = ref 5 (* TODO: Determine best choice *)
 let opt_graph = ref true
-let num_passes_graph = ref 1
+let num_passes_graph = ref 5
 
 (* Prevents .cmi files being generated.
 If compiling multiple files together, remove this so cmi's can be used in type checking. *)
@@ -90,16 +90,18 @@ let main () =
   output_string f binary; close_out f;
   if !print_wat then Printf.fprintf stdout "%s\n" (Wasm.Sexpr.to_string 80 (Wasm.Arrange.module_ wasm))
 
-let _ = Arg.parse [("-d", Arg.Set_string output, "Specify output directory");
-                   ("-ir", Arg.Set print_ir, "Print Linast IR program produced");
-                   ("-wt", Arg.Set print_wasmtree, "Print Wasmtree produced");
-                   ("-wat", Arg.Set print_wat, "Print output wat file");
-                   ("-Nopt-ir", Arg.Clear opt_ir, "Disable IR level optimisations");
-                   ("-passes-ir", Arg.Set_int num_passes_ir, "Set number of IR passes");
-                   ("-Nopt-graph", Arg.Clear opt_ir, "Disable Graph level optimisations");
-                   ("-passes-graph", Arg.Set_int num_passes_graph, "Set number of graph passes");
-                   ]
-    (fun f -> if (!input) = "" then input := f else raise (Arg.Bad "Only one file allowed"))
-    "Usage: main.byte [<file>]"
+let _ = Arg.parse [
+    ("-d", Arg.Set_string output, "Specify output directory");
+    ("-ir", Arg.Set print_ir, "Print Linast IR program produced");
+    ("-wt", Arg.Set print_wasmtree, "Print Wasmtree produced");
+    ("-wat", Arg.Set print_wat, "Print output wat file");
+    ("-Nopt-ir", Arg.Clear opt_ir, "Disable IR level optimisations");
+    ("-passes-ir", Arg.Set_int num_passes_ir, "Set number of IR passes");
+    ("-Nopt-graph", Arg.Clear opt_ir, "Disable Graph level optimisations");
+    ("-passes-graph", Arg.Set_int num_passes_graph, "Set number of graph passes");
+    ("-Nopt-patterns", Arg.Clear Linearise.use_optimised_pattern_compilation, "Disable optimised pattern compilation");
+  ]
+  (fun f -> if (!input) = "" then input := f else raise (Arg.Bad "Only one file allowed"))
+  "Usage: main.byte [<file>]"
 
 let _ = main ()

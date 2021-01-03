@@ -17,5 +17,5 @@ do
 done
 for file in out/*.wasm
 do
-    node c_runner.js $file
+    node ../runner.js $file
 done
