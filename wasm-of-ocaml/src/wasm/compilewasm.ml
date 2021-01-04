@@ -610,7 +610,7 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
   let body = List.map add_dummy_edges (compile_block body_env body_instrs) in
   let ftype_idx = get_arity_func_type_idx env arity_int in
   let ftype = add_dummy_loc Int32.(of_int ftype_idx) in
-  let locals = List.append swap_slots @@ List.init (stack_size) (fun n -> Types.I32Type) in
+  let locals = List.append swap_slots @@ List.init (stack_size) (fun _ -> Types.I32Type) in
   let open Graph in (* so func' record type in scope *)
   {
     ftype;

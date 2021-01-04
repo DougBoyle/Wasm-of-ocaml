@@ -77,7 +77,8 @@ and imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; mutable ann
 
 
 type partialFlag = Typedtree.partial = Partial | Total
-type globalFlag = Global | Local (* To export or not in Wasm. Local -> can be renamed *)
+(* To export or not in Wasm. *)
+type globalFlag = Export | Local
 
 type compound_expr_desc =
   | CImm of imm_expr

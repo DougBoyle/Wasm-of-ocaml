@@ -6,21 +6,19 @@ open Bindstree
 open Linast
 open LinastUtils
 
-(* TODO: Work out what each is used for *)
 type compile_env = {
     binds : binding Ident.tbl;
-    (* TODO: Handle exports and globals separately *)
-    exported : int32 Ident.tbl;
     stack_idx : int;
     arity : int;
 }
 
 let initial_env = {
     binds = Ident.empty;
-    exported = Ident.empty;
     stack_idx = 0;
     arity = 0;
 }
+
+
 
 (* Function index for doing lambda lifting *)
 let lift_index = ref 0
@@ -29,25 +27,39 @@ let lift_index = ref 0
 let next_lift () = let v = !lift_index in incr lift_index; v
 
 (* Track global variables *)
-let global_table = ref (Ident.empty: int32 Ident.tbl)
+let global_table = ref (Ident.empty : int32 Ident.tbl)
+(* Exports - distinct from globals. Not looked up so can be a list rather than table *)
+let exports_list = ref ([] : export list)
+
 let global_index = ref 0
-(* TODO: Separate globals from exports so that there can be unexported globals *)
-let global_exports () = let tbl = !global_table in
-  Ident.fold_all
-  (fun ex_name ex_global_index acc -> {ex_name; ex_global_index}::acc) tbl []
+
+(* Ident.find_same doesn't have an optional version *)
+let find_same_opt id tbl =
+  match Ident.find_same id tbl with
+    | x -> Some x
+    | exception Not_found -> None
 
 let next_global id =
-  match Ident.find_all (Ident.name id) (!global_table) with
-    | [(_, ret)] -> ret
-    | [] ->
+  match find_same_opt id (!global_table) with
+    | Some ret -> ret
+    | None ->
       let ret = Int32.of_int (!global_index) in
       global_table := Ident.add id ret !global_table;
       incr global_index;
       ret
-    | _ -> failwith "Ident put into global table more than once"
+
+(* Allocates a global and marks it as exported in exports_list *)
+let next_export id =
+  match find_same_opt id (!global_table) with
+      | Some ret -> ret
+      | None ->
+      let ret = Int32.of_int (!global_index) in
+      global_table := Ident.add id ret !global_table;
+      exports_list := {ex_name=id; ex_global_index=ret}::(!exports_list);
+      incr global_index;
+      ret
 
 let find_id id env = Ident.find_same id env.binds
-let find_global id env = Ident.find_same id env.exported
 
 type work_body =
   | Lin of linast_expr
@@ -87,17 +99,14 @@ let compile_imm env (i : imm_expr) =
   | ImmConst c -> MImmConst(compile_const c)
   | ImmIdent id -> MImmBinding(find_id id env)
 
-(* Line 106 in Grain *)
 let compile_function env args body : closure_data =
   (* Safe to keep any globals in the environment for compiling the function body *)
-  (* TODO: Track this in env rather than extracting for each function? *)
   let global_vars, global_binds = Ident.fold_all (fun id bind (vars, tbl) -> match bind with
      |  MGlobalBind _ -> id::vars, Ident.add id bind tbl
      | _ -> vars, tbl
     ) env.binds ([], Ident.empty) in
 
   let arg, rest = match args with x::xs -> x, xs | _ -> failwith "Function of no args" in
-  (* TODO: Should ignore global variables, shouldn't go into closure (can use find_id?) *)
   let free_var_set = free_vars (Ident.Set.of_list (global_vars @ args)) body in
 
   let free_vars = Ident.Set.elements free_var_set in
@@ -113,14 +122,13 @@ let compile_function env args body : closure_data =
   let arg_binds = Utils.fold_lefti (fun acc arg_idx arg ->
       Ident.add arg (MArgBind(Int32.of_int arg_idx)) acc)
       free_binds new_args in
-  let idx = next_lift() in (* TODO: What is this used for - gets put into the work_item - function body being compiled? *)
+  let idx = next_lift() in (* function index to access function in WebAssembly *)
   let arity = 2 (* List.length new_args TODO: Remove arity field, always 2 (besides toplevel main?) *) in
   (* Number of vars declared in body hence number of locals added.
      ASSERTION: At least as large as final stack_idx when compiling.
                 If larger, just get unused slots. If too small, get out of bounds local accesses. *)
   let stack_size = count_vars body in
   let func_env = {
-    env with
     binds=arg_binds;
     stack_idx=0;
     arity=arity;
@@ -151,17 +159,17 @@ let rec compile_comp env (c : compound_expr) =
   (* Switches left till bottom level to potentially make use of Br_Table *)
   | CSwitch(arg, branches, default) -> let compiled_arg = compile_imm env arg in
     MSwitch(compiled_arg,
-       List.map (fun (lbl, body) -> (Int32.of_int lbl, compile_linast env body)) branches,
-       match default with Some e -> compile_linast env e | None -> [MFail (-1l)])
+       List.map (fun (lbl, body) -> (Int32.of_int lbl, compile_linast false env body)) branches,
+       match default with Some e -> compile_linast false env e | None -> [MFail (-1l)])
   | CIf(cond, thn, els) ->
-    MIf(compile_imm env cond, compile_linast env thn, compile_linast env els)
+    MIf(compile_imm env cond, compile_linast false env thn, compile_linast false env els)
   | CWhile(cond, body) ->
-    MWhile(compile_linast env cond, compile_linast env body)
+    MWhile(compile_linast false env cond, compile_linast false env body)
   | CFor(id, start, finish, dir, body) ->
     let start_bind = MLocalBind(Int32.of_int (env.stack_idx)) in
     let end_bind = MLocalBind(Int32.of_int (env.stack_idx + 1)) in (* Don't re-evaluate limits of loop *)
     let new_env = {env with binds=Ident.add id start_bind env.binds; stack_idx=env.stack_idx + 2} in
-    MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish, compile_linast new_env body)
+    MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish, compile_linast false new_env body)
   | CUnary(op, arg) ->
     MUnary(op, compile_imm env arg)
   | CBinary(op, arg1, arg2) ->
@@ -177,7 +185,7 @@ let rec compile_comp env (c : compound_expr) =
   | CGetTag(obj) ->
     MDataOp(MGetTag, compile_imm env obj)
   | CMatchTry (i, body1, body2) ->
-    MTry(i, compile_linast env body1, compile_linast env body2)
+    MTry(i, compile_linast false env body1, compile_linast false env body2)
   | CFunction(args, body) ->
     MAllocate(MClosure(compile_function env args body))
   | CApp(f, args) ->
@@ -186,14 +194,19 @@ let rec compile_comp env (c : compound_expr) =
   | CMatchFail i -> MFail i
   | CImm i -> MImmediate(compile_imm env i)
 
-and compile_linast env expr =
+(* toplevel boolean indicates that a variable should be stored as a global rather than a local.
+   Recursive calls for function bodies or within compound terms all set toplevel to false
+   Global only expected at toplevel, indicates that variable is exported (should change name). *)
+and compile_linast toplevel env expr =
  match expr.desc with
- | LSeq(hd, tl) -> (compile_comp env hd)::MDrop::(compile_linast env tl)
+ | LSeq(hd, tl) -> (compile_comp env hd)::MDrop::(compile_linast toplevel env tl)
  | LLetRec(binds, body) ->
    let get_loc idx ((id, global, _) as bind) =
-     match global with
-     | Global -> (MGlobalBind(next_global id), bind)
-     | Local -> (MLocalBind(Int32.of_int (env.stack_idx + idx)), bind) in
+     (if toplevel then
+       match global with
+       | Export -> MGlobalBind(next_export id)
+       | Local -> MGlobalBind(next_global id)
+     else MLocalBind(Int32.of_int (env.stack_idx + idx))), bind in (* Should never see 'Global' if not toplevel *)
    let binds_with_locs = List.mapi get_loc binds in
    let new_env = List.fold_left (fun acc (new_loc, (id, _, _)) -> (* - Should use global field?? *)
        (* Cautious/simple approach - may end up using more stack variables than necessary.
@@ -203,22 +216,25 @@ and compile_linast env expr =
        let wasm_binds = List.fold_left (fun acc (loc, (_, _, rhs)) ->
            (loc, (compile_comp new_env rhs)) :: acc)
            [] binds_with_locs in
-       MStore(List.rev wasm_binds) :: (compile_linast new_env body) (* Store takes a list?? *)
+       MStore(List.rev wasm_binds) :: (compile_linast toplevel new_env body) (* Store takes a list?? *)
  | LLet (id, global, bind, body) ->
-   let location = (match global with (* As above but only 1 element *)
-     | Global -> MGlobalBind(next_global id)
-     | Local -> MLocalBind(Int32.of_int (env.stack_idx))) in
+   let location = if toplevel then (match global with (* As above but only 1 element *)
+     | Export -> MGlobalBind(next_export id)
+     (* TODO: Avoid creating globals for temporary variables *)
+     | Local -> MGlobalBind(next_global id))
+    (* | Local -> MLocalBind(Int32.of_int (env.stack_idx))) *)
+     else MLocalBind(Int32.of_int (env.stack_idx)) in (* Should never see 'Global' if not toplevel *)
    (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
    let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
-    match global with Local -> 1 | Global -> 0} in
+    match global with Local -> 1 | Export -> 0} in
    let wasm_binds = [(location, (compile_comp env bind))] in
-   MStore(wasm_binds) :: (compile_linast new_env body)
+   MStore(wasm_binds) :: (compile_linast toplevel new_env body)
  | LCompound c -> [compile_comp env c]
 
 let compile_work_element({body; env} : work_element) =
   match body with (* Piece together any bits of work remaining *)
   | Lin body ->
-    compile_linast env body
+    compile_linast false env body
   | Compiled block -> block
 
 (* Fold left but on reference to a list, where list may be updated by function being applied *)
@@ -237,8 +253,8 @@ let compile_remaining_worklist () =
 let transl_program (program : linast_expr) : binds_program =
   let env = initial_env in
   let main_body_stack_size = count_vars program in
-  let main_body = compile_linast env program in
-  let exports = global_exports() in
+  let main_body = compile_linast true env program in
+  let exports = !exports_list in
   let functions = compile_remaining_worklist() in
   {
     functions;

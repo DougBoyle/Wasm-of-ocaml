@@ -47,6 +47,7 @@ let optimise_ir program =
   else program
 
 let graph_passes = [
+   OptGlobals.optimise;
    OptWasmPeephole.optimise;
    Deadlocals.optimise;
    OptWasmDrop.optimise
@@ -97,7 +98,7 @@ let _ = Arg.parse [
     ("-wat", Arg.Set print_wat, "Print output wat file");
     ("-Nopt-ir", Arg.Clear opt_ir, "Disable IR level optimisations");
     ("-passes-ir", Arg.Set_int num_passes_ir, "Set number of IR passes");
-    ("-Nopt-graph", Arg.Clear opt_ir, "Disable Graph level optimisations");
+    ("-Nopt-graph", Arg.Clear opt_graph, "Disable Graph level optimisations");
     ("-passes-graph", Arg.Set_int num_passes_graph, "Set number of graph passes");
     ("-Nopt-patterns", Arg.Clear Linearise.use_optimised_pattern_compilation, "Disable optimised pattern compilation");
   ]

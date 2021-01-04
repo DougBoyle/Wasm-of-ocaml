@@ -73,7 +73,7 @@ type linast_setup =
   | BLet of Ident.t * compound_expr
   | BLetRec of (Ident.t * compound_expr) list
 
-let get_global_flag exported id = if List.exists (fun x -> x = id) exported then Global else Local
+let get_global_flag exported id = if List.exists (fun x -> x = id) exported then Export else Local
 
 let rec binds_to_anf ?(exported=[]) binds body =
   List.fold_right (fun bind body ->

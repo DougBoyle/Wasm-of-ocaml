@@ -395,7 +395,7 @@ let rec translate_structure exported = function
     let binds, setups = List.fold_right (fun {vb_pat; vb_expr;} (binds, setups) ->
       let id = get_id_from_pattern vb_pat in
       let (compound, setup) = translate_compound vb_expr in
-      ((id, (if (List.exists (fun x -> x = id) exported) then Global else Local), compound)::binds, setup@setups)
+      ((id, (if (List.exists (fun x -> x = id) exported) then Export else Local), compound)::binds, setup@setups)
     ) bind_list ([], [])
     in binds_to_anf setups (LinastExpr.mkletrec binds (translate_structure exported items))
    | Tstr_value (Nonrecursive, []) -> translate_structure exported items

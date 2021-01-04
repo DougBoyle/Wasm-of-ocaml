@@ -44,7 +44,8 @@ and instr' =
   | Binary of Ast.binop
   | Convert of Ast.cvtop
 
-(* Only ever initialise globals to 0 currently, so simplify global type. Also remove phrase *)
+(* Only ever initialise globals to 0 currently, so simplify global type. Also remove phrase.
+   All globals are actually the exact same type, could just have an int for the number of globals. *)
 type global = global_type
 type func =
 {

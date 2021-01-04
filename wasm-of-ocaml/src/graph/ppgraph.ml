@@ -63,8 +63,8 @@ let rec print_instr ppf instr = match instr.it with
   | LocalGet {it=i} -> fprintf ppf "%d:LocalGet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
   | LocalSet {it=i} -> fprintf ppf "%d:LocalSet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
   | LocalTee {it=i} -> fprintf ppf "%d:LocalTee %li [%a] {next: %a}" instr.id i print_live instr print_next instr
-  | GlobalGet _ -> fprintf ppf "%d:GlobalGet [%a] {next: %a}" instr.id print_live instr print_next instr
-  | GlobalSet _ -> fprintf ppf "%d:GlobalSet [%a] {next: %a}" instr.id print_live instr print_next instr
+  | GlobalGet {it=i} -> fprintf ppf "%d:GlobalGet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
+  | GlobalSet {it=i} -> fprintf ppf "%d:GlobalSet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
   | Load _ -> fprintf ppf "%d:Load [%a] {next: %a}" instr.id print_live instr print_next instr
   | Store _ -> fprintf ppf "%d:Store [%a] {next: %a}" instr.id print_live instr print_next instr
   | MemorySize -> fprintf ppf "%d:MemorySize [%a] {next: %a}" instr.id print_live instr print_next instr
