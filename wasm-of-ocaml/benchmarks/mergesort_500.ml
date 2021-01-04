@@ -8,9 +8,8 @@ let rec merge lx ly = match (lx, ly) with
 let a = 214013
 let c = 2531011
 let m = 65536
-type 'a ref = {mutable content: 'a}
-let x = {content = 12345}
-let rand n = (x.content <- (a*x.content + c) mod m; x.content mod n)
+let x = ref 12345
+let rand n = (x := a*(!x) + c mod m; !x mod n)
 
 let init n m =
   let rec help i n =

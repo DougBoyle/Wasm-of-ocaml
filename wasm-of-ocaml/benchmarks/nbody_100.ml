@@ -4,8 +4,6 @@
  * Contributed by Troestler Christophe
  *)
 
-type 'a ref = {mutable content : 'a}
-
 let pi = 3.141592653589793
 let solar_mass = 4. *. pi *. pi
 let days_per_year = 365.24
@@ -41,29 +39,29 @@ let advance bodies num_bodies dt =
   done
 
 let energy bodies num_bodies =
-  let e = {content = 0.} in
+  let e = ref 0. in
   for i = 0 to num_bodies - 1 do
     let b = bodies.(i) in
-    e.content <- e.content +. 0.5 *. b.mass *. (b.vx *. b.vx +. b.vy *. b.vy +. b.vz *. b.vz);
+    e := (!e) +. 0.5 *. b.mass *. (b.vx *. b.vx +. b.vy *. b.vy +. b.vz *. b.vz);
     for j = i+1 to num_bodies - 1 do
       let b' = bodies.(j) in
       let dx = b.x -. b'.x  and dy = b.y -. b'.y  and dz = b.z -. b'.z in
       let distance = sqrt(dx *. dx +. dy *. dy +. dz *. dz) in
-      e.content <- e.content -. (b.mass *. b'.mass) /. distance
+      e := (!e) -. (b.mass *. b'.mass) /. distance
     done
   done;
-  e.content
+  !e
 
 let offset_momentum bodies num_bodies =
-   let px = {content = 0.}  and py = {content = 0.} and pz = {content = 0.} in
+   let px = ref 0. and py = ref 0. and pz = ref 0. in
   for i = 0 to num_bodies - 1 do
-    px.content <- px.content +. bodies.(i).vx *. bodies.(i).mass;
-    py.content <- py.content +. bodies.(i).vy *. bodies.(i).mass;
-    pz.content <- pz.content +. bodies.(i).vz *. bodies.(i).mass;
+    px := (!px) +. bodies.(i).vx *. bodies.(i).mass;
+    py := (!py) +. bodies.(i).vy *. bodies.(i).mass;
+    pz := (!pz) +. bodies.(i).vz *. bodies.(i).mass;
   done;
-  bodies.(0).vx <- -. px.content /. solar_mass;
-  bodies.(0).vy <- -. py.content /. solar_mass;
-  bodies.(0).vz <- -. pz.content /. solar_mass
+  bodies.(0).vx <- -. (!px) /. solar_mass;
+  bodies.(0).vy <- -. (!py) /. solar_mass;
+  bodies.(0).vz <- -. (!pz) /. solar_mass
 
 let jupiter = { x = 4.84143144246472090e+00;
                 y = -1.16032004402742839e+00;
@@ -104,12 +102,13 @@ let bodies = [| sun; jupiter; saturn; uranus; neptune |]
 (* Needed since Array.Length not implemented *)
 let num_bodies = 5
 
-let () =
+let f =
   (* Number of iterations *)
   let n = 100 in
   (* Use result, since can't print it *)
-  let e = {content = 0.} in
+  let e = ref 0. in
   offset_momentum bodies num_bodies;
-  e.content <- energy bodies num_bodies;
+  e := energy bodies num_bodies;
   for i = 1 to n do advance bodies num_bodies 0.01 done;
-  e.content <- energy bodies num_bodies
+  e := energy bodies num_bodies;
+  !e

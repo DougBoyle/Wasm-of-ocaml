@@ -6,5 +6,5 @@ do
 done
 for file in out/*.wasm
 do
-  node ocaml_runner.js $file
+  node runner.js $file
 done
