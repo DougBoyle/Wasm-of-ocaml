@@ -448,7 +448,7 @@ let do_backpatches env backpatches =
     (* Put lam in the swap register *)
     let preamble = lam @ (untag Closure) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
-    let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
+    let backpatch_var idx var = (* Store each free variable in the closure *)
       get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
   (List.flatten (List.map do_backpatch backpatches))

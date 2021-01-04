@@ -4,7 +4,7 @@ let output = ref ""
 
 (* Display intermediate representations *)
 let print_ir = ref false
-let print_wasmtree = ref false
+let print_bindstree = ref false
 let print_wat = ref false
 
 (* Optimisation settings *)
@@ -74,7 +74,7 @@ let main () =
 
   if !print_ir then (Pplinast.print_ast Format.std_formatter ir; Format.print_newline();  Format.print_newline());
   let wasm_ast = Compilebinds.transl_program ir in
-  if !print_wasmtree then
+  if !print_bindstree then
     (Ppbindstree.print_program Format.std_formatter wasm_ast; Format.print_newline(); Format.print_newline());
   (* Now that this produces a graph, should rename as such *)
   let graph = Compilewasm.compile_wasm_module wasm_ast in
@@ -93,7 +93,7 @@ let main () =
 let _ = Arg.parse [
     ("-d", Arg.Set_string output, "Specify output directory");
     ("-ir", Arg.Set print_ir, "Print Linast IR program produced");
-    ("-wt", Arg.Set print_wasmtree, "Print Wasmtree produced");
+    ("-bindstree", Arg.Set print_bindstree, "Print Bindstree produced");
     ("-wat", Arg.Set print_wat, "Print output wat file");
     ("-Nopt-ir", Arg.Clear opt_ir, "Disable IR level optimisations");
     ("-passes-ir", Arg.Set_int num_passes_ir, "Set number of IR passes");

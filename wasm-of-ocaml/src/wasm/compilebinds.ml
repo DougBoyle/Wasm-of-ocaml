@@ -9,7 +9,7 @@ open LinastUtils
 (* TODO: Work out what each is used for *)
 type compile_env = {
     binds : binding Ident.tbl;
-    (* Will do a second pass over exports due to needing to handle mutual recursive functions *)
+    (* TODO: Handle exports and globals separately *)
     exported : int32 Ident.tbl;
     stack_idx : int;
     arity : int;
@@ -31,6 +31,7 @@ let next_lift () = let v = !lift_index in incr lift_index; v
 (* Track global variables *)
 let global_table = ref (Ident.empty: int32 Ident.tbl)
 let global_index = ref 0
+(* TODO: Separate globals from exports so that there can be unexported globals *)
 let global_exports () = let tbl = !global_table in
   Ident.fold_all
   (fun ex_name ex_global_index acc -> {ex_name; ex_global_index}::acc) tbl []
@@ -48,8 +49,6 @@ let next_global id =
 let find_id id env = Ident.find_same id env.binds
 let find_global id env = Ident.find_same id env.exported
 
-
-(* TODO: Work out purpose - why can't we just compile things in the usual recursive way? Need a queue? *)
 type work_body =
   | Lin of linast_expr
   | Compiled of block
@@ -90,15 +89,23 @@ let compile_imm env (i : imm_expr) =
 
 (* Line 106 in Grain *)
 let compile_function env args body : closure_data =
+  (* Safe to keep any globals in the environment for compiling the function body *)
+  (* TODO: Track this in env rather than extracting for each function? *)
+  let global_vars, global_binds = Ident.fold_all (fun id bind (vars, tbl) -> match bind with
+     |  MGlobalBind _ -> id::vars, Ident.add id bind tbl
+     | _ -> vars, tbl
+    ) env.binds ([], Ident.empty) in
+
   let arg, rest = match args with x::xs -> x, xs | _ -> failwith "Function of no args" in
-  let used_var_set = free_vars Ident.Set.empty body in
   (* TODO: Should ignore global variables, shouldn't go into closure (can use find_id?) *)
-  let free_var_set = Ident.Set.diff used_var_set (Ident.Set.of_list args) in
+  let free_var_set = free_vars (Ident.Set.of_list (global_vars @ args)) body in
+
   let free_vars = Ident.Set.elements free_var_set in
- (* ClosureBind represents variables accessed by looking up in closure environment *)
+ (* ClosureBind represents variables accessed by looking up in closure environment.
+    Set is built off of global_binds, a table of the preserved bindings *)
   let free_binds = Utils.fold_lefti (fun acc closure_idx var ->
       Ident.add var (MClosureBind(Int32.of_int closure_idx)) acc)
-      Ident.empty free_vars in
+      global_binds free_vars in
   let closure_arg = Ident.create_local "$self" in
   (* Closure is made available in function by being an added first argument *)
   (* Unroll currying here, so only ever 2 args *)
