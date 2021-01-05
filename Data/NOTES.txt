@@ -34,3 +34,22 @@ First plot: Remember that arith has been made far simpler for grain so it doesn'
 FullCollection_08_12 - file names/iterations standardised so can be compared directly. Add C composition using closures
 Run with 10 iterations each, took about 7.5 mins.
 From now on, only run for 5 iterations, can run more iterations to get more certainty at end of project, not every time
+
+compareoptsLocals - None/Ir/Graph/all optimisations. 5 passes of each stage. Optimised pattern matching ON.
+  Ir opts:  OptConstants, OptFails, OptCSE, OptDeadAssignments, ClearAnnotations
+  Graph opts: OptWasmPeephole, Deadlocals, OptWasmDrop
+  Closures store all free variables, globals used purely for exports.
+
+compareoptsGlobals - The same but with optimisation to avoid putting globals in closures.
+  To be compared against compareoptsLocals and each pass against the other sets of passes.
+  Globals used for toplevel variables to avoid putting them in closures, accessed the same way.
+  (GraphGlobal and AllGlobal further enable OptimiseGlobals)
+
+pats_01_03_22_19 - all passes enabled with 5 iterations, same set as in compareoptsLocals,
+  old vs optimised pattern matching algorithm.
+
+
+
+
+
+

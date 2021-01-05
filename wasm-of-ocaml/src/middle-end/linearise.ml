@@ -57,7 +57,7 @@ let matrix_to_linast exported total value matrix =
     code
   else
     (* Unoptimised version *)
-    CompileLet.compile_matrix ~exported:[] fail_trap [value] matrix
+    CompileLet.compile_matrix ~exported fail_trap [value] matrix
 
 (* TODO: Texp_extension_constructor and Texp_variant all left out initially, may implement later once working. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =

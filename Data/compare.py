@@ -88,7 +88,7 @@ def normalise(means, deviations, baseline, keep=False):
             tests.append(test)
     new_means = {}
     new_errs = {}
-    for key in data:
+    for key in means:
         if key == baseline and (not keep):
             continue # implicitly 1 for every value, so don't plot
         new_means[key] = {}
@@ -112,25 +112,16 @@ def normalise(means, deviations, baseline, keep=False):
 # Wasm level optimisations
 #opt2 = "graph_opts_12_30.txt"
 
-
-#data = {#"v1" : extract_lang(readFile(oldVersion), "OCaml"),
-#    "v2" : extract_lang(readFile(opt1), "OCaml"),
-#    "v3" : extract_lang(readFile(opt2), "OCaml"),
-#}
 #data = readFile("opts_12_30_13_36.txt")
-data = readFile("passes_01_03_22_08.txt")
+#data = readFile("passes_01_03_22_08.txt")
 #data = readFile("pats_01_03_22_19.txt")
-
-tests = get_all_tests(data)
-means = collect_means(data, tests)
-errors = collect_deviations(data, tests)
 
 # scale all tests so that 1.0 = v2 performance in all metrics
 #reference = "None"
-reference = "0" # For comparing number of passes to perform
+#reference = "0" # For comparing number of passes to perform
 #reference = "Off" # For comparing effect of regular vs optimised pattern matching
 # True => keep reference column in results, useful if std plotted too
-tests, means, errors = normalise(means, errors, reference, True) 
+#tests, means, errors = normalise(means, errors, reference, True) 
 
 # Will probably want plots for individual benchmarks too!
 # Going to have issues with axis scale, need to split into fast/slow ones (Grain far slower than rest)
@@ -209,18 +200,59 @@ def bar_plot(ax, data, errors=None, colors=None, total_width=0.8, single_width=1
         ax.legend(bars, data.keys())
 
 ## plot and display each metric in turn
-for metric in ["times", "filesize", "mem"]:
-    fig, ax = plt.subplots()
-    metric_data = {key : [means[key][test][metric] for test in tests] for key in means}
-    if metric == "filesize":
-        err_data = None
-    else:
-        err_data = {key : [errors[key][test][metric] for test in tests] for key in errors}
-    bar_plot(ax, metric_data, err_data, total_width=.8, single_width=.5)
-   # ax.axhline(y=1.0, color='r', linestyle='dotted')
-    plt.xticks(range(len(tests)), tests, rotation=90)
-    plt.ylabel(metric)
-    ax.set_title(metric)
-    plt.tight_layout()
+def plotAll(means, errors, tests, baseline=False):
+    for metric in ["times", "filesize", "mem"]:
+        fig, ax = plt.subplots()
+        metric_data = {key : [means[key][test][metric] for test in tests] for key in means}
+        if metric == "filesize":
+            err_data = None
+        else:
+            err_data = {key : [errors[key][test][metric] for test in tests] for key in errors}
+        bar_plot(ax, metric_data, err_data, total_width=.8, single_width=.5)
+        if baseline:
+            ax.axhline(y=1.0, color='r', linestyle='dotted')
+        plt.xticks(range(len(tests)), tests, rotation=90)
+        plt.ylabel(metric)
+        ax.set_title(metric)
+        plt.tight_layout()
     plt.show()
 
+# With using globals rather than putting locals in closure,
+# is the optimiseGlobals optimisation actually useful?
+# Answer: Yes, file size is lower in several cases
+def displayOptimiseGlobals():
+    data = readFile("compareoptsGlobals.txt")
+    tests = get_all_tests(data)
+    means = collect_means(data, tests)
+    errors = collect_deviations(data, tests)
+    reference = "None"
+    tests, means, errors = normalise(means, errors, reference, True)
+    plotAll(means, errors, tests)
+
+# Globals only used for exports, all variables put in closures
+def displayOptimiseLocals():
+    data = readFile("compareoptsLocals.txt")
+    tests = get_all_tests(data)
+    means = collect_means(data, tests)
+    errors = collect_deviations(data, tests)
+    reference = "None"
+    tests, means, errors = normalise(means, errors, reference, True)
+    plotAll(means, errors, tests)
+
+# Take the 'All' case from each of the above (include globalsOptimisation)
+# Very slightly reduces memory usage in composition.ml
+# Reduces filesize in a few cases, but only by max 5% and in some cases
+# can be higher or much more variance (unclear if due to code or computer)
+def compareLocalsGlobals():
+    data1 = readFile("compareoptsGlobals.txt")
+    data2 = readFile("compareoptsLocals.txt")
+    data = {"NoneLocals" : data2["None"], "NoneGlobals" : data1["None"],
+            "Locals" : data2["All"], "Globals" : data1["AllGlobal"]}
+    tests = get_all_tests(data)
+    means = collect_means(data, tests)
+    errors = collect_deviations(data, tests)
+    reference = "NoneLocals"
+    tests, means, errors = normalise(means, errors, reference, True)
+    plotAll(means, errors, tests)
+
+compareLocalsGlobals()

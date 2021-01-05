@@ -110,20 +110,27 @@ let leave_compound (compound : compound_expr) = match compound.desc with
   | _ -> compound
 
 (* ------------- Dead branch elimination ------------- *)
+(* Also removes switches with only 1 case *)
 
 let can_simplify_branch : compound_expr -> bool = function
-  | {desc=CIf({desc=ImmConst _}, _, _)} -> true
-  | {desc=CSwitch({desc=ImmConst _}, _, _)} -> true
+  | {desc=CIf({desc=ImmConst _}, _, _)}
+  | {desc=CSwitch({desc=ImmConst _}, _, _)}
+  (* Switch with only 1 case and no default. Only created if known to be exhaustive (hence no default)
+     so can safely remove the switch *)
+  | {desc=CSwitch(_, [_], None)} -> true
   | _ -> false
 
 let simplify_branch : compound_expr -> linast_expr = function
   | {desc=CIf({desc=ImmConst (Asttypes.Const_int i)}, branch1, branch2)} -> if i > 0 then branch1 else branch2
+  | {desc=CSwitch(_, [(_, body)], None)} -> body
   | {desc=CSwitch({desc=ImmConst (Asttypes.Const_int i)}, cases, default)} ->
     (match List.assoc_opt i cases with
       | Some body -> body
-      | None -> match default with Some body -> body
-               (* Pattern match failure *)
-               | None -> LinastUtils.LinastExpr.compound (LinastUtils.Compound.fail (-1l)))
+      | None ->
+        match default with
+          | Some body -> body
+          (* pattern match failure - shouldn't occur since defaults are used whenever non-exhaustive *)
+          | None -> failwith "Incomplete switch statement (expected a default case)")
   | _ -> failwith "Cannot simplify this compound"
 
 (* mkleaf creates terminal linast, allows using same function for seq and let bindings *)

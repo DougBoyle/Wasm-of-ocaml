@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 # run all benchmarks with different sets of optimisations enabled
 cd $(dirname $BASH_SOURCE)
-ITERS=5
+ITERS=10
 {
   >&2 echo "Starting no optimisations"
   echo None

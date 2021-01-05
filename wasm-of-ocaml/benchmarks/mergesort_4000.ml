@@ -12,9 +12,9 @@ let x = ref 12345
 let rand n = (x := a*(!x) + c mod m; !x mod n)
 
 let init n m =
-  let rec help i n =
-    if i = n then [] else (rand m)::(help (i+1) n)
-  in help 0 n
+  let rec help n =
+    if n = 0 then [] else (rand m)::(help (n-1))
+  in help n
 
 let n = 4000 (* Appear to be limited by memory constraints of list in C Wasm *)
 let m = 100

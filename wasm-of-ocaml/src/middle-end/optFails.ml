@@ -44,6 +44,8 @@ let leave_linast linast =
      If they did occur, can simplify to compounds since rest will never be evaluated. *)
   | LLet(_, _, ({desc=CMatchFail i} as comp), _) | LSeq (({desc=CMatchFail i} as comp), _) ->
     mark_failing i linast.annotations; {linast with desc=LCompound comp}
+  (* Due to 'fail i' only being introduced during pattern matching, if 2nd part of a sequence
+     fails then whole sequence must, 1st part cannot be an assignment or other side effect. *)
   | LLet(_, _, _, rest) | LSeq(_, rest) | LLetRec(_, rest) ->
     copy_fail rest.annotations linast.annotations; linast
   | _ -> linast (* Any remaining cases e.g. LCompound with any other compound expression *)

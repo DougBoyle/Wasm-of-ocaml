@@ -220,9 +220,7 @@ and compile_linast toplevel env expr =
  | LLet (id, global, bind, body) ->
    let location = if toplevel then (match global with (* As above but only 1 element *)
      | Export -> MGlobalBind(next_export id)
-     (* TODO: Avoid creating globals for temporary variables *)
      | Local -> MGlobalBind(next_global id))
-    (* | Local -> MLocalBind(Int32.of_int (env.stack_idx))) *)
      else MLocalBind(Int32.of_int (env.stack_idx)) in (* Should never see 'Global' if not toplevel *)
    (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
    let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
