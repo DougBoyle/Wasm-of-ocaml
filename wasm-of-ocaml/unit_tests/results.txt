@@ -22,5 +22,6 @@ app z=1
 float y=1 z=0 w=1 v=0 b=1 c=0 e=1 f=1
 safe_curry a=6 b=6
 refs y=11 z=19
+tailcall a=120
 ../samples/arith x=26 y=4
 ../samples/trees x=15

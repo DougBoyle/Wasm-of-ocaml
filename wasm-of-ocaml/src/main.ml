@@ -29,7 +29,8 @@ let ir_analysis = [
 let ir_passes = [
   ("const", OptConstants.optimise);
   ("fails", OptFails.optimise);
- ("cse",  OptCSE.optimise);
+  ("cse",  OptCSE.optimise);
+  ("tail", OptTailCalls.optimise);   (* CSE makes tail calls obvious, rather than having intermediate names *)
   ("deadassign", OptDeadAssignments.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
 ]
