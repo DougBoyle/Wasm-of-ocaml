@@ -59,7 +59,13 @@ let next_export id =
       incr global_index;
       ret
 
-let find_id id env = Ident.find_same id env.binds
+let find_id id env =
+  try
+    Ident.find_same id env.binds
+  with Not_found ->
+    Format.fprintf Format.std_formatter "Compilebinds could not find binding for %a\n" Ident.print id;
+
+    raise Not_found
 
 type work_body =
   | Lin of linast_expr

@@ -15,3 +15,36 @@ Takes about 7.5 mins to run at 10 iterations each
 Unified tests so that, where iterations differ, specified in file name.
 Output (when all on 1 line) is filename time heapusage filesize
 Currently set to only do 5 iterations of each, can change at top of script
+
+--------
+
+Dynamic instruction count:
+Done for OCaml only, very slightly modify the OCaml Wasm package's interpreter so that
+it counts the number of times 'eval' is called, which effectively measures dynamic instruction count
+(manually verified against a couple of the short unit_test programs).
+Use this as a more accurate measure than execution time, for comparing possibly quite small but
+consistent optimisations.
+
+Must import the runtime module, register it as ocamlRuntime, then inport the file (using ocamlRuntime imports)
+and finally execute the main function.
+wasm executable has been added to PATH by a symlink /usr/bin/local/wasm
+
+wasm -e '(input "samples/runtime.wasm") (register "ocamlRuntime") (input "<file>") (invoke "OCAML$MAIN")'
+
+Could further modify the interpreter to keep all other output silent, making reading the result easier?
+Will likely have to write the output to a file and process that.
+
+Issue: For the large, high stack/heap consumption benchmarks I have currently,
+  interpreter will complain about resources running out. ('call stack exhausted')
+  Either need to increase interpreter's resources or have smaller benchmarks for these tests.
+  Interpreter is also MANY times slower than actual execution, so need smaller tests anyway.
+e.g. funcrec: 100 iterations each finishes in about 1s, 1000 iterations takes about 1min, 10000 iterations too long
+(tested with the unoptimised version)
+
+
+Modifications to wasm interpreter:
+added 'let steps = ref 0' to eval and 'incr steps' to top of the 'Plain' case of 'step' function.
+Also removed printing functions from run.ml i.e. gutted print_module and print_values and removed
+print_import and print_export
+
+-----------
