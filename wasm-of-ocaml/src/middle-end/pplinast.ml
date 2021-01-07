@@ -132,11 +132,11 @@ and print_ast ppf e = match e.desc with
       let rec letbody e = match e.desc with
         | LLet(id, export, e, body) ->
             fprintf ppf "@ @[<2>%s%a =@ %a@]"
-              (match export with Export -> "export " | Local -> "") Ident.print id print_compound e;
+              (match export with Export -> "export " | Local -> "" | Mut -> "mut ") Ident.print id print_compound e;
             letbody body
         | _ -> e in
       fprintf ppf "@[<2>(let@ @[<hv 1>(@[<2>%s%a =@ %a@]"
-        (match export with Export -> "export " | Local -> "") Ident.print id print_compound e;
+        (match export with Export -> "export " | Local -> "" | Mut -> "mut ") Ident.print id print_compound e;
       let expr = letbody body in
       fprintf ppf ")@]@ %a)@]" print_ast expr
   | LLetRec (id_arg_list, body) ->
@@ -145,7 +145,7 @@ and print_ast ppf e = match e.desc with
     List.iter
       (fun (id, export, e) ->
         if !spc then fprintf ppf "@ " else spc := true;
-        fprintf ppf "@[<2>%s%a@ %a@]" (match export with Export -> "export " | Local -> "") Ident.print id print_compound e)
+        fprintf ppf "@[<2>%s%a@ %a@]" (match export with Export -> "export " | Local -> "" | Mut -> "mut ") Ident.print id print_compound e)
       id_arg_list in
    fprintf ppf  "@[<2>(letrec@ (@[<hv 1>%a@])@ %a)@]" bindings id_arg_list print_ast body
 

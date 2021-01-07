@@ -211,7 +211,7 @@ and compile_linast toplevel env expr =
      (if toplevel then
        match global with
        | Export -> MGlobalBind(next_export id)
-       | Local -> MGlobalBind(next_global id)
+       | Local | Mut -> MGlobalBind(next_global id)
      else MLocalBind(Int32.of_int (env.stack_idx + idx))), bind in (* Should never see 'Global' if not toplevel *)
    let binds_with_locs = List.mapi get_loc binds in
    let new_env = List.fold_left (fun acc (new_loc, (id, _, _)) -> (* - Should use global field?? *)
@@ -226,11 +226,11 @@ and compile_linast toplevel env expr =
  | LLet (id, global, bind, body) ->
    let location = if toplevel then (match global with (* As above but only 1 element *)
      | Export -> MGlobalBind(next_export id)
-     | Local -> MGlobalBind(next_global id))
+     | Local | Mut -> MGlobalBind(next_global id))
      else MLocalBind(Int32.of_int (env.stack_idx)) in (* Should never see 'Global' if not toplevel *)
    (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
    let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
-    match global with Local -> 1 | Export -> 0} in
+    match global with Local | Mut -> 1 | Export -> 0} in
    let wasm_binds = [(location, (compile_comp env bind))] in
    MStore(wasm_binds) :: (compile_linast toplevel new_env body)
  | LCompound c -> [compile_comp env c]

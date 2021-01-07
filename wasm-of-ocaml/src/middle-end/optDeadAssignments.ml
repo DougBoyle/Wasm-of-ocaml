@@ -23,6 +23,10 @@ let map_imm (imm : Linast.imm_expr) = match imm.desc with
 let leave_linast linast = match linast.desc with
   (* Must not remove exported idents *)
   | LLet (id, Local, compound, body) when is_dead (id, compound) -> body
+  (* Top of functions sometimes introduce bindings of a variable to itself, since
+     binding is implicit in CApp and function starts with a case statement.
+     Note that Ident.same != Ident.equal. Ident.equal only checks names not stamps. *)
+  | LLet(id, _, {desc = CImm {desc = ImmIdent id'}}, body) when Ident.same id id' -> body
   (* all binds/body have been processed at this point, so can remove any unused binds now *)
   | LLetRec (binds, body) ->
     let new_binds = List.filter (function (id, Local, comp) -> not(is_dead (id, comp)) | _ -> true) binds

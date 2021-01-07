@@ -61,11 +61,23 @@ let replaced_idents = (Ident.Tbl.create 50 : Ident.t Ident.Tbl.t)
 let common_expressions = (CompoundHashtbl.create(50) : Ident.t CompoundHashtbl.t)
 
 let enter_linast linast = (match linast.desc with
-  | LLet(id, _, body, rest) -> (match CompoundHashtbl.find_opt common_expressions body.desc with
+  (* Two rules to do copy propagation. Replacing Idents and removing unused let bindings
+     is done by existing code for dead assignment elimination and CSE *)
+ | LLet(id, Local, {desc = CImm {desc = ImmIdent id'}}, _) ->
+    Ident.Tbl.add replaced_idents id id'
+  (* Also done for recursive LLetRec in case of useless binding like 'let rec f = g' *)
+  | LLetRec(binds, _) -> List.iter
+    (function
+      | (id, Local, ({desc = CImm {desc = ImmIdent id'}} : compound_expr)) ->
+        Ident.Tbl.add replaced_idents id id'
+      | _ -> ()) binds
+
+  (* Track known subexpressions and Idents that can be replaced *)
+  | LLet(id, (Local | Export), body, _) -> (match CompoundHashtbl.find_opt common_expressions body.desc with
     | Some id' -> Ident.Tbl.add replaced_idents id id'
     | None -> if List.mem Immutable (!(body.annotations)) then
       CompoundHashtbl.add common_expressions body.desc id)
-  | _ -> () (* Can't reuse function definitions due to unique idents as arguments, so leave LLetRec *)
+  | _ -> ()
   ); linast
 
 let map_imm (imm : Linast.imm_expr) = match imm.desc with
