@@ -75,6 +75,7 @@ let rec print_instr ppf = function
     | MDataOp (MGetTag, imm) -> fprintf ppf "tag %a" print_imm imm
     | MDataOp (MArrayGet i, imm) -> fprintf ppf "%a.(%a)" print_imm imm print_imm i
     | MDataOp (MArraySet (i, v), imm) -> fprintf ppf "%a.(%a) <- %a" print_imm imm print_imm i print_imm v
+    | MDataOp (MAssign b, imm) -> fprintf ppf "%a <- %a" print_bind b print_imm imm
     | MStore binds ->
      let bindings ppf id_arg_list =
       let spc = ref false in

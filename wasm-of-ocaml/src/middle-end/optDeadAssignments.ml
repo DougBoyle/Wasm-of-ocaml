@@ -19,6 +19,12 @@ let map_imm (imm : Linast.imm_expr) = match imm.desc with
   | ImmIdent id -> mark id; imm
   | _ -> imm
 
+(* Special case for mutable idents (used by tail call optimisation) where they need to be marked,
+   as they are stored as idents not immediates *)
+let enter_compound (compound : compound_expr) = match compound.desc with
+  | CAssign (id, _) -> mark id; compound
+  | _ -> compound
+
 (* Only change is to remove some Let bindings after processing body, so just need leave_linast *)
 let leave_linast linast = match linast.desc with
   (* Must not remove exported idents *)
@@ -36,4 +42,4 @@ let leave_linast linast = match linast.desc with
 
 let optimise linast =
   alive := Ident.Set.empty;
-  (LinastMap.create_mapper ~map_imm ~leave_linast ()) linast
+  (LinastMap.create_mapper ~map_imm ~enter_compound ~leave_linast ()) linast

@@ -41,6 +41,7 @@ module Compound = struct
   let matchtry ?(annotations=ref []) i e1 e2 = mk annotations (CMatchTry (i, e1, e2))
   let app ?(annotations=ref []) imm args = mk annotations (CApp (imm, args))
   let mkfun ?(annotations=ref []) params e = mk annotations (CFunction (params, e))
+  let assign ?(annotations=ref []) imm1 imm2 = mk annotations (CAssign (imm1, imm2))
 end
 
 module LinastExpr = struct
@@ -129,7 +130,9 @@ and free_vars_comp env (c : compound_expr) = match c.desc with
       (free_vars_imm env arg)
       branches in
     (match default with None -> branch_vars | Some b -> Ident.Set.union (free_vars env b) branch_vars)
-  | CUnary(_, arg) | CField(arg, _) | CGetTag(arg) -> free_vars_imm env arg
+  | CUnary(_, arg) | CField(arg, _) | CGetTag(arg)
+  (* LHS of an assignment should never be a free varaible, only introduced by tail call optimisation *)
+  | CAssign(_, arg) -> free_vars_imm env arg
   | CBinary(_, arg1, arg2) | CSetField(arg1, _, arg2) | CArrayGet(arg1, arg2) ->
     Ident.Set.union (free_vars_imm env arg1) (free_vars_imm env arg2)
   | CArraySet(arg1, arg2, arg3) ->

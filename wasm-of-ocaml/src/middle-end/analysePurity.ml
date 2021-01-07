@@ -159,6 +159,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     analyse_linast handlers body;
     compound.annotations <- (* Encodes currying by nesting fields. Each partial function is pure/immutable *)
       (List.fold_left (fun annots _ -> ref [Pure; Immutable; Fields [annots]]) body.annotations args)
+  | CAssign _ -> ()
 
 (* Annotations of a linast ARE the annotations of the corresponding subterm (compound/smaller linast)
    so must be copied not shared during analysis of compounds *)

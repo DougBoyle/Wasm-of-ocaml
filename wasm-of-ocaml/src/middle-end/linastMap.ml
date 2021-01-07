@@ -38,6 +38,7 @@ let rec map_compound_expr mappers compound =
       CMatchTry (i, map_linast_expr mappers body, handle)
     | CApp (imm, args) -> CApp(mappers.map_imm imm, List.map mappers.map_imm args)
     | CFunction (args, body) -> CFunction(args, map_linast_expr mappers body)
+    | CAssign (id, imm) -> CAssign(id, mappers.map_imm imm)
   in mappers.leave_compound {compound' with desc=new_desc}
 
 and map_linast_expr mappers linast =

@@ -90,7 +90,8 @@ type data_op =
   | MGetTag
   | MArrayGet of immediate
   | MArraySet of immediate * immediate
-(* TODO: Arrays *)
+  (* Allows mutable locals rather than using memory for tail call optimisation *)
+  | MAssign of binding (* binding is the local to update *)
 
 type instr =
   | MImmediate of immediate

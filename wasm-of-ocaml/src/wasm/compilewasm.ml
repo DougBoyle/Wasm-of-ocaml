@@ -431,6 +431,9 @@ let compile_data_op env imm op =
   | MArraySet (idx, v) ->
     let value = compile_imm (enter_block env) v in
     check_array_bounds idx (value @ ((store ~offset:8l ()) :: const_false))
+  | MAssign b ->
+    (* block is actually just a local variable in this case *)
+    block @ (compile_bind ~is_get:false env b) @ const_false
 
 (* What is this doing? Appears to just call f on the given env, but with backpatches reset *)
 let collect_backpatches env f =

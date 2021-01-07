@@ -113,6 +113,9 @@ type compound_expr_desc =
   | CApp of imm_expr * imm_expr list
   (* AppBuiltin left out, is part of binop equal, makeblock, etc. These call runtime when translated, not at this level *)
   | CFunction of Ident.t list * linast_expr (* Recursion done at higher level *)
+  (* Mutable idents introduced for tracking parameters when tail-call optimisation performed *)
+  (* Separate instruction needed since 'LLet ...' creates a new local every time *)
+  | CAssign of Ident.t * imm_expr
   (* TODO: Leave out until I know if I can support strings in wasm or not: | CString of string *)
 
 and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}

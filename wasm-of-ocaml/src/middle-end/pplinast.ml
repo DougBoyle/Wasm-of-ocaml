@@ -124,6 +124,7 @@ let rec print_compound ppf (c : compound_expr) = match c.desc with
     | CFunction (args, body) ->
      let pr_params ppf params = List.iter (fprintf ppf "@ %a" Ident.print) params in
      fprintf ppf "@[<2>(function%a@ %a)@]" pr_params args print_ast body
+    | CAssign (id, imm) -> fprintf ppf "(%a <- %a)" Ident.print id print_imm imm
 
 and print_ast ppf e = match e.desc with
   | LCompound c -> print_compound ppf c

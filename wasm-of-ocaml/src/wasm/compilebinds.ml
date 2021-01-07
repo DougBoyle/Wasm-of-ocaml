@@ -199,6 +199,9 @@ let rec compile_comp env (c : compound_expr) =
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args)
   | CMatchFail i -> MFail i
   | CImm i -> MImmediate(compile_imm env i)
+  (* Updates the ident, guarenteed to be a local varaible in the function so assignment allowed *)
+  (* Done this way, Assign doesn't have a result, so places that insert an assign must explicitly put 0 after *)
+  | CAssign (id, imm) -> MDataOp(MAssign (find_id id env), compile_imm env imm)
 
 (* toplevel boolean indicates that a variable should be stored as a global rather than a local.
    Recursive calls for function bodies or within compound terms all set toplevel to false
