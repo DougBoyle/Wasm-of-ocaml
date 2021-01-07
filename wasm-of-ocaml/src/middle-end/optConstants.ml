@@ -8,7 +8,8 @@ let constant_idents = (Ident.Tbl.create 50 : Asttypes.constant Ident.Tbl.t)
 
 (* Ideally want this to happen after body evaluated, just means extra passes needed *)
 let enter_linast linast = (match linast.desc with
-  | LLet(id, _, body, rest) -> (match body.desc with
+  (* Don't try to propagate constants on Mut idents *)
+  | LLet(id, (Local | Export), body, rest) -> (match body.desc with
     (* Only immediate constants, binop(im1, im2) first reduced by constant folding *)
     | CImm {desc=ImmConst c} -> Ident.Tbl.add constant_idents id c
     | _ -> ())

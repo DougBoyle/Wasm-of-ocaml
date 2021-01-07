@@ -77,8 +77,10 @@ and imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; mutable ann
 
 
 type partialFlag = Typedtree.partial = Partial | Total
-(* To export or not in Wasm. *)
-type globalFlag = Export | Local
+(* To export or not in Wasm.
+   Mut indicates mutable local created for tail call optimisations. Must not constant propagate etc.
+   (should never actually see Mut on a letRec) *)
+type globalFlag = Export | Local | Mut
 
 type compound_expr_desc =
   | CImm of imm_expr

@@ -73,14 +73,17 @@ type linast_setup =
   | BLet of Ident.t * compound_expr
   | BLetRec of (Ident.t * compound_expr) list
 
-let get_global_flag exported id = if List.exists (fun x -> x = id) exported then Export else Local
+let get_global_flag exported mut id = if List.exists (fun x -> x = id) exported then Export
+  else if List.exists (fun x -> x = id) mut then Mut
+  else Local
 
-let rec binds_to_anf ?(exported=[]) binds body =
+(* mut added since now I need to distinguish mutable locals introduced by tail call optimisation *)
+let rec binds_to_anf ?(exported=[]) ?(mut=[]) binds body =
   List.fold_right (fun bind body ->
      match bind with
      | BEffect comp -> LinastExpr.seq comp body
-     | BLet(id, comp) -> LinastExpr.mklet id (get_global_flag exported id) comp body
-     | BLetRec lets -> LinastExpr.mkletrec (List.map (fun (id, e) -> (id, get_global_flag exported id, e)) lets) body
+     | BLet(id, comp) -> LinastExpr.mklet id (get_global_flag exported mut id) comp body
+     | BLetRec lets -> LinastExpr.mkletrec (List.map (fun (id, e) -> (id, get_global_flag exported mut id, e)) lets) body
    ) binds body
 
 (* Primative name (string) -> Ident *)

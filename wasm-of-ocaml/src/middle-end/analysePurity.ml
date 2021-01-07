@@ -164,9 +164,10 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
    so must be copied not shared during analysis of compounds *)
 and analyse_linast handlers linast = match linast.desc with
   (* Add analysis of binds to ident_analysis. Set overall linast analysis to combination of bind/body *)
-  | LLet(id, _, bind, body) ->
+  | LLet(id, mut, bind, body) ->
     analyse_compound handlers bind;
-    Ident.Tbl.add ident_analysis id bind.annotations;
+    (* Only store annalysis for idents that can't change. Mutable indents introduced by Tail Call Optimisation *)
+    if mut <> Mut then Ident.Tbl.add ident_analysis id bind.annotations;
     analyse_linast handlers body;
     (* Should copy annotations of body, but Immutable/Pure are affected by evaluating binding.
        TODO: Only care about if bind is Pure? Immutable or not handled by how body is evaluated *)

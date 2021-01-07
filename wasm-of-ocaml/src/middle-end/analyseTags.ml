@@ -78,9 +78,9 @@ let rec analyse_compound (compound : compound_expr) = match compound.desc with
 
 and analyse_linast linast = match linast.desc with
   (* Add analysis of binds to ident_table. Set overall linast analysis to combination of bind/body *)
-  | LLet(id, _, bind, body) ->
+  | LLet(id, mut, bind, body) ->
     analyse_compound bind;
-    (match find_annot_opt bind.annotations with None -> ()
+    if mut <> Mut then (match find_annot_opt bind.annotations with None -> ()
      | Some annot -> Ident.Tbl.add ident_table id annot);
     analyse_linast body;
     copy_annotation body.annotations linast.annotations
