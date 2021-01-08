@@ -1,6 +1,9 @@
 (*
    First mark which functions are tail recursive and the tail calls within them.
-   TODO: For now only handle recursive functions, not mutually recursive functions.
+   TODO: Add check for if tail recursion optimisation actually useful e.g.
+     let rec f x = g x
+     and g x = 5
+     g x looks like a tail call so f will be rewritten, but g won't so no reason to optimise f
  *)
 open Linast
 open LinastUtils
@@ -8,6 +11,17 @@ open Asttypes
 
 let mark_tail_call annotations = annotations := TailCall :: (!annotations)
 let mark_tail_recursive annotations = annotations := TailRecursive :: (!annotations)
+let is_tail_call_optimised annotations = List.mem TailCallOptimised (!annotations)
+
+(* Next/Continue/Result variables are shared across all tail recursions,
+   only actually include them in program if some function uses them.
+   TODO: Slight inefficiency assigning 3 separate variables, each with headers, when only used in specific places.
+     Would be slightly better to store as a 3 cell block, best would be to just allocate 3 cells with no overhead. *)
+let tailcall_used = ref false
+let tailcall_included = ref false (* in case more tail calls found on a later pass *)
+let result_id = Ident.create_local "result"
+let continue_id = Ident.create_local "continue"
+let next_id = Ident.create_local "next"
 
 (*
   Analysis slightly complex to allow analysing functions declared within other functions.
@@ -18,194 +32,263 @@ let mark_tail_recursive annotations = annotations := TailRecursive :: (!annotati
     let g x = ... ; f (x) in
   ...
   f(x)
-  Seems like it shouldn't be, as the inner f(x) will not be the last thing to happen.
-  Leave inlining to work out when g(x) is in a tail call position so both f(x)'s can be tail calls.
 
-  TODO: As long as references copied to locals in the correct places, can TCO a function which
-        has both tail calls and non-tail calls, as shared values can be overwritten at that point.
-        Means that a recursive binding is kept, as it may be used recursively still
+  TODO: Must track whether current function we are in can have tail calls optimised or not.
+    i.e. want to remember that we are within f so can optimise its tail call, but not if g isn't also optimised.
+    Keep a list or calls to rewrite, and only perform rewrite if in_tail_optimised_fun true
+
+  Have to be careful when rewriting. If g is itself tail call optimised, then can rewrite the call to f.
+  However, if g is just a regular function, then f cannot be rewritten (but a tail called fun within g still could)
 
   Can only tail call optimise if function is exactly fully applied. Not too many/too few arguments.
   In this case, effectively gets rewritten as a tupled function.
 *)
 
-let rec compound_tail_callable func (compound : compound_expr) = match compound.desc with
+(* is_tail indicates that this position in the code could be a tail call.
+   funcs is (ident, arity) list of things that COULD be replaced in current scope *)
+let rec compound_tail_callable is_tail funcs (compound : compound_expr) = match compound.desc with
   (* still need to analyse any functions declared within branches *)
   | CWhile (body1, body2) ->
-    ignore (linast_tail_callable None body1);
-    ignore (linast_tail_callable None body2);
+    ignore (linast_tail_callable false funcs body1);
+    ignore (linast_tail_callable false funcs body2);
     false
   (* possibly tail recursive functions will be detected by linast_tail_callable,
      so we just want to search the body of this function for other tail callable functions *)
   | CFunction (_, body)
   | CFor (_, _, _, _, body) ->
-    ignore (linast_tail_callable None body); false
+    ignore (linast_tail_callable false funcs body); false
   (* The important part, can mark as a tail call if in a suitable location *)
   | CSwitch (_, cases, default) ->
     (* written this way to ensure all branches get analysed *)
     let tail1 = List.fold_left
-      (fun tail_call (_, body) -> (linast_tail_callable func body) || tail_call) false cases
-    and tail2 = match default with None -> false | Some body -> linast_tail_callable func body in
+      (fun tail_call (_, body) -> (linast_tail_callable is_tail funcs body) || tail_call) false cases
+    and tail2 = match default with None -> false | Some body -> linast_tail_callable is_tail funcs body in
     tail1 || tail2
   | CIf (_, body1, body2) | CMatchTry (_, body1, body2) ->
-    let tail1 = linast_tail_callable func body1
-    and tail2 = linast_tail_callable func body2 in
+    let tail1 = linast_tail_callable is_tail funcs body1
+    and tail2 = linast_tail_callable is_tail funcs body2 in
     tail1 || tail2
-  | CApp ({desc=ImmIdent f}, args) -> (match func with
-    | Some (id, n) when id = f && List.length args = n -> mark_tail_call compound.annotations; true
-    | _ -> false)
+  | CApp ({desc=ImmIdent f}, args) ->
+    (match List.find_opt (fun (id, _) -> Ident.same f id) funcs with
+      | Some (_, n) when List.length args = n -> mark_tail_call compound.annotations; true
+      | _ -> false
+    )
   | _ -> false
 
-and linast_tail_callable func linast = match linast.desc with
-  (* TODO: Allow optimising mutually recursive functions too *)
-  (* For now, only perform tail call analysis of single recursive functions *)
-  | LLetRec ([id, _, f], rest) ->
-    (match f.desc with
-      | CFunction(args, body) ->
-        (* Now looking for a different function  than 'func' *)
-        if linast_tail_callable (Some (id, List.length args)) body then mark_tail_recursive f.annotations
-      (* some ident for a function that is already defined *)
-      | _ ->  ());
-    linast_tail_callable func rest
-  (* For now, if mutually recursive functions defined, just ignore analysis of each binding *)
+and linast_tail_callable is_tail funcs linast = match linast.desc with
+  (* Skip single recursive functions, handled separately. *)
+  | LLetRec ([_, _, body], rest) ->
+    ignore (compound_tail_callable false funcs body);
+    linast_tail_callable is_tail funcs rest
   | LLetRec (binds, rest) ->
-    List.iter (fun (_, _, c) -> ignore (compound_tail_callable None c)) binds;
-    linast_tail_callable func rest
-  | LCompound c -> compound_tail_callable func c
+    (* Functions are marked as tail recursive if they make a tail call
+       to any other possibly tail recursive function. Can refine this later *)
+    let new_funcs = List.fold_left (fun funcs ->
+      (function (id, _, ({desc=CFunction(args, _)} : compound_expr)) -> (id, List.length args)::funcs | _ -> funcs))
+      funcs binds in
+    List.iter (function
+      | (id, _, ({desc=CFunction(args, body); annotations} : compound_expr)) ->
+
+        if (not (List.mem TailCallOptimised (!annotations))) &&
+         linast_tail_callable true new_funcs body then mark_tail_recursive annotations
+      | _ ->  ()) binds;
+    linast_tail_callable is_tail funcs rest
+  | LCompound c -> compound_tail_callable is_tail funcs c
   (* Analyse any functions declared within the compound expressions *)
   | LLet (_, _, c, body) | LSeq (c, body) ->
-    ignore (compound_tail_callable None c);
-    linast_tail_callable func body
+    ignore (compound_tail_callable false funcs c);
+    linast_tail_callable is_tail funcs body
 
 (* Entry point, start with no function to optimise *)
-let analyse_program linast = ignore (linast_tail_callable None linast)
+let analyse_program linast = ignore (linast_tail_callable false [] linast)
 
 (*
   Next step is to actually replace tail recursive functions.
-  When done for mutual recursive functions, need to create 2 functions for each original one.
-  Simpler for single recursive functions:
+  Need to create 2 functions for each original one.
+  If some function is optimised, also need to introduce result/continue/next variables at top level.
+  For each optimised function, the arguments are created as blocks one level higher. (Put all in 1 block?)
+  (TODO: 2 cell inefficiency. as we know exactly where these are accessed, could store without box wrapper
+    and add operations to directly access (box/unbox?))
   let rec f args = .... <tailcall (args')>
 
-  Becomes
+  Becomes TODO: Neither of these should be able to be repeatedly optimised, but seems to be happening.
+  TODO: Once all functions in a let rec binding replaced, need to go through the tail recursive ones and
+    actually update any mutual recursive calls in them!
+    f x = g x
+    g x = f x
+    Both will currently get rewritten but the bindings in each of them won't actually be replaced (i.e. useless)
 
-  let rec f args* =    -- still recursive due to non tail-recursive calls potentially.
-    continue = true;
-    result = 0;
-    _args = args*
-    while continue {
-      continue = false;
-      args = _args;
-      result =
-        ...
-        <continue = true; _args = args'; 0>;
-      0  -- assign instruction gets compiled to a store, doesn't return a value, so need value for while loop
+  let fargs' = (0, ..., 0)
+  let f args =
+    next := _f; continue := true;
+    fargs' := args (assign contiguously);
+    while (!continue){
+      continue := false;
+      return := (!next)() -- again, slight inefficiency as we can't make a call with no arguments
     }
-    result
+    !result
 
-  We now require an 'Assign' operation for mutable locals, to avoid having indirection to memory to set _args.
-  Since some of the original arguments may come from a closure at WebAssembly level, the original
-  function arguments aren't used as mutable values since they are in memory anyway (so no benefit).
-  Instead create the mutable locals and set them to the inital arguments at the start.
-  Because they are locals that aren't shared (for single recursive fun),
-  don't actually need args and _args to be distinct.
-  Just do args = args* at start, and args = args' in tail call. Safe as nothing else uses the Assign operation.
+  let f' () =
+    let args = !fargs' (read contiguously)
+    ...
+    <continue := true; fargs' := args'; next := tailfun>
 
-  TODO: Since continue is false at end of function, and set just before it is checked when it is needed,
-        can share across ALL tail recursive functions. Can do the same for result.
-        Or is there no point as they can be kept as locals otherwise, rather than putting in memory.
-        (Continue/args and 'next' must be shared when mutually recursive functions supported)
+  Need to keep a list of mappings:
+  (f, {f', fargs'}) (arity not stored since it must be equal to application arity for tail calls)
 *)
 
-(* Rewrite tail recursive call *)
-let rewrite_tail_call continue_id args new_args =
+type rewrite = {new_fun : Ident.t; new_args : Ident.t}
+
+(* Rewrite tail recursive call. Caller has already checked this is a valid call to optimise *)
+let rewrite_tail_call {new_fun; new_args} args =
+  let set_args = List.mapi (fun i arg -> BEffect(Compound.setfield (Imm.id new_args) i arg)) args in
   binds_to_anf
-    ((BEffect(Compound.assign continue_id (Imm.const (Const_int 1)))) ::
-      (List.map (fun (arg, new_arg) -> BEffect(Compound.assign arg new_arg)) (List.combine args new_args)))
-    (LinastExpr.compound (Compound.imm unit_value))
+    ((BEffect(Compound.assign next_id (Imm.id new_fun)))::set_args)
+    (LinastExpr.compound (Compound.assign continue_id (Imm.const (Const_int 1))))
 
-(* Search everywhere a tail recursive call for the given function could occur and replace it *)
-let rec rewrite_body f_id continue_id args linast = match linast.desc with
-  | LLetRec (body, rest) ->
-    {linast with desc = LLetRec(body, rewrite_body f_id continue_id args rest)}
+(* Search for optimisable tail recursive calls and replace them *)
+(* in_tail_pos indicates that we are in tail of a tail call optimised function so can rewrite tail calls.
+   Cannot rewrite tail calls in functions that weren't rewritten, since they expect an actual result.
+   rewrites maps idents of functions to the new idents for them and the idents that hold their args.
+   TODO: Must optimise functions in bottom up order to actually spot these nested tail calls *)
+(* TODO: Probably a better approach to avoid traversing whole tree multiple times?
+     Only traversing within rewritten function, so not that bad.
+     Could instead do all transformations and rewriting in one downward pass (i.e. rewrite fun here)
+     (then also wouldn't need the TailCallOptimised annotation?).
+     Currently don't accumulate more rewrites as we go, just do 1 at a time. Check Grain *)
+let rec rewrite_body in_tail_pos rewrites linast = match linast.desc with
+  | LLetRec (binds, rest) ->
+    (* in_tail_pos will be set active again if bind turns out to be a tail call optimised function *)
+    let new_binds = List.map
+      (fun (id, global, bind) -> (id, global, rewrite_compound false rewrites bind)) binds in
+    {linast with desc = LLetRec(new_binds, rewrite_body in_tail_pos rewrites rest)}
   | LLet (id, global, bind, rest) ->
-    {linast with desc = LLet(id, global, bind, rewrite_body f_id continue_id args rest)}
+    {linast with desc =
+     LLet(id, global, rewrite_compound false rewrites bind, rewrite_body in_tail_pos rewrites rest)}
   | LSeq (c, rest) ->
-    {linast with desc = LSeq(c, rewrite_body f_id continue_id args rest)}
+    {linast with desc = LSeq(rewrite_compound false rewrites c, rewrite_body in_tail_pos rewrites rest)}
   (* Tail call to replace *)
-  | LCompound {desc = CApp({desc = ImmIdent f}, new_args); annotations}
-     when Ident.same f_id f && List.mem TailCall (!annotations) ->
-     rewrite_tail_call continue_id args new_args
+  (* Not every tail call is to a tail-call-optimised function, so must check it actually has a mapping *)
+  | LCompound {desc = CApp({desc = ImmIdent f}, args); annotations}
+     when List.mem TailCall (!annotations) ->
+     (match List.find_opt (fun (id, _) -> Ident.same id f) rewrites with
+       | Some (_, rewrite) -> rewrite_tail_call rewrite args
+       | _ -> linast (* not a tail call, nothing left to optimise *))
   (* Recurse on any Linasts within the compound term *)
-  | LCompound c -> {linast with desc = LCompound(rewrite_compound f_id continue_id args c)}
+  | LCompound c -> {linast with desc = LCompound(rewrite_compound in_tail_pos rewrites c)}
 
-and rewrite_compound f_id continue_id args (compound : compound_expr) = match compound.desc with
+(* CApp handled above due to rewriting an application producing a linast *)
+and rewrite_compound in_tail_pos rewrites (compound : compound_expr) = match compound.desc with
   | CSwitch (imm, cases, default) ->
     {compound with desc =
       CSwitch(imm,
-        List.map (fun (i, body) -> (i, rewrite_body f_id continue_id args body)) cases,
-        Option.map (rewrite_body f_id continue_id args) default)}
+        List.map (fun (i, body) -> (i, rewrite_body in_tail_pos rewrites body)) cases,
+        Option.map (rewrite_body in_tail_pos rewrites) default)}
 
   | CIf (imm, body1, body2) ->
       {compound with desc =
         CIf(imm,
-          rewrite_body f_id continue_id args body1,
-          rewrite_body f_id continue_id args body2)}
+          rewrite_body in_tail_pos rewrites body1,
+          rewrite_body in_tail_pos rewrites body2)}
 
   | CMatchTry (imm, body1, body2) ->
       {compound with desc =
         CMatchTry(imm,
-          rewrite_body f_id continue_id args body1,
-          rewrite_body f_id continue_id args body2)}
+          rewrite_body in_tail_pos rewrites body1,
+          rewrite_body in_tail_pos rewrites body2)}
+  (* unlike for optimising 1 function on its own, we recurse on all linasts within a term.
+     This allows replacing tail calls to a now optimised function in already optimised nested functions *)
+  | CWhile (body1, body2) ->
+    {compound with desc = CWhile(rewrite_body false rewrites body1, rewrite_body false rewrites body2)}
+  | CFor (id, imm1, imm2, dir, body) -> {compound with desc =
+    CFor (id, imm1, imm2, dir, rewrite_body false rewrites body)}
+  (* If function has been tail call optimised, can enable replacing mapped tail calls in body *)
+  | CFunction (args, body) -> {compound with desc =
+    CFunction(args, rewrite_body (is_tail_call_optimised compound.annotations) rewrites body)}
   | _ -> compound
 
 (* Redefine function to be tail recursive *)
-let rewrite_function f_id args body =
-  (* Create new formal parameters for the function, as the original paramters
-     will now be used as mutable locals rather than coming from function argument/closure *)
-  let new_params = List.map (fun id -> Ident.create_local (Ident.name id)) args in
-  let initial_binds = List.map (fun (arg, param) -> BLet(arg, Compound.imm (Imm.id param)))
-    (List.combine args new_params) in
-  let continue_id = Ident.create_local "continue"
-  and result_id = Ident.create_local "result_mut"
-  (* Need to bind the result to an immediate before LAssign can be used *)
-  and temp_result_id = Ident.create_local "result" in
+(* returns a new list of bindings to replace the original single binding for the function f *)
+let rewrite_function f_id global args body =
+  (* mark that at least one function has been optimised to use continue/next/result *)
+  tailcall_used := true;
 
-  let while_body =
-    binds_to_anf [BEffect(Compound.assign continue_id (Imm.const (Const_int 0)))]
-    (* Need to rewrite the body of the function so that it binds the result to 'result'.
-       Uses 'rewrite_tree' previously defined in optConstants for pulling out guarenteed branches  *)
-    (* The 0 is the result of the while loop, as assign gets compiled to a store so doesn't have a result *)
-    (* Since CAssign takes an imm, first need to bind the result to a 'temp_reuslt_id' *)
-    (OptConstants.rewrite_tree (LinastExpr.mklet temp_result_id Local)
-      (rewrite_body f_id continue_id args body)
-      (LinastExpr.seq
-        (Compound.assign result_id (Imm.id temp_result_id))
-        (LinastExpr.compound (Compound.imm unit_value)))) in
+  let new_args = Ident.create_local "args" in
+  let new_fun = Ident.create_local (Ident.name f_id) in
+  (* Code replacing the body of original function f *)
+  (* put args into memory when first called *)
+  let arg_binds = List.mapi (fun i arg -> BEffect(Compound.setfield (Imm.id new_args) i (Imm.id arg))) args in
+  let setup =
+    (BEffect(Compound.assign continue_id (Imm.const (Const_int 1))))::
+    (BEffect(Compound.assign next_id (Imm.id new_fun)))::arg_binds in
+  (* Since CAssign takes an imm, first need to bind the result to a 'temp_result_id' *)
+  let temp_result_id = Ident.create_local "result" in
+  let while_body = binds_to_anf
+    [BEffect(Compound.assign continue_id unit_value);
+     BLet(temp_result_id, Compound.app (Imm.id next_id) [unit_value]);]
+    (LinastExpr.compound (Compound.assign result_id (Imm.id temp_result_id))) in
+  (* The rewritten function is never tail recursive, so no need to mark with TailCallOptimised *)
+  let replaced_function = Compound.mkfun args
+    (binds_to_anf (setup @
+      [BEffect(Compound.mkwhile (LinastExpr.compound (Compound.imm (Imm.id continue_id))) while_body)])
+    (LinastExpr.compound (Compound.imm (Imm.id result_id)))) in
 
-  (* Note - each ident has to first be assigned to by a Let expression, before LAssign can be used *)
-  let new_body =
-    (* Only place in the whole project ~mut is used. Custom function might be better? *)
-    binds_to_anf ~mut:(continue_id :: result_id :: args)
-    ((BLet(continue_id, Compound.imm (Imm.const (Const_int 1)))) ::
-     (BLet(result_id, Compound.imm unit_value)) ::
-     initial_binds @
-     [BEffect(Compound.mkwhile (LinastExpr.compound (Compound.imm (Imm.id continue_id))) while_body)])
-    (LinastExpr.compound (Compound.imm (Imm.id result_id))) in
-  (* Returns a new function, so TailRecursive annotation and any others are removed *)
-  Compound.mkfun new_params new_body
+  (* Code for a new function f' that actually does the work *)
+  (* get args out of memory when function body executed *)
+  let read_args = List.mapi (fun i arg -> BLet(arg, Compound.field (Imm.id new_args) i)) args in
+  (* TODO: Body gets rewritten later once all binds adjusted *)
+  let body' = (* rewrite_body true [(f_id, {new_fun; new_args})] body *) body in
+  (* the tail-call function ignores its argument *)
+  let dummy_arg = Ident.create_local "_" in
+  (* This function is marked as being tail call optimised, so other tail calls in it may be optimised after.
+     Also ensures that it is not tail call optimised again by a later pass. *)
+  let new_function = Compound.mkfun ~annotations:(ref [TailCallOptimised])
+    [dummy_arg] (binds_to_anf read_args body') in
+
+  (* Returns the new bindings, and the remapping to include for optimising tail calls in any of the letrec funcs *)
+  (* New list of bindings to insert into the tree in place of original binding.
+     Sets up a variable to store the args to f (initially all 0s), f, and the new function f' *)
+  [(new_fun, Local, new_function);
+   (f_id, global, replaced_function);
+   (new_args, Local, Compound.makeblock 0 (List.map (fun _ -> unit_value) args))],
+  (f_id, {new_fun; new_args})
 
 (* Scan the whole program and rewrite each tail recursive function, replacing recursive calls within it *)
-(* Arbitrarily chose to replace in bottom up manner *)
+(* Replace in bottom up order for following reason:
+   let rec f x =
+     let rec g x = ... f x
+     ...
+   If both optimisable, initially replace g with 2 functions/while loop and mark it as optimised.
+   When f also replaced, as f and g are both tail call optimised functions we can rewrite the call to f in g.
+   If f was optimised first, we would need to store those mappings for each subsequent function optimised.
+   Instead, f x is seen as optimisable when the body of f is rewritten, which can replace within already optimised g.
+ *)
 let leave_linast linast = match linast.desc with
-  (* TODO: Handle mutually recursive functions as well as simple recursive functions *)
-  | LLetRec ([id, global, f], rest) when List.mem TailRecursive (!(f.annotations)) ->
-    (match f.desc with
-      | CFunction(args, body) ->
-        let new_f = rewrite_function id args body in
-        {linast with desc = LLetRec([id, global, new_f], rest)}
-      | _ -> failwith "LetRec binding wrongly marked as being tail recursive fun")
+  (* Simple recursive functions are handled separately *)
+  | LLetRec ([b], rest) -> linast
+  | LLetRec (binds, rest)
+    when List.exists (fun (_, _, (f : compound_expr)) -> List.mem TailRecursive (!(f.annotations))) binds ->
+    (* Replace tail recursive functions with pairs of functions, get list of functions for rewriting tail calls *)
+    let rev_binds, rewrites =
+      List.fold_left (fun (binds, rewrites) -> (function
+        | (id, global, ({desc = CFunction(args, body); annotations} : compound_expr))
+          when List.mem TailRecursive (!annotations) ->
+          let added, rewrite = (rewrite_function id global args body) in  (added @ binds, rewrite::rewrites)
+        | bind -> (bind::binds, rewrites))) ([], []) binds in
+    (* Rewriting of applications is achieved by rewrite_body *)
+    rewrite_body false rewrites {linast with desc=LLetRec(List.rev rev_binds, rest)}
   | _ -> linast
 
 let optimise linast =
   analyse_program linast;
-  (LinastMap.create_mapper ~leave_linast ()) linast
+  let result = (LinastMap.create_mapper ~leave_linast ()) linast in
+  if (!tailcall_used) && not (!tailcall_included)
+  (* Add bindings for next/continue/result to top of program *)
+  then (tailcall_included := true;
+    binds_to_anf ~mut:[result_id; continue_id; next_id]
+      [BLet(result_id, Compound.imm unit_value);
+       BLet(continue_id, Compound.imm unit_value);
+       BLet(next_id, Compound.imm unit_value)]
+      result)
+  else result
+

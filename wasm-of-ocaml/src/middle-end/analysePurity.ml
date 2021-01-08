@@ -157,8 +157,13 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
   (* Creating a closure is always pure/immutable so pass body as Fields annotation *)
   | CFunction (args, body) ->
     analyse_linast handlers body;
-    compound.annotations <- (* Encodes currying by nesting fields. Each partial function is pure/immutable *)
-      (List.fold_left (fun annots _ -> ref [Pure; Immutable; Fields [annots]]) body.annotations args)
+    (* Encodes currying by nesting fields. Each partial function is pure/immutable *)
+    let function_annotations =
+      (List.fold_left (fun annots _ -> ref [Pure; Immutable; Fields [annots]]) body.annotations args) in
+    (* Need to remember if function has been tail call optimised *)
+    if List.mem TailCallOptimised (!(compound.annotations))
+      then function_annotations := TailCallOptimised :: (!function_annotations);
+    compound.annotations <- function_annotations
   | CAssign _ -> ()
 
 (* Annotations of a linast ARE the annotations of the corresponding subterm (compound/smaller linast)

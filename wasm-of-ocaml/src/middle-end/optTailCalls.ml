@@ -119,14 +119,13 @@ let analyse_program linast = ignore (linast_tail_callable None linast)
 (* Rewrite tail recursive call *)
 let rewrite_tail_call continue_id args new_args =
   binds_to_anf
-    ((BEffect(Compound.assign continue_id (Imm.const (Const_int 1)))) ::
-      (List.map (fun (arg, new_arg) -> BEffect(Compound.assign arg new_arg)) (List.combine args new_args)))
-    (LinastExpr.compound (Compound.imm unit_value))
+     (List.map (fun (arg, new_arg) -> BEffect(Compound.assign arg new_arg)) (List.combine args new_args))
+     (LinastExpr.compound (Compound.assign continue_id (Imm.const (Const_int 1))))
 
 (* Search everywhere a tail recursive call for the given function could occur and replace it *)
 let rec rewrite_body f_id continue_id args linast = match linast.desc with
-  | LLetRec (body, rest) ->
-    {linast with desc = LLetRec(body, rewrite_body f_id continue_id args rest)}
+  | LLetRec (binds, rest) ->
+    {linast with desc = LLetRec(binds, rewrite_body f_id continue_id args rest)}
   | LLet (id, global, bind, rest) ->
     {linast with desc = LLet(id, global, bind, rewrite_body f_id continue_id args rest)}
   | LSeq (c, rest) ->
@@ -174,13 +173,10 @@ let rewrite_function f_id args body =
     binds_to_anf [BEffect(Compound.assign continue_id (Imm.const (Const_int 0)))]
     (* Need to rewrite the body of the function so that it binds the result to 'result'.
        Uses 'rewrite_tree' previously defined in optConstants for pulling out guarenteed branches  *)
-    (* The 0 is the result of the while loop, as assign gets compiled to a store so doesn't have a result *)
     (* Since CAssign takes an imm, first need to bind the result to a 'temp_reuslt_id' *)
     (OptConstants.rewrite_tree (LinastExpr.mklet temp_result_id Local)
       (rewrite_body f_id continue_id args body)
-      (LinastExpr.seq
-        (Compound.assign result_id (Imm.id temp_result_id))
-        (LinastExpr.compound (Compound.imm unit_value)))) in
+      (LinastExpr.compound (Compound.assign result_id (Imm.id temp_result_id)))) in
 
   (* Note - each ident has to first be assigned to by a Let expression, before LAssign can be used *)
   let new_body =

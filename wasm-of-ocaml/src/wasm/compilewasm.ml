@@ -198,6 +198,7 @@ let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
     if is_get then
       [Graph.GlobalGet(slot)]
     else
+      (* Used to initialise globals, and tracking shared mutable varaibles next/continue/result for TCO *)
       [Graph.GlobalSet(slot)]
   | MClosureBind(i) ->
     (* Closure bindings need to be calculated *)
