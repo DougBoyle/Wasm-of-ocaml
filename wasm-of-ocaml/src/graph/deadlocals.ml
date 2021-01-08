@@ -36,7 +36,7 @@ let rec optimise_instrs = function
     else (remove_instr instr; optimise_instrs rest)
   | ({it=LocalSet {it=i}} as instr)::rest ->
     if Set32.mem i (get_live_at_succ instr) then instr::(optimise_instrs rest)
-    else ({instr with it=Drop})::(optimise_instrs rest)
+    else {instr with it=Drop}::(optimise_instrs rest)
   | ({it=Block(typ, body)} as instr)::rest ->
     (* Unnecessarily recreates body if no changes *)
     {instr with it=Block(typ, optimise_instrs body)}::(optimise_instrs rest)
@@ -60,6 +60,8 @@ let rec used_locals set = function
     used_locals (used_locals (used_locals set body1) body2) rest
   | _::rest -> used_locals set rest
 
+(* This will invalidate all liveness information for remapped locals.
+   Not tracked since it will be recalculated anyway on the next pass. *)
 let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; body} =
   (* Must not modify locals which are function arguments. Until functions without closures added, always 2,
      but checked here to ensure compatibility if that ever changes *)

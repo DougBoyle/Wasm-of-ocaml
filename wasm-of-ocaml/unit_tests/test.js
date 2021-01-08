@@ -98,9 +98,10 @@ if (process.argv.length > 2){
 	  } catch(err) {
 	  	  if (err instanceof TypeError){
 	  	  	console.log("\x1b[91m%s\x1b[0m", "Check results entry for " + filename + ". Identifier not recognised as an export.")
+		  } else {
+	  	  	console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Exception occured");
+	  	  	throw err;
 		  }
-		  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Exception occured");
-		  throw err;
 	  }
   }
 })();

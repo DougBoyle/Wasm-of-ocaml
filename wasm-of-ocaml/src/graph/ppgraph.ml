@@ -41,16 +41,21 @@ let print_live ppf instr =
   Set32.iter (fun i -> if !spc then fprintf ppf " " else spc := true;
    fprintf ppf "%li" i) (!(instr.live))
 
+let print_last ppf instr =
+  let spc = ref false in
+    List.iter (fun instr -> if !spc then fprintf ppf " " else spc := true;
+     fprintf ppf "%d " instr.id) (!(instr.pred))
+
 let print_next ppf instr =
   let spc = ref false in
     List.iter (fun instr -> if !spc then fprintf ppf " " else spc := true;
      fprintf ppf "%d " instr.id) (!(instr.succ))
 
 let rec print_instr ppf instr = match instr.it with
-  | Unreachable -> fprintf ppf "%d:Unreachable [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Nop -> fprintf ppf "%d:Nop [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Drop -> fprintf ppf "%d:Drop [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Select -> fprintf ppf "%d:Select [%a] {next: %a}" instr.id print_live instr print_next instr
+  | Unreachable -> fprintf ppf "%d:Unreachable [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Nop -> fprintf ppf "%d:Nop [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Drop -> fprintf ppf "%d:Drop [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Select -> fprintf ppf "%d:Select [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | Block (_, instrs) -> fprintf ppf "@[<2>(block@ %a)@]" print_block instrs
   | Loop (_, instrs) -> fprintf ppf "@[<2>(loop@ %a)@]" print_block instrs
   | If (_, body1, body2) -> fprintf ppf "@[<2>(if@ then@ %a@ else@  %a)@]" print_block body1 print_block body2
@@ -60,21 +65,21 @@ let rec print_instr ppf instr = match instr.it with
   | Return -> fprintf ppf "%d:Return [%a]" instr.id print_live instr
   | Call _ -> fprintf ppf "%d:Call [%a]" instr.id print_live instr
   | CallIndirect _ -> fprintf ppf "%d:CallIndirect [%a]" instr.id print_live instr
-  | LocalGet {it=i} -> fprintf ppf "%d:LocalGet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
-  | LocalSet {it=i} -> fprintf ppf "%d:LocalSet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
-  | LocalTee {it=i} -> fprintf ppf "%d:LocalTee %li [%a] {next: %a}" instr.id i print_live instr print_next instr
-  | GlobalGet {it=i} -> fprintf ppf "%d:GlobalGet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
-  | GlobalSet {it=i} -> fprintf ppf "%d:GlobalSet %li [%a] {next: %a}" instr.id i print_live instr print_next instr
-  | Load _ -> fprintf ppf "%d:Load [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Store _ -> fprintf ppf "%d:Store [%a] {next: %a}" instr.id print_live instr print_next instr
-  | MemorySize -> fprintf ppf "%d:MemorySize [%a] {next: %a}" instr.id print_live instr print_next instr
-  | MemoryGrow -> fprintf ppf "%d:MemoryGrow [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Const _ -> fprintf ppf "%d:Const [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Test _ -> fprintf ppf "%d:Test [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Compare _ -> fprintf ppf "%d:Compare [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Unary _ -> fprintf ppf "%d:Unary [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Binary _ -> fprintf ppf "%d:Binary [%a] {next: %a}" instr.id print_live instr print_next instr
-  | Convert _ -> fprintf ppf "%d:Convert [%a] {next: %a}" instr.id print_live instr print_next instr
+  | LocalGet {it=i} -> fprintf ppf "%d:LocalGet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | LocalSet {it=i} -> fprintf ppf "%d:LocalSet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | LocalTee {it=i} -> fprintf ppf "%d:LocalTee %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | GlobalGet {it=i} -> fprintf ppf "%d:GlobalGet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | GlobalSet {it=i} -> fprintf ppf "%d:GlobalSet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | Load _ -> fprintf ppf "%d:Load [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Store _ -> fprintf ppf "%d:Store [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | MemorySize -> fprintf ppf "%d:MemorySize [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | MemoryGrow -> fprintf ppf "%d:MemoryGrow [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Const _ -> fprintf ppf "%d:Const [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Test _ -> fprintf ppf "%d:Test [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Compare _ -> fprintf ppf "%d:Compare [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Unary _ -> fprintf ppf "%d:Unary [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Binary _ -> fprintf ppf "%d:Binary [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Convert _ -> fprintf ppf "%d:Convert [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
 
 and print_block ppf (block : instr list) =
     let print_body ppf instrs =

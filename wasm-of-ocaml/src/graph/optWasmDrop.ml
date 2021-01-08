@@ -19,7 +19,7 @@ let mod_tbls = ref Graph.empty_module
  then this is repeated to move the drop back, since it can't be the 'set j' that needs removing.
  Hence always end up at the required position.
  *)
- (* Instructions iterated over and returned in reverse order (hence instructions that reduce stack increase n) *)
+(* Instructions iterated over and returned in reverse order (hence instructions that reduce stack increase n) *)
 let rec split_stack n instrs = if n = 0 then ([], instrs)
   else if n < 0 then failwith "Stack structure error"
   else match instrs with
@@ -69,7 +69,7 @@ let rec split_stack n instrs = if n = 0 then ([], instrs)
       in let above, rest = split_stack new_n rest in (instr::above, rest)
 
 (* TODO: Work out way to test this? *)
-(* reverse function body is 'drop_instr' 'rest' where 'rest' is 2nd argument *)
+(* reverse function body is 'drop_instr' :: 'rest' where 'rest' is 2nd argument *)
 let rec propagate_drop drop_instr = function
   | [] -> [drop_instr]
   (* Can't reach drop anyway, so just remove *)
@@ -98,7 +98,8 @@ let rec propagate_drop drop_instr = function
   (* Can't optimise 'Call' without knowing that function is immutable (future optimisation) *)
   | ({it=LocalGet _ | GlobalGet _ | MemorySize | Const _} as instr)::rest ->
     remove_instr drop_instr; remove_instr instr; rest
-  | ({it=LocalTee x} as instr)::rest -> remove_instr drop_instr; {instr with it=LocalSet x}::rest
+  | ({it=LocalTee x} as instr)::rest ->
+    remove_instr drop_instr; {instr with it=LocalSet x}::rest
   (* Assumes no out of bounds memory accesses, should be true for compiled Wasm.
      Also assumes conversions always succeed (not used anyway). *)
   | ({it=Load _ | Test _ | Unary _ | Convert _} as instr)::rest ->
@@ -118,11 +119,21 @@ let rec propagate_drop drop_instr = function
     propagate_drop drop (drop_instr :: rest)
   | instrs -> drop_instr::instrs (* do nothing *)
 
+(* code passed over in reverse direction, hence reversing block bodies before recursively searching *)
 let rec remove_drops = function
   | [] -> []
   | ({it=Drop} as instr)::rest -> propagate_drop instr rest
+  | ({it=Block(typ, body)} as instr)::rest ->
+    {instr with it=Block(typ, List.rev (remove_drops (List.rev body)))}:: (remove_drops rest)
+  | ({it=Loop(typ, body)} as instr)::rest ->
+    {instr with it=Loop(typ, List.rev (remove_drops (List.rev body)))}:: (remove_drops rest)
+  | ({it=If(typ, body1, body2)} as instr)::rest ->
+    {instr with it=If(typ,
+      List.rev (remove_drops (List.rev body1)),
+      List.rev (remove_drops (List.rev body2)))}:: (remove_drops rest)
   | instr::rest -> instr::(remove_drops rest)
 
 let optimise ({funcs} as module_) =
   mod_tbls := module_;
-  {module_ with funcs=List.map (fun ({body} as f) -> {f with body=List.rev (remove_drops  (List.rev body))}) funcs}
+  {module_ with funcs=List.map (fun ({body} as f) ->
+    {f with body=List.rev (remove_drops  (List.rev body))}) funcs}

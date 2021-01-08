@@ -8,10 +8,10 @@ let remove_instr instr =
     else instrlst := instr::(!instrlst) in
   let s = !(instr.succ) and p = !(instr.pred) in
   (* Update the predecessors *)
-  List.iter (fun i -> i.succ := List.filter (fun j -> not(instr_eq i instr)) (!(i.succ));
+  List.iter (fun i -> i.succ := List.filter (fun j -> not(instr_eq j instr)) (!(i.succ));
     List.iter (add_instr i.succ) s) p;
   (* Update the successors *)
-  List.iter (fun i -> i.pred := List.filter (fun j -> not(instr_eq i instr)) (!(i.pred));
+  List.iter (fun i -> i.pred := List.filter (fun j -> not(instr_eq j instr)) (!(i.pred));
       List.iter (add_instr i.pred) p) s
 
 (*
@@ -20,8 +20,13 @@ let remove_instr instr =
   Returns the newly generated instruction
 *)
 let add_after original action =
-  let new_instr = {pred = ref [original]; it = action; succ = original.succ;
+  (* Note that the succ field must be copied, as it is about to be overwritten *)
+  let new_instr = {pred = ref [original]; it = action; succ = ref (!(original.succ));
     live = ref Graph.Set32.empty; Graph.id = Graph.get_id ();} in
+  (* Update the successors of the original instruction that they have a new successor *)
+  List.iter (fun next_instr ->
+    next_instr.pred :=  new_instr::(List.filter (fun i -> not(instr_eq i original)) (!(next_instr.pred))) )
+    (!(original.succ));
   original.succ := [new_instr];
   new_instr
 
