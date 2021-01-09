@@ -2,14 +2,40 @@ open Linast
 open LinastUtils
 open Asttypes
 
+type rewrite = {new_fun : Ident.t; new_args : Ident.t}
+
 let mark_single_tail_recursive annotations = annotations := SingleTailRecursive :: (!annotations)
 
-(* Use one global to store the arguments to any mutually tail recursive function *)
-let max_args = ref 0
-let args_id = Ident.create_local "args"
+(* ------ New approach to determining tail-call optimisations to make ------ *)
+(*
+Issue with more naive approach is that, if f and g are defined together, then a tail call to g in f is used
+to justify converting f to two separate functions. However, g may not be tail-call optimisable in which
+case f still makes a regular function call to it and the optimisation achieves nothing.
+Its also not the case that the programmer should have just not defined them together, as they could be
+mutually recursive just with none of g's calls to f (or itself) being in a tail-call position.
 
-(* Mapping of functions to the (maybe tail recursive) functions they tail call *)
-let possible_tail_recursive_funcs = ref (Ident.empty : Ident.Set.t Ident.tbl)
+Instead, when a letrec binding is reached, a table is built mapping each ident to a Set of the
+tail calls to any of the idents being bound currently (not tail calls to functions defined elsewhere).
+After the body of each binding is processed we do the following:
+- If any function has no tail calls, it is removed as are any tail calls to it.
+- If a function has only tail calls to itself, it is optimised individually and tails calls to it are also removed.
+- This is repeated until there are no changes.
+At this point, all the remaining functions really do benefit from tail call optimisation so are optimised together.
+
+This still ignores the possibility of a function being mutually tail-recursive with a function defined
+within it, but this then requires analysing the whole program all at once (rather than one letrec bind at a time)
+and is rarely expected to occur.
+The closure for the inner function would also still be constructed each time the outer function is called.
+If both levels of functions are tail callable on their own, the inner one will make tail calls back to the outer one,
+but not the reverse due to the scope within which tail calls are optimised.
+
+This approach also makes better choices about when to optimise a function on its own (in which case no new function
+is create) or as part of a set of functions each split into two.
+Rather than requiring a function to be declared on its own, we do the analysis of the group and, if a function
+only makes tail calls to itself, it is removed and optimised on its own (and calls to that function ignored).
+Other functions may still call this one, but at most 1 extra stack frame will be allocated for it as it then
+never makes a tail call back to one of the other functions.
+*)
 
 (* returns a pair of sets (optimise_alone, optimise_together), with any other idents not being modified *)
 let rec determine_tailcalls alone tbl =
@@ -34,143 +60,92 @@ let rec determine_tailcalls alone tbl =
     determine_tailcalls (Ident.Set.union alone single) new_tbl
 
 (* Given an ident (known to be in the table) and an ident that is called, add it to the corresponding set *)
-let update_tbl f tail_called =
-  let new_set = Ident.Set.add tail_called (Ident.find_same f (!possible_tail_recursive_funcs)) in
-  possible_tail_recursive_funcs := Ident.add f new_set (Ident.remove f (!possible_tail_recursive_funcs))
+let update_tbl f tail_called tbl =
+  let new_set = Ident.Set.add tail_called (Ident.find_same f tbl) in
+  Ident.add f new_set (Ident.remove f tbl)
 
-let rec find_tail_calls f funcs linast = match linast.desc with
+let tbl_mem called tbl =
+  match Ident.find_same called tbl with
+    | _ -> true
+    | exception Not_found -> false
+
+(* f (optional) is the current function we are in,
+  funcs is a list of the possibly-tail callable functions (and their arities) that are in scope,
+  tbl is the table to update with tail calls to a function defined in the same block as f *)
+let rec find_tail_calls f funcs tbl linast = match linast.desc with
   | LLetRec (binds, rest) ->
     let funcs' = List.fold_left (fun fs ->
       (function (id, _, ({desc=CFunction(args, _)} : compound_expr)) -> (id, List.length args)::fs
         | _ -> fs)) [] binds in
-
-    (* As every ident from funcs' is added to the table.
-      Something appearing in funcs later means it is in the table and is a possible tail call *)
-    List.iter (fun (f, _) ->
-      possible_tail_recursive_funcs := Ident.add f Ident.Set.empty (!possible_tail_recursive_funcs))
-      funcs';
-
-    List.iter (function (id, _, ({desc=CFunction(_, body)} : compound_expr)) ->
-      find_tail_calls (Some id) (funcs' @ funcs) body
+    let initial_tbl = List.fold_right
+      (fun (f, _) tbl -> Ident.add f Ident.Set.empty tbl) funcs' Ident.empty in
+    let tbl' = List.fold_left (fun tbl -> (
+      function (id, _, ({desc=CFunction(_, body)} : compound_expr)) ->
+      find_tail_calls (Some id) (funcs' @ funcs) tbl body
       (* Expression must otherwise be a variable, so tbl will not change *)
-      | _ -> ()) binds;
-    find_tail_calls f (funcs' @ funcs) rest
-
-  | LCompound c -> find_tail_calls_compound f funcs c
+      | _ -> tbl)) initial_tbl binds in
+    let optimise_alone, optimise_together = determine_tailcalls Ident.Set.empty tbl' in
+    List.iter (fun (id, _, (compound : compound_expr)) ->
+      if Ident.Set.mem id optimise_alone then
+        mark_single_tail_recursive compound.annotations
+      (* Functions tail call optimised as a group may still have tail calls in, don't rewrite again *)
+      else if not (List.mem TailCallOptimised (!(compound.annotations))) &&
+        Ident.Set.mem id optimise_together then
+        OptMutualTails.mark_tail_recursive compound.annotations) binds;
+    find_tail_calls f (funcs' @ funcs) tbl rest
+  | LCompound c -> find_tail_calls_compound f funcs tbl c
   (* Analyse any functions declared within the compound expressions *)
   | LLet (_, _, c, body) | LSeq (c, body) ->
-    find_tail_calls_compound None funcs c;
-    find_tail_calls f funcs body
+    ignore (find_tail_calls_compound None funcs Ident.empty c);
+    find_tail_calls f funcs tbl body
 
-and find_tail_calls_compound f funcs (compound : compound_expr) = match compound.desc with
+and find_tail_calls_compound f funcs tbl (compound : compound_expr) = match compound.desc with
   (* still need to analyse any functions declared within branches *)
   | CWhile (body1, body2) ->
-    find_tail_calls None funcs body1;
-    find_tail_calls None funcs body2
+    ignore (find_tail_calls None funcs Ident.empty body1);
+    ignore (find_tail_calls None funcs Ident.empty body2);
+    tbl
   (* possibly tail recursive functions will be detected by linast_tail_callable,
      so we just want to search the body of this function for other tail callable functions *)
   | CFunction (_, body)
   | CFor (_, _, _, _, body) ->
-    find_tail_calls None funcs body
+    ignore (find_tail_calls None funcs Ident.empty body); tbl
   (* The important part, can mark as a tail call if in a suitable location *)
   | CSwitch (_, cases, default) ->
     (* written this way to ensure all branches get analysed *)
-    List.iter
-      (fun (_, body) -> find_tail_calls f funcs body) cases;
-    (match default with None -> () | Some body -> find_tail_calls f funcs body)
+    let tbl = List.fold_left
+      (fun tbl (_, body) -> find_tail_calls f funcs tbl body) tbl cases in
+    (match default with None -> tbl | Some body -> find_tail_calls f funcs tbl body)
   | CIf (_, body1, body2) | CMatchTry (_, body1, body2) ->
-    find_tail_calls f funcs body1;
-    find_tail_calls f funcs body2
+    let tbl = find_tail_calls f funcs tbl body1 in
+    find_tail_calls f funcs tbl body2
   | CApp ({desc=ImmIdent called}, args) ->
-    (* Check that:
-       1) We are in a recursive function and at a tail-call position within it.
-       2) The function being called could also be a tail-call optimised function. *)
     (match f, List.find_opt (fun (id, _) -> Ident.same called id) funcs with
      (* If we later decide both 'f' and 'called' can be tail call optimised, this call will be rewritten *)
-     | Some id, Some (_, n) when List.length args = n ->
-       OptMutualTails.mark_tail_call compound.annotations; update_tbl id called
-      | _ -> ()
-    )
-  | _ -> ()
+     | Some id, Some (_, n) when List.length args = n -> OptMutualTails.mark_tail_call compound.annotations;
+       (* Functions only made mutually recursive if recursive with a function defined in same letrec.
+          Therefore 'called' must be one of the other functions in the tbl.  *)
+        if tbl_mem called tbl then update_tbl id called tbl else tbl
+      | _ -> tbl)
+  | _ -> tbl
 
-let optimise_alone = ref Ident.Set.empty
-let optimise_together = ref Ident.Set.empty
+let analyse_program linast = ignore (find_tail_calls None [] Ident.empty linast)
 
-let analyse_program linast =
-  possible_tail_recursive_funcs := Ident.empty;
-  find_tail_calls None [] linast;
-  let alone, together = determine_tailcalls Ident.Set.empty (!possible_tail_recursive_funcs) in
-  optimise_alone := alone;
-  optimise_together := together
-
-(* Rewrite tail recursive call. Caller has already checked this is a valid call to optimise *)
-let rewrite_tail_call new_fun args =
-  let set_args = List.mapi (fun i arg -> BEffect(Compound.setfield (Imm.id args_id) i arg)) args in
-  binds_to_anf
-    ((BEffect(Compound.assign OptMutualTails.next_id (Imm.id new_fun)))::set_args)
-    (LinastExpr.compound (Compound.assign OptMutualTails.continue_id (Imm.const (Const_int 1))))
-
-(* Redefine function to be tail recursive *)
-(* returns a new list of bindings to replace the original single binding for the function f *)
-let rewrite_function f_id global args body =
-  (* mark that at least one function has been optimised to use continue/next/result *)
-  OptMutualTails.tailcall_used := true;
-  max_args := max (List.length args) (!max_args);
-
-  let new_fun = Ident.create_local (Ident.name f_id) in
-  (* Code replacing the body of original function f *)
-  (* put args into memory when first called *)
-  let arg_binds = List.mapi (fun i arg -> BEffect(Compound.setfield (Imm.id args_id) i (Imm.id arg))) args in
-  let setup =
-    (BEffect(Compound.assign OptMutualTails.continue_id (Imm.const (Const_int 1))))::
-    (BEffect(Compound.assign OptMutualTails.next_id (Imm.id new_fun)))::arg_binds in
-  (* Since CAssign takes an imm, first need to bind the result to a 'temp_result_id' *)
-  let temp_result_id = Ident.create_local "result" in
-  let while_body = binds_to_anf
-    [BEffect(Compound.assign OptMutualTails.continue_id unit_value);
-     BLet(temp_result_id, Compound.app (Imm.id OptMutualTails.next_id) [unit_value]);]
-    (LinastExpr.compound (Compound.assign OptMutualTails.result_id (Imm.id temp_result_id))) in
-  (* The rewritten function is never tail recursive, so no need to mark with TailCallOptimised *)
-  let replaced_function = Compound.mkfun args
-    (binds_to_anf (setup @
-      [BEffect(Compound.mkwhile
-        (LinastExpr.compound (Compound.imm (Imm.id OptMutualTails.continue_id))) while_body)])
-    (LinastExpr.compound (Compound.imm (Imm.id OptMutualTails.result_id)))) in
-
-  (* Code for a new function f' that actually does the work *)
-  (* get args out of memory when function body executed *)
-  let read_args = List.mapi (fun i arg -> BLet(arg, Compound.field (Imm.id args_id) i)) args in
-  let body' = body in
-  (* the tail-call function ignores its argument *)
-  let dummy_arg = Ident.create_local "_" in
-  (* This function is marked as being tail call optimised, so other tail calls in it may be optimised after.
-     Also ensures that it is not tail call optimised again by a later pass. *)
-  let new_function = Compound.mkfun ~annotations:(ref [TailCallOptimised])
-    [dummy_arg] (binds_to_anf read_args body') in
-
-  (* Returns the new bindings, and the remapping to include for optimising tail calls in any of the letrec funcs *)
-  (* New list of bindings to insert into the tree in place of original binding.
-     Sets up f, and the new function f' *)
-  [(f_id, global, replaced_function);
-   (new_fun, Local, new_function)],
-  (f_id, new_fun)
-
-(* optimise_together and optimise_alone are used to determine what to do with each function *)
 let rec rewrite_body in_tail_pos rewrites linast = match linast.desc with
   | LLetRec (binds, rest) ->
     (* Rewrite functions based on if they are single or mutually recursive *)
     let replaced_binds, rewrites =
       List.fold_right (fun ((id, global, (compound : compound_expr)) as bind) (binds, rewrites) ->
-        if Ident.Set.mem id (!optimise_alone)
+        if List.mem SingleTailRecursive (!(compound.annotations))
         then (match compound.desc with
            | CFunction(args, body) ->
              let new_f = OptTailCalls.rewrite_function id args body in
              ((id, global, new_f)::binds, rewrites)
            | _ -> failwith "LetRec binding wrongly marked as being single tail recursive")
-        else if Ident.Set.mem id (!optimise_together)
+        else if List.mem TailRecursive (!(compound.annotations))
         then (match compound.desc with
             | CFunction(args, body) ->
-              let added, rewrite = rewrite_function id global args body in
+              let added, rewrite = OptMutualTails.rewrite_function id global args body in
               (added @ binds, rewrite::rewrites)
             | _ -> failwith "LetRec binding wrongly marked as being mutually tail recursive")
         else (bind::binds, rewrites)) binds ([], rewrites) in
@@ -191,8 +166,8 @@ let rec rewrite_body in_tail_pos rewrites linast = match linast.desc with
   | LCompound {desc = CApp({desc = ImmIdent f}, args); annotations}
      when in_tail_pos && List.mem TailCall (!annotations) ->
      (match List.find_opt (fun (id, _) -> Ident.same id f) rewrites with
-       | Some (_, rewrite) -> rewrite_tail_call rewrite args
-       | _ -> linast)
+       | Some (_, rewrite) -> OptMutualTails.rewrite_tail_call rewrite args
+       | _ -> linast (* not a tail call, nothing left to optimise *))
   | LCompound c -> {linast with desc = LCompound(rewrite_compound in_tail_pos rewrites c)}
 
 (* CApp handled above due to rewriting an application producing a linast *)
@@ -214,6 +189,8 @@ and rewrite_compound in_tail_pos rewrites (compound : compound_expr) = match com
         CMatchTry(imm,
           rewrite_body in_tail_pos rewrites body1,
           rewrite_body in_tail_pos rewrites body2)}
+  (* unlike for optimising 1 function on its own, we recurse on all linasts within a term.
+     This allows replacing tail calls to a now optimised function in already optimised nested functions *)
   | CWhile (body1, body2) ->
     {compound with desc = CWhile(rewrite_body false rewrites body1, rewrite_body false rewrites body2)}
   | CFor (id, imm1, imm2, dir, body) -> {compound with desc =
@@ -223,26 +200,16 @@ and rewrite_compound in_tail_pos rewrites (compound : compound_expr) = match com
     CFunction(args, rewrite_body (OptMutualTails.is_tail_call_optimised compound.annotations) rewrites body)}
   | _ -> compound
 
-let adjust_max_args linast = match linast.desc with
-  | LLet(id, local, block, rest) when Ident.same id args_id ->
-    {linast with desc=LLet(id, local, Compound.makeblock 0 (List.init (!max_args) (fun _ -> unit_value)), rest)}
-  | _ -> failwith "Program should start with binding for block of mutually recursive arguments"
-
 let optimise linast =
-  let original_max = !max_args in
   analyse_program linast;
   let result = rewrite_body false [] linast in
   if (!OptMutualTails.tailcall_used) && not (!OptMutualTails.tailcall_included)
   (* Add bindings for next/continue/result to top of program *)
   then (OptMutualTails.tailcall_included := true;
     binds_to_anf ~mut:[OptMutualTails.result_id; OptMutualTails.continue_id; OptMutualTails.next_id]
-      [BLet(args_id, Compound.makeblock 0 (List.init (!max_args) (fun _ -> unit_value)));
-       BLet(OptMutualTails.result_id, Compound.imm unit_value);
+      [BLet(OptMutualTails.result_id, Compound.imm unit_value);
        BLet(OptMutualTails.continue_id, Compound.imm unit_value);
        BLet(OptMutualTails.next_id, Compound.imm unit_value)]
       result)
-  (* Number of cells needed for tail call arguments has increase *)
-  else if original_max < (!max_args)
-  then adjust_max_args result
   else result
 
