@@ -20,7 +20,7 @@ let rec f x =
   if x = 0 then x else
     let a = h x in
     f a
-and e x = f x
+and e x = if x = 0 then f x else e (x-1)
 
 let b = f 5
 
@@ -34,3 +34,34 @@ and isOdd b n =
 
 let c = isEven true 10
 let d = isEven true 9
+
+(*
+Old version of tail recursion analysis:
+p : optimised on its own
+
+f : both rewritten to be mutually recursive (turn into 4 functions),
+e : despite f only ever calling itself.
+
+g : rewritten, but the wrapper function is removed due to not being used.
+h : rewritten. Not particularly useful since f only makes non-tail calls to either of them
+    so stack will still increase with each loop to f, just increases slightly slower.
+
+isEven : both actually mutually recursive
+isOdd :
+
+
+Version 2 of tail recursion analysis:
+p : p       (tail call optimised on its own)
+
+f : f       (f is tail reucrsive on its own, so it will be done separately.
+e : f e      e is then also only making tail calls to itself so also done separately.
+             The tail call from e to f doesn't have much benefit optimising, as it happens at most once. )
+
+g :         (g does make a tail call to f, but f is not defined in the same letrec group.
+h : g        Therefore, neither of these will be rewritten. )
+
+isEven : isOdd      (both really are mutually tail recursive so optimised as such)
+isOdd : isEven
+
+*)
+

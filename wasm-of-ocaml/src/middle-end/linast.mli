@@ -70,8 +70,9 @@ type annotation = Pure (* whole term/body pure *) | Fields of annotations list
   | Fail of int32
   (* TailRecursive -> LFunction can be optimised. TailCall -> this call should be rewritten as tail call *)
   | TailRecursive | TailCall
+  | SingleTailRecursive (* Should be made tail recursive on its own, so stays as one function *)
   (* Indicates that a function has been made tail recursive, so can rewrite its tail calls.
-     Kept when other annotations cleared. *)
+     Kept when other annotations cleared. Also prevents trying to tail call optimise it a second time *)
   | TailCallOptimised
 (* TODO: Can do much more complex analysis for whether mutable fields can be copied or not based on if anything
          could have actually assigned to them or not
