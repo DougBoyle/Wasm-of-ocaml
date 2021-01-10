@@ -34,7 +34,7 @@ const filesize = fs.statSync(filename).size;
         var heap_top = "sbrk" in instance.exports ? instance.exports.sbrk() : 0;
         console.log(simple_name, millis, heap_top, filesize);
     } else {
-        var buffer = await readFile('../samples/runtime.wasm');
+        var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
         var module = await WebAssembly.compile(buffer);
         var runtime = await WebAssembly.instantiate(module);
         var buffer = await readFile(filename);

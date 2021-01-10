@@ -1,0 +1,30 @@
+none
+fib 0.20639999955892563 35216 1718
+170361
+fold 2.3437000000849366 848500 1681
+4799144
+
+v1
+fib 0.07569999992847443 23140 2308
+174537
+fold 0.7772999992594123 242492 1742
+3084121
+
+v2
+fib 0.0731999995186925 23140 2308
+174537
+fold 0.8066999996080995 242492 1742
+3084121
+
+v3
+fib 0.07720000017434359 23108 2220
+174477
+fold 0.7840999998152256 242492 1742
+3084121
+
+By using a single global for the args to any recursive function,
+v3 can reduce both memory usage and file size slightly.
+If any mutually recursive function is nested within another function, v1/2 would allocate
+memory every time the outer function was called rather than just once.
+In case of fib, none has lower dynamic instruction count as overhead of calling functions not measured.
+For fold, the overhead of setting up closures of curried functions is enough that instruction count is higher.
