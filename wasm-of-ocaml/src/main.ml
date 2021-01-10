@@ -32,10 +32,7 @@ let ir_passes = [
   ("cse",  OptCSE.optimise);
   ("deadassign", OptDeadAssignments.optimise);
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
- (* ("tail", OptTailCalls.optimise);
-  ("mututal_tail", OptMutualTails.optimise); *)
- (* ("tail_v2", OptTails2.optimise); *)
-  ("tail_v3", OptTails3.optimise);
+  ("tail calls", OptTailCalls.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
 ]
 
