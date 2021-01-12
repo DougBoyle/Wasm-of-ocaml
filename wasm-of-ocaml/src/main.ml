@@ -30,6 +30,7 @@ let ir_passes = [
   ("const", OptConstants.optimise);
   ("fails", OptFails.optimise);
   ("cse",  OptCSE.optimise);
+  ("inline", Inline.optimise);
   ("deadassign", OptDeadAssignments.optimise);
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
   ("tail calls", OptTailCalls.optimise);

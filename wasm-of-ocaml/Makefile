@@ -1,6 +1,6 @@
 INCLUDES=-I src/ocaml/file_formats -I src/ocaml/lambda -I src/ocaml/driver -I src/ocaml/typing \
         -I src/ocaml/utils -I src/ocaml/parsing -I src/middle-end -I src/wasm \
-        -I src/wasmopt -I src/graph -I src
+        -I src/optimisations -I src/graph -I src
 all:
 	ocamlbuild -pkg wasm $(INCLUDES) main.byte
 ir:

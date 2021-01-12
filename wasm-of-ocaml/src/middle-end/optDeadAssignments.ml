@@ -5,6 +5,7 @@
 *)
 (* TODO: Is it useful to remove dead side effects? e.g. Seq( (), e) -> e. Likely do in other pass *)
 open Linast
+open LinastUtils
 
 let alive = ref Ident.Set.empty
 let mark id = alive := Ident.Set.add id (!alive)
@@ -27,6 +28,14 @@ let enter_compound (compound : compound_expr) = match compound.desc with
 
 (* Only change is to remove some Let bindings after processing body, so just need leave_linast *)
 let leave_linast linast = match linast.desc with
+  (* Special case where value is bound to a temporary and temporary assigned only to an exported varaible.
+     Temporary is used and variable is exported, so wouldn't otherwise be optimised.
+     Order swapped so that it may be exported in future *)
+  | LLet (id1, Local, compound,
+    ({desc = LLet(id2, Export, {desc=CImm {desc=ImmIdent id3}}, rest)} as linast2))
+    when Ident.same id1 id3 ->
+    {linast with desc=LLet(id2, Export, compound,
+    {linast2 with desc=LLet(id1, Local, Compound.imm (Imm.id id2), rest)})}
   (* Must not remove exported idents *)
   | LLet (id, Local, compound, body) when is_dead (id, compound) -> body
   (* Top of functions sometimes introduce bindings of a variable to itself, since
