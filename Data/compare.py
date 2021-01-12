@@ -255,4 +255,35 @@ def compareLocalsGlobals():
     tests, means, errors = normalise(means, errors, reference, True)
     plotAll(means, errors, tests)
 
-compareLocalsGlobals()
+def filterWhereAll(data):
+    
+    newtests = None
+    for lang in data:
+        if newtests is None:
+            newtests = data[lang].keys()
+        else:
+            newtests = [test for test in newtests if test in data[lang].keys()]
+    return {lang: {test: data[lang][test] for test in newtests}  for lang in data}
+
+def compareAgainstCompetitors():
+    data = readFile("v1.txt")
+    data = filterWhereAll(data)
+    data = {lang: data[lang] for lang in data if lang != "Grain"}
+    tests = get_all_tests(data)
+    means = collect_means(data, tests)
+    errors = collect_deviations(data, tests)
+    reference = "JS"
+    tests, means, errors = normalise(means, errors, reference, True)
+    plotAll(means, errors, tests)
+    return means, errors, tests
+
+means, errors, tests = compareAgainstCompetitors()
+
+
+# Exporting data to plot to matlab:
+# tests = ["alltrees_7", "arith_75", "composition", "funcrec", "mergesort_500"]
+# langs = ['OCaml', 'JS', 'Grain', 'C'] # data.keys()
+# timedata = "[" +
+#  "; ".join([" ".join([str(means[lang][test]["times"])
+#             for lang in langs]) for test in tests]) + "]"
+
