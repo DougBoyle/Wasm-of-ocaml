@@ -9,7 +9,7 @@ let print_wat = ref false
 
 (* Optimisation settings *)
 let opt_ir = ref true
-let num_passes_ir = ref 5 (* TODO: Determine best choice *)
+let num_passes_ir = ref 5
 let opt_graph = ref true
 let num_passes_graph = ref 5
 
@@ -18,19 +18,15 @@ If compiling multiple files together, remove this so cmi's can be used in type c
 let _ = Clflags.dont_write_files := true
 
 (* Optimisations *)
-(* With this order, analysis of fields won't be lifted up to other terms.
-   analyse_constants doesn't rely on pure/immutable annotations so should be done first?
-   TODO: Write some test programs and figure this out! *)
 let ir_analysis = [
-  AnalyseFields.analyse_constant_propagation;
-  AnalyseTags.analyse_tags;
+  AnalyseBlocks.analyse;
   AnalysePurity.analyse;
 ]
 let ir_passes = [
   ("const", OptConstants.optimise);
   ("fails", OptFails.optimise);
   ("cse",  OptCSE.optimise);
-  ("inline", Inline.optimise);
+  ("inline", OptInline.optimise);
   ("deadassign", OptDeadAssignments.optimise);
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
   ("tail calls", OptTailCalls.optimise);

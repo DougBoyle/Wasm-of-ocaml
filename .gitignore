@@ -2,6 +2,7 @@ wasm-of-ocaml/src/middle-end/ocamltransl.ml
 wasm-of-ocaml/benchmarks/js/*.js
 wasm-of-ocaml/benchmarks/results/*
 
+Data/figures/*
 Data/__pycache__/
 Data/*.png
 

@@ -277,7 +277,17 @@ def compareAgainstCompetitors():
     plotAll(means, errors, tests)
     return means, errors, tests
 
-means, errors, tests = compareAgainstCompetitors()
+def processAndPlotAll(filename, reference):
+    data = readFile(filename)
+    tests = get_all_tests(data)
+    means = collect_means(data, tests)
+    errors = collect_deviations(data, tests)
+    if reference is not None:
+        tests, means, errors = normalise(means, errors, reference, True)
+    plotAll(means, errors, tests)
+    return means, errors, tests
+
+means, errors, tests = processAndPlotAll("opts_01_13_12_46.txt", "None")
 
 
 # Exporting data to plot to matlab:

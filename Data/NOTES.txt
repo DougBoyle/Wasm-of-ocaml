@@ -48,8 +48,11 @@ compareoptsGlobals - The same but with optimisation to avoid putting globals in 
 pats_01_03_22_19 - all passes enabled with 5 iterations, same set as in compareoptsLocals,
   old vs optimised pattern matching algorithm.
 
+competitors_without_opts - Ocaml (unoptimised), Grain, Js and C all compared on just the tests they have in common
 
-
+opts_12_30_13_36 - Comparison of None/IR/Graph/All opts. No inlining or tail calls.
+opts_01_13_12_46 - Comparison of None/IR/Graph/All opts (with pattern matching optimised on all).
+	new data is that tailcall optimisation and inlining were added on this version.
 
 
 

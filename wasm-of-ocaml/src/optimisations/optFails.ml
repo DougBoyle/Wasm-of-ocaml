@@ -14,7 +14,7 @@ let copy_fail from_annots to_annots =
 let rec rewrite_fail i body handler = match body.desc with
   | LCompound {desc=CMatchFail j}
   (* Below cases should never actually occur, just included for completeness.
-     Could technically include lletrec too, but that only every binds functions *)
+     Could technically include lletrec too, but that only ever binds functions *)
   | LSeq ({desc=CMatchFail j}, _) | LLet (_, _, {desc=CMatchFail j}, _) when i = j -> handler
   (* Assume that body will trigger fail i (so no guards), else rewrite_fail should not have been called *)
   | LSeq (compound, body) -> LinastExpr.seq compound (rewrite_fail i body handler)

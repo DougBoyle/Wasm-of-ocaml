@@ -3,9 +3,7 @@ open Linast
 open Types
 open CompileMatch
 open LinastUtils
-
-let rec take n l = if n = 0 then ([], l) else
-  match l with [] -> assert false (* Should never happen *) | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
+open Utils
 
 (* c_rhs isn't actually examined to work out if a pattern is partial or not, since that only
    depends on the pattern and guard, so a dummy expression is put in its place.  *)

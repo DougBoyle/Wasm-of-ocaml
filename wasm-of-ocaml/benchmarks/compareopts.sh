@@ -1,11 +1,13 @@
 #!/usr/bin/bash
 # run all benchmarks with different sets of optimisations enabled
+# Just run on the larger version of each test, to get better idea if improvement achieved
 cd $(dirname $BASH_SOURCE)
 ITERS=10
 {
   >&2 echo "Starting no optimisations"
   echo None
-  for file in *.ml
+#  for file in *.ml
+  for file in {alltrees_10,arith_1000,composition,funcrec,mergesort_4000,nbody_1000}.ml
   do
 	  NAME=$(basename $file .ml)
 	  ../main.byte -d out $file -Nopt-ir -Nopt-graph
@@ -20,7 +22,8 @@ ITERS=10
 
   >&2 echo "Starting IR optimisations"
   echo Ir
-  for file in *.ml
+#  for file in *.ml
+  for file in {alltrees_10,arith_1000,composition,funcrec,mergesort_4000,nbody_1000}.ml
   do
 	  NAME=$(basename $file .ml)
 	  ../main.byte -d out $file -Nopt-graph
@@ -35,7 +38,8 @@ ITERS=10
 
  >&2 echo "Starting Graph optimisations"
   echo Graph
-  for file in *.ml
+#  for file in *.ml
+  for file in {alltrees_10,arith_1000,composition,funcrec,mergesort_4000,nbody_1000}.ml
   do
 	  NAME=$(basename $file .ml)
 	  ../main.byte -d out $file -Nopt-ir
@@ -50,7 +54,8 @@ ITERS=10
 
   >&2 echo "Starting all optimisations"
   echo All
-  for file in *.ml
+#  for file in *.ml
+  for file in {alltrees_10,arith_1000,composition,funcrec,mergesort_4000,nbody_1000}.ml
   do
 	  NAME=$(basename $file .ml)
 	  ../main.byte -d out $file

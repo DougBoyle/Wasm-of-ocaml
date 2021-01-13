@@ -1,13 +1,15 @@
 #!/usr/bin/bash
+# Shared tests are: alltrees_7, arith_75, composition, funcrec, mergesort_500, nbody_100
 cd $(dirname $BASH_SOURCE)
 ITERS=5
 {
   >&2 echo "Starting OCaml"
   echo OCaml
-  for file in *.ml
+#  for file in *.ml
+  for file in {alltrees_7,arith_75,composition,funcrec,mergesort_500,nbody_100}.ml
   do
 	  NAME=$(basename $file .ml)
-	  ../main.byte -d out $file
+	  ../main.byte -d out $file -Nopt-ir -Nopt-graph
 	  ocamlfind ocamlc -o js/${NAME}.byte -linkpkg -package js_of_ocaml,js_of_ocaml-ppx $file
 	  js_of_ocaml js/${NAME}.byte
 	  rm ${NAME}.cmi
@@ -59,7 +61,8 @@ ITERS=5
   >&2 echo "Starting C"
   echo
   echo C
-  for file in *.c
+#  for file in *.c
+  for file in {alltrees_7,arith_75,composition,funcrec,mergesort_500,nbody_100}.c
   do
 	  NAME=$(basename $file .c)
 	  if grep -q "#include" $file
