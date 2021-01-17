@@ -1,6 +1,6 @@
 \chapter{Implementation}
 
-\section{Administrative Normal Form}
+\section{Administrative Normal Form IR}
 % Reference for ANF?
 From OCaml's Typedtree data structure, the first pass of the compiler translates programs to administrative normal form (also called A-normal form or just ANF), which linearises the syntax tree so that the operands to operations are always constants or idnetifiers, with the exception of control flow construsts such as if/while statements. For example:
 
@@ -20,11 +20,84 @@ Linearising is implemented using three mutually recursive functions which compil
 % Give actual examples of code translation/algorithm cases?
 % OCaml primitives handling?
 
-This is achieved by translation to the \verb|Linast| (Linear AST) datatype, which also replaces patterns in the Typedtree with the code needed to evaluate them. This includes combining the cases of a match or function into a single expression, making use of switch statements on integers where possible. Pattern matching was initially done with a naive method of trying each pattern in sequence, moving on to the next if that failed. \\
-% How much to explain vs just reference the paper? Not my ideas so no marks to be gained, or want to show complexity for implementing difficult algorithm?
-Once a working compiler was achieved, this was replaced with a more efficient approach which is the first algorithm described by Fessant and Maranget \cite{ocamlpatternmatch}.  The idea is to represent each pattern as a row of an $n \times m$ matrix, with an action associated with each row in the event that pattern matches, and a vector of values to perform pattern matching against. Pattern matching is then divided into a number of cases based on the first column of the matrix. For example, if every pattern in the first column is a constructor pattern, the matrix can be 'specialised' for each possible constructor. This involves filtering out only the rows $c(q_1, \dots, q_k) \ p_2 \ \dots\ p_m$ which match a constructor $c$, then unwrapping the sub-patterns to get new rows $q_1 \ \dots\ q_k \ p_2 \ \dots\ p_m$. This gives the matrix to use for pattern matching, after a switch statment determines that the first values is constructor $c$, so doing this for each possible constructor will give a switch statement which performs pattern matching. 
+\section{Pattern Matching}
+The linearised intermediate representation also compiles patterns in OCaml's \verb|Typedtree| datatype to the code required to match them and bind variables within patterns. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
 
-% Guards?
+I chose to implement the backtracking pattern matching compiler described by Fessant and Maranget \cite{ocamlpatternmatch}, which is also used in the OCaml compiler. A backtracking compiler minimises the size of the code generated, whereas a decision tree compiler may produce larger code but ensures that each pattern is examined at most once. The Grain compiler instead implements a decision tree compiler, however both approaches have similar performance once optimised.
+
+% Description of algorithm in paper
+The basic algorithm represents the patterns to compile by a vector of values to be matched and a matrix, where each row is a corresponding vector of patterns to match against (where rows are tried in top to bottom order) plus some code, called an action, to execute if the values match that row. The handling of guard statements is not described. Without guards, when the algorithm reaches a $m \times 0$ matrix (so each row has an empty vector of patterns left to match), the pattern has now been matched so the action of the top row is returned. To handle guards, each row of the matrix is augmented to also have an optional compiled guard expression. When an $m \times 0$ matrix is reached, this compiles to a series of if-then-else tests of the guards of each row until a row without a guard is reached. If all rows are guarded, then we eventually reach a $0 \times 0$ matrix which corresponds to pattern matching having failed, so we escape to the enclosing statement testing any other patterns or trap if there is nothing else to test. \\
+As guard expressions can include variables bound by the pattern, bindings introduced by pattern matching also need to be kept separate from the action to perform when a match succeeds. This allows the guard expression to be inserted between these bindings and the body of the action, which must only execute if the guard succeeds. \\
+For describing examples, $p$ represents a pattern, $a$ is an action, $g$ is an (optional) guard expression, and $b$ are binds introduced by pattern matching. $v$ is the first value being matched against.
+
+Escaping out of failed matches is achieved by the intermediate representation having static exceptions in the form of a \verb|fail i| and \verb|try ... with i ...| expression. Therefore, the algorithm just remembers the closest enclosing handler at any point and escapes to that when pattern matching fails. Although regular exceptions are challenging to implement in WebAssembly, these static exceptions compile to simple blocks with branch instructions to escape out of depending on if the expression succeeds or fails.
+
+% Mention that bindings and the actual action need to be kept separate so that the guard can be checked between them?
+Another complication is the additional cases that need to be checked for. The described algorithm considers three types of patterns which are variables $\_$ or $x$ (where the latter generates a binding of the value to $x$ when it is matched), constructors $c(p_1, \dots, p_k)$ and or patterns $(p_1 | p_2)$. Compilation can then be broken down into a handful of cases based on the patterns in the first column of the matrix. If every pattern is a variable pattern, then the first value and first column of the matrix can be discarded after binding the value to any non-wildcard variables for each row. 
+
+$
+\begin{pmatrix}
+x & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
+y & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
+\_ & p^3_2 & \dots & p^3_n & \to & a^3 & g^3 & b^3
+\end{pmatrix}
+\to
+\begin{pmatrix}
+ p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, x=v) \\
+ p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & (b^2, y=v) \\
+ p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
+\end{pmatrix}
+$
+
+If instead every pattern is a constructor pattern, then the matrix is compiled into a switch statement on the variant tag of the first value. A case is generated for each constructor present in the matrix, where the body of the switch case is the result of compiling the matrix with all rows with incompatible constructors discarded, and any sub-patterns of the constructor pattern extracted out and appended to the front of each row. 
+
+$
+\begin{pmatrix}
+c(q_1, \dots, q_k) & p^1_2 & \dots & p^1_n & \to & \dots \\
+c'(\dots) & p^2_2 & \dots & p^2_n & \to & \dots \\
+\end{pmatrix}
+\xrightarrow{\text{specialise } c}
+\begin{pmatrix}
+ q_1 & \dots & q_k & p^1_2 & \dots & p^1_n  & \to & \dots 
+\end{pmatrix}
+$
+
+Although this is described as one rule, there are many types of OCaml patterns which are all treated as constructors and need to be handled slightly differently. Tuples are treated as a constructor type with a single variant, so a switch statements is not required, just extracting each of the values contained from the tuple and corresponding patterns. Records are similarly treated as a constructor type with only one variant. As each pattern may match different fields of the record, the fields extracted are the union of the fields mentioned by each row. Where a field is extracted but a row does not match on that field, a wildcard pattern is introduced in the row to effectively ignore that extracted value.  Fields in a record which no pattern mentions are ignored entirely.
+
+$
+\begin{pmatrix}
+\{f_1=q_1\} & p^1_2 & \dots & p^1_n & \to & \dots \\
+\{f_2=q_2\} & p^2_2 & \dots & p^2_n & \to &\dots \\
+\{f_1=q_3; f_2=q_4\} & p^3_2 & \dots & p^3_n & \to &\dots
+\end{pmatrix}
+\to
+\begin{pmatrix}
+q_1 & \_ & p^1_2 & \dots & p^1_n  & \to & \dots \\
+\_ & q_2 & p^2_2 & \dots & p^2_n  & \to & \dots \\
+ q_3 & q_4 & p^3_2 & \dots & p^3_n  & \to & \dots
+\end{pmatrix}
+$
+
+Patterns for arrays in OCaml look like \verb"[|p1, p2, ..., pk|]" and match an array of a specific length. Arrays are tagged with their length so an array of a certain type can be viewed as a constructor with infinitely many variants, each variant having arity equal to the length of array it matches. This therefore becomes a switch statement on the length of the array, and must always introduce a default case since there are infinitely many variants so the match cannot be exhaustive. Integer constants are similarly handled as a constructor with infinitely many variants, except that these variants all have arity 0 as there are no sub-patterns to match. Floating point constants can be pattern matched in OCaml however these must be compiled to nested if-then-else statements, since my IR only allows switching on integers, either an integer constant or the tag of some constructor. This means switch statements can always be compiled as branch tables in WebAssembly later. \\
+If neither of the previous rules apply then either the matrix contains a single row starting with an or pattern, which can be expanded into multiple rows, or the matrix is split into an upper or lower part where each can be checked recursively, with a failure in the upper matrix being handled by trying the lower matrix.\\
+The last feature of the OCaml language that needs supporting is aliases, for example \verb"match v with ((x::xs) as lst) -> ...". These are handled by always preprocessing the first column of the matrix to replace aliases in each row with a binding of the first value to the aliased variable. Preprocessing also simplifies any or patterns in the first column, replacing \verb"(_|p)" with just \verb|_| since the second part of the or pattern would never be considered.
+
+
+$
+\begin{pmatrix}
+(p^1_1\ \mathrm{as}\ q) & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
+(\_ | p^2_1) & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
+p^3_1 & p^3_2 & \dots & p^3_n & \to & a^3 & g^3 & b^3
+\end{pmatrix}
+\to
+\begin{pmatrix}
+ p^1_1 & p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, q=v) \\
+\_ & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2 \\
+p^3_1 & p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
+\end{pmatrix}
+$
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Compiling Identifiers}
@@ -45,7 +118,82 @@ I also wrote a runtime in WebAssembly providing functions for memory allocation,
 Although I did not implement a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are not needed. I therefore tag integers as 10 or 00 by shifting them left one, function as 11, and other blocks from tuples or constructors as 01. In the last case, data blocks are represented as a variant tag, their arity, then the elements they contain. As OCaml limits the number of different constructors supported% Reference required
 , the variant tag is guaranteed to be a non-negative integer. Therefore, -1 was used to encode floats, which were separately represented as -1 followed by the 64-bit float value. This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
 
+\section{Optimisations}
+\subsection{Tail calls}
+Tail call optimisation is an important optimisation for functional languages, since loops in a pure functional language are written as recursive functions. Therefore, implemented naively a long iteration can easily exhaust the available stack space. This is avoided by wrapping the body of the function in a while loop and replacing the tail call with code that saves the arguments the function would have been called with and updates a variable to say the loop should not exit yet. This is extended to mutually tail recursive functions by additionally storing which function should be called next when a tail call is reached.
+
+% Don't need so much detail?
+The optimisation is done in two passes, the first of which just identifies which functions to tail call optimise. As the linearised tree for the program is traversed, we keep track of whether we are in a tail call position or not and, if we are, which function body we are in. The linearised format makes this easy to decide. \\
+% Body could be a tail call, not that we currently are a tail call
+\begin{itemize} % TODO: Find better way to describe this
+\item The body of a recursive binding to a variable \verb|f| is traversed as being a tail call position for the function \verb|f|.
+\item The body of a non-recursive binding or first part of a sequence is not a tail call position.
+\item The condition and body of a while loop and the body of a for loop or anonymous function are not tail call positions.
+\item If the current position is viewed as a tail call position for some function \verb|f|, then so is the body of each branch of an if statement or switch statement.
+\item If the current position is viewed as a tail call position for some function \verb|f|, then so is the remaining expression after a recursive or non-recursive binding or first part of a sequence.
+\end{itemize}
+These rules allow keeping track of whether an application is in a tail call position or not as the tree is traversed. Each variable declared by a recursive binding to a function is also added to an initially empty table \verb|tbl| and mapped to an empty set of variables and the function's arity. When an application of \verb|g| is found in a tail call position for some function \verb|f|, we check two things. First, \verb|g| must be known at compile time to be one of the recursive functions declared in the program and therefore present in \verb|tbl|. 
+% TODO: Is this obvious
+This is because we can only rewrite tail calls to functions optimised to make tail calls, the reason for which will be apparent when the changes made to functions are described below.
+Second, the number of arguments applied to \verb|g| must match the arity recorded for \verb|g| in the table. This allows curried functions to be tail call optimised. If the function is under-applied, then we do not have all of the arguments ready to evaluate it so it can not be tail called yet. If the function is over-applied, then the result of calling \verb|g| cannot be returned immediately so this is again not a tail call. if both conditions are satisfied, we add \verb|g| to the set of variables \verb|f| is mapped to in \verb|tbl|.
+
+At the end of this process, we have a table which stores the functions that are tail called within each recursive function. From this we determine which functions to tail call optimise on their own, and which to optimise as mutually tail recursive functions (which has a greater impact on code size since the function must be split into two functions). 
+% TODO: Should make this more efficient to do proper cycle detection? Currently very poor performance?
+\begin{verbatim}
+while tbl changing:
+  for each f in tbl:
+    if f makes no tail calls:
+      remove f from the calls all other functions make
+      remove f from tbl
+    else if f only tail calls itself:
+      remove f from the calls all other functions make
+      optimise f on its own
+\end{verbatim}
+There is little to gain from rewriting a function which makes no tail calls, so these are not optimised and hence no other function can optimise tail calls to them. Due to the added code bloat of optimising a function for mutually recursive tail calls rather than just tail calls to itself, a function which could only optimise calls to itself is optimised separately and tail calls from other functions to it are also removed. This leaves us with all other functions benefiting from being made mutually tail recursive.\\
+
+% TODO: Better to just give pseudocode and leave out the details?
+For a function \verb|f| taking argument \verb|x| which is to be made mutually recursive on its own, we create new variables \verb|next|, \verb|continue| and \verb|x'|. The argument of \verb|f| is changed to be \verb|x'| and the body of \verb|f| is then replaced with an assignment \verb|x = x'| and a while loop on the \verb|continue| variable. This loop sets \verb|continue| to false and \verb|result| to the result of evaluating the original body of \verb|f|. A tail call \verb|f(y)| is replaced with \verb|x = y; continue = true|. This will therefore execute the body of \verb|f| again with the new argument each time a tail call occurs. When the loop eventually exists, \verb|result| is the value the function returns. When \verb|f| is a curried function with multiple arguments, this is handled the same way but with a new variable \verb|x'| created for each argument \verb|x|.
+% Mention that linearised tree may need to be rewritten
+
+\begin{minipage}{0.3\textwidth}
+\begin{verbatim}
+let rec f x = 
+  ...
+  f(y)
+\end{verbatim}
+\end{minipage}
+\hfill
+\begin{minipage}{0.6\textwidth}
+\begin{verbatim}
+let rec f x' = 
+  continue = true; result = 0; x = x';
+  while (continue){
+    continue = false;
+    result = {
+      ...
+      x = y; continue = true
+    }
+  }
+  result
+\end{verbatim}
+\end{minipage}
+
+Above we were able to include the body of the function in the new function. For mutually tail recursive functions, the while loop must execute one of a number of mutually recursive functions so this is not possible. Instead, the body of \verb|f| is moved to a new function \verb|_f| taking just a unit argument and the new function \verb|f| just executes a while loop, calling a function selected by a variable \verb|next|.
+
 % Describe graphs
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
