@@ -74,7 +74,8 @@ type immediate =
 
 type closure_data = {
   func_idx: int32;
-  arity: int32; (* TODO: Just an annotation, not actually useful information? *)
+  arity: int32; (* 2 (closure + last arg) for all functions except main (where it is 0) *)
+  curried_args: int;
   variables: immediate list; (* How are these used? *)
 } 
 

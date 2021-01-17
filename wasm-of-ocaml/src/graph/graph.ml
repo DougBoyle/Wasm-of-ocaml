@@ -158,9 +158,8 @@ let link_to instr goes_to =
    Can't get from Labels as jump != fall through for Loop blocks *)
 (* TODO: Should 'unreachable' be treated specially? Seeing as it can never actually be reached, should unlink any edges *)
 let rec process_instrs on_exit labels = function
-  (* TODO: Probably need a 1-element list case? *)
-  (* Should this case ever actually occur? Maybe in empty function? In which case it shouldn't have been generated *)
-  | [] -> failwith "Empty instructions"
+  (* only happens when one side of an If block is empty *)
+  | [] -> ()
   (* Blocks *)
   | {it=Block(_, body)}::rest -> (match get_start rest with
     (* end of this block, so branches out of this block go to whatever is in on_exit *)

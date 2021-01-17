@@ -9,16 +9,12 @@ open LinastUtils
 type compile_env = {
     binds : binding Ident.tbl;
     stack_idx : int;
-    arity : int;
 }
 
 let initial_env = {
     binds = Ident.empty;
     stack_idx = 0;
-    arity = 0;
 }
-
-
 
 (* Function index for doing lambda lifting *)
 let lift_index = ref 0
@@ -74,7 +70,6 @@ type work_body =
 type work_element = {
     body : work_body;
     env : compile_env;
-    arity : int;
     idx : int;
     stack_size : int;
 }
@@ -105,6 +100,11 @@ let compile_imm env (i : imm_expr) =
   | ImmConst c -> MImmConst(compile_const c)
   | ImmIdent id -> MImmBinding(find_id id env)
 
+let rec get_last acc = function
+  | [] -> failwith "Function of no arguments found"
+  | [x] -> x, acc
+  | x::xs -> get_last (x::acc) xs
+
 let compile_function env args body : closure_data =
   (* Safe to keep any globals in the environment for compiling the function body *)
   let global_vars, global_binds = Ident.fold_all (fun id bind (vars, tbl) -> match bind with
@@ -112,24 +112,26 @@ let compile_function env args body : closure_data =
      | _ -> vars, tbl
     ) env.binds ([], Ident.empty) in
 
-  let arg, rest = match args with x::xs -> x, xs | _ -> failwith "Function of no args" in
+  (* last is accessed as a local, rest accessed  from closure.
+     Also accessed in reverse order i.e. very first argument is at the end of the 'args' section *)
+  (* let arg, rest = match args with x::xs -> x, xs | _ -> failwith "Function of no args" in  *)
+  let last_arg, curried_args = get_last [] args in
   let free_var_set = free_vars (Ident.Set.of_list (global_vars @ args)) body in
 
   let free_vars = Ident.Set.elements free_var_set in
- (* ClosureBind represents variables accessed by looking up in closure environment.
+ (* ClosureBind represents variables accessed by looking up in closure environment. (including curried function args)
     Set is built off of global_binds, a table of the preserved bindings *)
   let free_binds = Utils.fold_lefti (fun acc closure_idx var ->
       Ident.add var (MClosureBind(Int32.of_int closure_idx)) acc)
-      global_binds free_vars in
+      global_binds (curried_args @ free_vars) in
   let closure_arg = Ident.create_local "$self" in
   (* Closure is made available in function by being an added first argument *)
   (* Unroll currying here, so only ever 2 args *)
-  let new_args = [closure_arg; arg] in
+  let new_args = [closure_arg; last_arg] in
   let arg_binds = Utils.fold_lefti (fun acc arg_idx arg ->
       Ident.add arg (MArgBind(Int32.of_int arg_idx)) acc)
       free_binds new_args in
   let idx = next_lift() in (* function index to access function in WebAssembly *)
-  let arity = 2 (* List.length new_args TODO: Remove arity field, always 2 (besides toplevel main?) *) in
   (* Number of vars declared in body hence number of locals added.
      ASSERTION: At least as large as final stack_idx when compiling.
                 If larger, just get unused slots. If too small, get out of bounds local accesses. *)
@@ -137,22 +139,20 @@ let compile_function env args body : closure_data =
   let func_env = {
     binds=arg_binds;
     stack_idx=0;
-    arity=arity;
   } in
   let worklist_item = {
-    (* Unfold currying here *)
-    body=Lin (match rest with [] -> body | _ -> LinastExpr.compound (Compound.mkfun rest body));
+    body = Lin body;
     env=func_env;
     idx;
-    arity;
     stack_size;
   } in
   worklist_add worklist_item;
   {
     func_idx=(Int32.of_int idx);
-    arity=(Int32.of_int arity); (* Should remove, always going to be 2? *)
+    arity=2l;
     (* These variables should be in scope when the lambda is constructed. *)
     variables=(List.map (fun id -> MImmBinding(find_id id env)) free_vars);
+    curried_args=List.length curried_args;
   }
 
 (* Compile_wrapper only used in process_imports for Wasmfunctions. Allows treating wasm function as closure?
@@ -174,7 +174,7 @@ let rec compile_comp env (c : compound_expr) =
   | CFor(id, start, finish, dir, body) ->
     let start_bind = MLocalBind(Int32.of_int (env.stack_idx)) in
     let end_bind = MLocalBind(Int32.of_int (env.stack_idx + 1)) in (* Don't re-evaluate limits of loop *)
-    let new_env = {env with binds=Ident.add id start_bind env.binds; stack_idx=env.stack_idx + 2} in
+    let new_env = {binds=Ident.add id start_bind env.binds; stack_idx=env.stack_idx + 2} in
     MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish, compile_linast false new_env body)
   | CUnary(op, arg) ->
     MUnary(op, compile_imm env arg)
@@ -220,7 +220,7 @@ and compile_linast toplevel env expr =
    let new_env = List.fold_left (fun acc (new_loc, (id, _, _)) -> (* - Should use global field?? *)
        (* Cautious/simple approach - may end up using more stack variables than necessary.
           This is unrelated to free vars. Determines the number of local slots to include in a function *)
-       {acc with binds=Ident.add id new_loc acc.binds; stack_idx=acc.stack_idx + 1})
+       {binds=Ident.add id new_loc acc.binds; stack_idx=acc.stack_idx + 1})
        env binds_with_locs in
        let wasm_binds = List.fold_left (fun acc (loc, (_, _, rhs)) ->
            (loc, (compile_comp new_env rhs)) :: acc)
@@ -232,7 +232,7 @@ and compile_linast toplevel env expr =
      | Local | Mut -> MGlobalBind(next_global id))
      else MLocalBind(Int32.of_int (env.stack_idx)) in (* Should never see 'Global' if not toplevel *)
    (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
-   let new_env = {env with binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
+   let new_env = {binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
     match global with Local | Mut -> 1 | Export -> 0} in
    let wasm_binds = [(location, (compile_comp env bind))] in
    MStore(wasm_binds) :: (compile_linast toplevel new_env body)
@@ -252,9 +252,9 @@ let fold_left_worklist f base =
   help base
 
 let compile_remaining_worklist () =
-  let compile_one funcs ((({idx=index; arity; stack_size}) as cur) : work_element) =
+  let compile_one funcs ((({idx=index; stack_size}) as cur) : work_element) =
     let body = compile_work_element cur in
-    {index=Int32.of_int index; arity=Int32.of_int arity; body; stack_size;}::funcs in
+    {index=Int32.of_int index; arity=2l; body; stack_size;}::funcs in
   List.rev (fold_left_worklist compile_one [])
 
 let transl_program (program : linast_expr) : binds_program =
