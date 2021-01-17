@@ -540,6 +540,7 @@ and compile_instr env instr =
     let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
     let compiled_args = List.map (compile_imm env) args in
     let get_closure = get_swap env 0 in
+    let tee_closure = tee_swap env 0 in
     let set_closure = set_swap env 0 in
     let get_copied = get_swap env 1 in (* indicates copying not necessary, and untagged closure is in swap 0 *)
     let set_copied = set_swap env 1 in
@@ -553,7 +554,12 @@ and compile_instr env instr =
       set_closure @ get_copied @ [Graph.If (ValBlockType None,
        [],
        List.map add_dummy_edges
-         (const_true @ set_copied @ get_closure @ (toggle_tag Closure) @ [call_copy_closure env] @ set_closure))] @
+         (const_true @ set_copied @ get_closure @ (toggle_tag Closure) @
+         (* Should only call_copy_closure if more than 1 arg left, otherwise wasteful.
+            Again, increased code size/time vs memory usage. (could maybe extract to a runtime function) *)
+          tee_closure @ [load ~offset:8l ()] @ [Graph.Test(Values.I32 Ast.IntOp.Eqz);]
+          @ [Graph.BrIf (add_dummy_loc 0l)] @ get_closure @
+          [call_copy_closure env] @ set_closure))] @
 
       get_closure @ [load ~offset:8l ()] @ tee_count @
        [Graph.If (ValBlockType (Some Types.I32Type),
