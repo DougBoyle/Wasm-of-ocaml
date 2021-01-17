@@ -48,6 +48,58 @@
     i32.const 1 ;; data block tag
     i32.or
   )
+  ;; given an already untagged closure pointer, copy its contents to a new closure and leave that untagged
+  ;; just size of environment (bytes),
+  ;; more efficient to directly copy known fields than to do extra address calculations
+  ;; closure structure is [func_idx, num_elements (size), num_free_vars, elements...]
+  ;; copy first 2 fields, then num_elements extra fields
+  (func $copy_closure (export "copy_closure") (param $c i32) (result i32)
+    (local $c2 i32) (local $size i32)
+    local.get $c
+    i32.load offset=4
+    local.tee $size
+    i32.const 12
+    i32.add
+    call $alloc ;; get block for copied closure
+
+    local.tee $c2
+    local.get $c ;; func_idx
+    i32.load
+    i32.store
+
+    local.get $c2
+    local.get $size ;; num_elements
+    i32.store offset=4
+
+    local.get $c2
+    local.get $c ;; args left
+    i32.load offset=8
+    i32.store offset=8
+
+    block
+      loop ;; copy environment
+        local.get $size
+        i32.eqz
+        br_if 1
+
+        local.get $c2 ;; store address
+        local.get $size
+        i32.const 4
+        i32.sub
+        local.tee $size
+        i32.add
+
+        local.get $c ;; load address
+        local.get $size
+        i32.add
+
+        i32.load offset=12
+        i32.store offset=12
+        br 0
+      end
+    end
+    local.get $c2
+  )
   (func $compare (export "compare") (param $v1 i32) (param $v2 i32) (result i32)
     (local $x i32) (local $arity i32) (local $i i32) (local $f1 f64) (local $f2 f64)
     block

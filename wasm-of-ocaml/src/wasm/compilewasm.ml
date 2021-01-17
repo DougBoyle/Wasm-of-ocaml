@@ -40,6 +40,7 @@ let swap_slots = [Types.I32Type; Types.I32Type]
 (* Primitives still not translated to idents at this stage - aids constant propagation if I want to do at this level *)
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let alloc_ident = Ident.create_persistent "alloc"
+let copy_closure_ident = Ident.create_persistent "copy_closure"
 let compare_ident = Ident.create_persistent "compare"
 let abs_ident = Ident.create_persistent "abs"
 let min_ident = Ident.create_persistent "min"
@@ -50,6 +51,7 @@ let make_float_ident = Ident.create_persistent "make_float"
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
 let runtime_imports = [
   { mimp_name=alloc_ident; mimp_type=([I32Type], [I32Type]); };
+  { mimp_name=copy_closure_ident; mimp_type=([I32Type], [I32Type]); };
   { mimp_name=compare_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
   { mimp_name=abs_ident; mimp_type=([I32Type], [I32Type]); };
   { mimp_name=min_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
@@ -73,6 +75,7 @@ let lookup_runtime_func env itemname =
 let var_of_runtime_func env itemname =
   add_dummy_loc @@ lookup_runtime_func env itemname
 let call_alloc env = Graph.Call(var_of_runtime_func env alloc_ident)
+let call_copy_closure env = Graph.Call(var_of_runtime_func env copy_closure_ident)
 let call_compare env = Graph.Call(var_of_runtime_func env compare_ident)
 let call_abs env = Graph.Call(var_of_runtime_func env abs_ident)
 let call_min env = Graph.Call(var_of_runtime_func env min_ident)
@@ -512,16 +515,17 @@ and compile_instr env instr =
       (* get block to jump to *)
       | _ -> [Graph.Br (add_dummy_loc (List.assoc j env.handler_heights))])
   | MAllocate(alloc) -> (* New - currying appeared to not work before *)
-  let new_backpatches = ref [] in
-  let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in
-  let do_backpatch (lam, {func_idx;variables}) =
+    let new_backpatches = ref [] in
+    (* TODO: Tidy up to better suit single allocation. Currently just a modified version of letrec backpatching *)
+    let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in
+    let do_backpatch (lam, {func_idx;variables}) =
+      if variables = [] then [] else
       let get_swap = get_swap env 0 in
+      let set_swap = set_swap env 0 in
       let tee_swap = tee_swap env 0 in
-      (* TODO: Should skip if nothing to backpatch? *)
-      let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
+      let backpatch_var idx var =
         get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
-      (* Takes tag off, puts vars in, puts tag back on. TODO: Reduce number of times tag added/removed *)
-      (untag Closure) @ tee_swap @ (List.flatten (List.mapi backpatch_var variables)) @ (untag Closure) in
+      tee_swap @ get_swap @ (untag Closure) @ set_swap @ (List.flatten (List.mapi backpatch_var variables)) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
     instrs @ (List.flatten (List.map do_backpatch (!new_backpatches)))
 
