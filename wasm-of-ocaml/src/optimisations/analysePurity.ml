@@ -160,9 +160,11 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     (* Encodes currying by nesting fields. Each partial function is pure/immutable *)
     let function_annotations =
       (List.fold_left (fun annots _ -> ref [Pure; Immutable; Fields [annots]]) body.annotations args) in
-    (* Need to remember if function has been tail call optimised *)
+    (* Need to remember if function has been tail call optimised/expects args as a tuple *)
     if List.mem TailCallOptimised (!(compound.annotations))
       then function_annotations := TailCallOptimised :: (!function_annotations);
+    if List.mem Tupled (!(compound.annotations))
+      then function_annotations := Tupled :: (!function_annotations);
     compound.annotations <- function_annotations
   | CAssign _ -> ()
 

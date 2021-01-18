@@ -70,6 +70,7 @@ type work_body =
 type work_element = {
     body : work_body;
     env : compile_env;
+    arity : int;
     idx : int;
     stack_size : int;
 }
@@ -90,8 +91,6 @@ let compile_const (c : Asttypes.constant) =
   | Const_float f_str -> MConstF64 (float_of_string f_str)
   | Const_int32 i32 -> MConstI32 i32
   | Const_int64 i64 -> MConstI64 i64 (* TODO: Should this be supported currently? Likely fails in practice *)
- (* | Const_bool b -> if b then const_true else const_false  TODO: Handle bools specially at Linast level
-    Could modify the OCaml compiler, but that would affect type checking so probably don't want to *)
   | Const_char c -> failwith "Characters not yet supported"
   | Const_nativeint _ -> failwith "Native ints not yet supported"
 
@@ -100,15 +99,16 @@ let compile_imm env (i : imm_expr) =
   | ImmConst c -> MImmConst(compile_const c)
   | ImmIdent id -> MImmBinding(find_id id env)
 
-let compile_function env args body : closure_data =
+let compile_function env args body tupled : closure_data =
   (* Safe to keep any globals in the environment for compiling the function body *)
   let global_vars, global_binds = Ident.fold_all (fun id bind (vars, tbl) -> match bind with
      |  MGlobalBind _ -> id::vars, Ident.add id bind tbl
      | _ -> vars, tbl
     ) env.binds ([], Ident.empty) in
 
-  let arg, rest = match args with x::xs -> x, xs | _ -> failwith "Function of no args" in
   let free_var_set = free_vars (Ident.Set.of_list (global_vars @ args)) body in
+  let args, rest = if tupled then args, []
+    else match args with x::xs -> [x], xs | _ -> failwith "Function of no args" in
 
   let free_vars = Ident.Set.elements free_var_set in
  (* ClosureBind represents variables accessed by looking up in closure environment.
@@ -119,7 +119,7 @@ let compile_function env args body : closure_data =
   let closure_arg = Ident.create_local "$self" in
   (* Closure is made available in function by being an added first argument *)
   (* Unroll currying here, so only ever 2 args *)
-  let new_args = [closure_arg; arg] in
+  let new_args = closure_arg::args in
   let arg_binds = Utils.fold_lefti (fun acc arg_idx arg ->
       Ident.add arg (MArgBind(Int32.of_int arg_idx)) acc)
       free_binds new_args in
@@ -135,20 +135,21 @@ let compile_function env args body : closure_data =
   let worklist_item = {
     body=Lin (match rest with [] -> body | _ -> LinastExpr.compound (Compound.mkfun rest body));
     env=func_env;
+    arity=List.length new_args;
     idx;
     stack_size;
   } in
   worklist_add worklist_item;
   {
     func_idx=(Int32.of_int idx);
-    arity=2l;
+    arity=Int32.of_int (List.length new_args);
     (* These variables should be in scope when the lambda is constructed. *)
     variables=(List.map (fun id -> MImmBinding(find_id id env)) free_vars);
   }
 
-(* Compile_wrapper only used in process_imports for Wasmfunctions. Allows treating wasm function as closure?
-   Not needed, as wasm_functions are just runtime calls, can map to directly. *)
-
+(* Store which Idents are to functions to be called as tupled rather than curried.
+   Only marked as such if already verified that all calls must use that ident (and calls rewritten to fully apply) *)
+let tupled_functions = ref Ident.Set.empty
 
 (* BULK OF CODE *)
 let rec compile_comp env (c : compound_expr) =
@@ -183,11 +184,15 @@ let rec compile_comp env (c : compound_expr) =
     MDataOp(MGetTag, compile_imm env obj)
   | CMatchTry (i, body1, body2) ->
     MTry(i, compile_linast false env body1, compile_linast false env body2)
+  | CFunction(args, body) when List.mem Tupled (!(c.annotations)) ->
+    MAllocate(MClosure(compile_function env args body true))
   | CFunction(args, body) ->
-    MAllocate(MClosure(compile_function env args body))
+    MAllocate(MClosure(compile_function env args body false))
+  | CApp(({desc=ImmIdent id} as f), args) when Ident.Set.mem id (!(tupled_functions)) ->
+    MCallIndirect(compile_imm env f, List.map (compile_imm env) args, true)
   | CApp(f, args) ->
     (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Maybe for optimisation when target known *)
-    MCallIndirect(compile_imm env f, List.map (compile_imm env) args)
+    MCallIndirect(compile_imm env f, List.map (compile_imm env) args, false)
   | CMatchFail i -> MFail i
   | CImm i -> MImmediate(compile_imm env i)
   (* Updates the ident, guarenteed to be a local varaible in the function so assignment allowed *)
@@ -201,7 +206,9 @@ and compile_linast toplevel env expr =
  match expr.desc with
  | LSeq(hd, tl) -> (compile_comp env hd)::MDrop::(compile_linast toplevel env tl)
  | LLetRec(binds, body) ->
-   let get_loc idx ((id, global, _) as bind) =
+   let get_loc idx ((id, global, (compound : compound_expr)) as bind) =
+     if List.mem Tupled (!(compound.annotations)) then
+       tupled_functions := Ident.Set.add id (!tupled_functions);
      (if toplevel then
        match global with
        | Export -> MGlobalBind(next_export id)
@@ -218,6 +225,8 @@ and compile_linast toplevel env expr =
            [] binds_with_locs in
        MStore(List.rev wasm_binds) :: (compile_linast toplevel new_env body) (* Store takes a list?? *)
  | LLet (id, global, bind, body) ->
+   if List.mem Tupled (!(bind.annotations)) then
+     tupled_functions := Ident.Set.add id (!tupled_functions);
    let location = if toplevel then (match global with (* As above but only 1 element *)
      | Export -> MGlobalBind(next_export id)
      | Local | Mut -> MGlobalBind(next_global id))
@@ -243,9 +252,9 @@ let fold_left_worklist f base =
   help base
 
 let compile_remaining_worklist () =
-  let compile_one funcs ((({idx=index; stack_size}) as cur) : work_element) =
+  let compile_one funcs ((({idx=index; arity; stack_size}) as cur) : work_element) =
     let body = compile_work_element cur in
-    {index=Int32.of_int index; arity=2l; body; stack_size;}::funcs in
+    {index=Int32.of_int index; arity=Int32.of_int arity; body; stack_size;}::funcs in
   List.rev (fold_left_worklist compile_one [])
 
 let transl_program (program : linast_expr) : binds_program =

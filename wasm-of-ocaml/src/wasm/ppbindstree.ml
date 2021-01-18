@@ -40,7 +40,7 @@ let rec print_instr ppf = function
     | MCallKnown(i, args) ->
       let print_args ppf args = List.iter (fprintf ppf " %a" print_imm) args in
       fprintf ppf "(call@ func(%li)%a)" i print_args args
-    | MCallIndirect(imm, args) ->
+    | MCallIndirect(imm, args, _) ->
       let print_args ppf args = List.iter (fprintf ppf " %a" print_imm) args in
       fprintf ppf "(call@ %a%a)" print_imm imm print_args args
     | MAllocate alloc -> print_alloc ppf alloc

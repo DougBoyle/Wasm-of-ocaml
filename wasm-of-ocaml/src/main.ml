@@ -27,8 +27,7 @@ let ir_passes = [
   ("fails", OptFails.optimise);
   ("cse",  OptCSE.optimise);
   ("inline", OptInline.optimise);
-  (* TODO: When should tuples optimisation happen? Probably don't want it competing with inlining?
-       Do after inlining, otherwise inlined function will unnecessarily store/read from a block? *)
+  (* Where functions can't be inlined, see if they are always fully applied so can remove currying *)
   ("tuples", OptTuple.optimise);
   ("deadassign", OptDeadAssignments.optimise);
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)

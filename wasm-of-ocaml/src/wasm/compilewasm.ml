@@ -529,22 +529,31 @@ and compile_instr env instr =
   | MBinary(op, arg1, arg2) -> compile_binary env op arg1 arg2
   | MSwitch(arg, branches, default) -> compile_switch env arg branches default
   | MStore(binds) -> compile_store env binds (* Difference between MAllocate and MStore - alloc for compound, store for toplevel *)
-  | MCallIndirect(func, args) ->
+  | MCallIndirect(func, args, tupled) ->
     let compiled_func = compile_imm env func in
+    let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env
+      (if tupled then ((List.length args) + 1) else 2))) in
+    let compiled_args = List.map (compile_imm env) args in
     let get_closure = get_swap env 0 in
-    let tee_swap = tee_swap env 0 in
-    List.fold_left
-    (fun f arg -> let compiled_arg = compile_imm env arg in
-      let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
-      f @ (toggle_tag Closure) @ tee_swap @ compiled_arg @ get_closure @ [load ~offset:0l (); Graph.CallIndirect(ftype);])
-    compiled_func args
-
+    let tee_closure = tee_swap env 0 in
+    if tupled
+    then
+      compiled_func @ (toggle_tag Closure) @ tee_closure @ (List.flatten compiled_args) @ get_closure
+      @ [load ~offset:0l (); Graph.CallIndirect(ftype);]
+    else
+      List.fold_left
+      (fun f compiled_arg ->
+        f @ (toggle_tag Closure) @ tee_closure @ compiled_arg @
+          get_closure @ [load ~offset:0l (); Graph.CallIndirect(ftype);])
+      compiled_func compiled_args
   | MIf(cond, thn, els) ->
     let compiled_cond = compile_imm env cond in
     let compiled_thn = (compile_block (enter_block env) thn) in
     let compiled_els = (compile_block (enter_block env) els) in
     compiled_cond @
-    [Graph.If(ValBlockType (Some Types.I32Type), List.map add_dummy_edges compiled_thn, List.map add_dummy_edges compiled_els)]
+    [Graph.If(ValBlockType (Some Types.I32Type),
+     List.map add_dummy_edges compiled_thn,
+     List.map add_dummy_edges compiled_els)]
 
   | MWhile(cond, body) ->
     let compiled_cond = compile_block (enter_block ~n:2 env) cond in

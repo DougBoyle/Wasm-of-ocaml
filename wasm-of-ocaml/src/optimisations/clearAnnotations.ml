@@ -9,7 +9,8 @@ All other annotations will be added again when optimisation pass repeated, so do
 open Linast
 
 let clear_annotations annotations =
-  annotations := List.filter (function ImmutableBlock _ | TailCallOptimised -> true | _ -> false) (!annotations)
+  annotations := List.filter
+    (function ImmutableBlock _ | TailCallOptimised | Tupled -> true | _ -> false) (!annotations)
 
 let map_imm (imm : imm_expr) =
   clear_annotations imm.annotations; imm

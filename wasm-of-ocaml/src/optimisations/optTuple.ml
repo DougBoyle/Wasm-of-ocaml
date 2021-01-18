@@ -38,66 +38,41 @@ and safe_to_rewrite_compound f arity (compound : compound_expr) = match compound
     List.for_all (is_not_f f) args &&
     (is_not_f f imm || List.length args >= arity) (* An application of the tupled function we can optimise *)
 
-(* Written this way since rewriting introduces at least 1 let binding to create the block,
-   so needs to operate on the linast *)
+(* Only need to rewrite over-applied functions, where tupled and curried arguments need separating *)
 let rewrite_call f arity linast = match linast.desc with
-  | LLet(id, local, ({desc=CApp(imm, args)} as compound), rest) when is_f f imm && List.length args = arity ->
-    let tuple = Ident.create_local "tuple" in
-    binds_to_anf
-      [BLet(tuple, Compound.makeblock 0 args)]
-      {linast with desc=LLet(id, local, {compound with desc=CApp(imm, [Imm.id tuple])}, rest)}
   | LLet(id, local, ({desc=CApp(imm, args)} as compound), rest) when is_f f imm && List.length args > arity ->
     let applied, remaining = Utils.take arity args in
-    let tuple = Ident.create_local "tuple" in
     let result = Ident.create_local "result" in
     binds_to_anf
-      [BLet(tuple, Compound.makeblock 0 applied);
-       BLet(result, Compound.app imm [Imm.id tuple])]
+       [BLet(result, Compound.app imm applied)]
       {linast with desc=LLet(id, local, {compound with desc=CApp(Imm.id result, remaining)}, rest)}
 
   (* LetRec can only be used to define functions, can't be an application *)
-  | LSeq(({desc=CApp(imm, args)} as compound), rest) when is_f f imm && List.length args = arity ->
-    let tuple = Ident.create_local "tuple" in
-    binds_to_anf
-      [BLet(tuple, Compound.makeblock 0 args)]
-      {linast with desc=LSeq({compound with desc=CApp(imm, [Imm.id tuple])}, rest)}
-  | LSeq(({desc=CApp(imm, args)} as compound), rest) when is_f f imm && List.length args > arity ->
-    let applied, remaining = Utils.take arity args in
-    let tuple = Ident.create_local "tuple" in
-    let result = Ident.create_local "result" in
-    binds_to_anf
-      [BLet(tuple, Compound.makeblock 0 applied);
-       BLet(result, Compound.app imm [Imm.id tuple])]
-      {linast with desc=LSeq({compound with desc=CApp(Imm.id result, remaining)}, rest)}
 
-  | LCompound ({desc=CApp(imm, args)} as compound) when is_f f imm && List.length args = arity ->
-    let tuple = Ident.create_local "tuple" in
-    binds_to_anf
-      [BLet(tuple, Compound.makeblock 0 args)]
-      {linast with desc=LCompound {compound with desc=CApp(imm, [Imm.id tuple])}}
+  | LSeq(({desc=CApp(imm, args)} as compound), rest) when is_f f imm && List.length args > arity ->
+   let applied, remaining = Utils.take arity args in
+   let result = Ident.create_local "result" in
+   binds_to_anf
+     [BLet(result, Compound.app imm applied)]
+     {linast with desc=LSeq({compound with desc=CApp(Imm.id result, remaining)}, rest)}
+
   | LCompound ({desc=CApp(imm, args)} as compound) when is_f f imm && List.length args > arity ->
     let applied, remaining = Utils.take arity args in
-    let tuple = Ident.create_local "tuple" in
     let result = Ident.create_local "result" in
     binds_to_anf
-      [BLet(tuple, Compound.makeblock 0 applied);
-       BLet(result, Compound.app imm [Imm.id tuple])]
+      [BLet(result, Compound.app imm applied)]
       {linast with desc=LCompound {compound with desc=CApp(Imm.id result, remaining)}}
   | _ -> linast
 
-let rewrite_function args body =
-  let tuple = Ident.create_local "tuple" in
-  Compound.mkfun [tuple]
-  (binds_to_anf
-    (List.mapi (fun i id -> BLet(id, Compound.field (Imm.id tuple) i)) args)
-    body)
+let mark_tupled (compound : compound_expr) =
+  compound.annotations := Tupled :: (!(compound.annotations)); compound
 
 let enter_linast linast = match linast.desc with
-  | LLet(id, Local, {desc=CFunction(args, body)}, rest) ->
+  | LLet(id, Local, ({desc=CFunction(args, body)} as compound), rest) ->
     let num_args = List.length args in
     if num_args > 1 && safe_to_rewrite id num_args rest then
       let rewriter = LinastMap.create_mapper ~enter_linast:(rewrite_call id num_args) () in
-      {linast with desc=LLet(id, Local, rewrite_function args body, rewriter rest)}
+      {linast with desc=LLet(id, Local, mark_tupled compound, rewriter rest)}
     else linast
   (* Handle LLetRec by just processing one at a time *)
   | LLetRec(binds, rest) ->
@@ -107,7 +82,7 @@ let enter_linast linast = match linast.desc with
         | Local, CFunction(args, body) ->
           let num_args = List.length args in
           if num_args > 1 && safe_to_rewrite id num_args linast then
-          (id, (num_args, rewrite_function args body))::replaced else replaced
+          (id, num_args)::replaced else replaced
         | _ -> replaced
       ) binds [] in
     if replacements = [] then linast else
@@ -115,10 +90,10 @@ let enter_linast linast = match linast.desc with
     let new_binds = List.map (fun (id, local, compound) ->
       match List.assoc_opt id replacements with
         | None -> (id, local, compound)
-        | Some (_, new_fun) -> (id, local, new_fun)
+        | Some _ -> (id, local, mark_tupled compound)
       ) binds in
     (* Rewrite the applications for each function *)
-    List.fold_right (fun (id, (arity, _)) linast ->
+    List.fold_right (fun (id, arity) linast ->
       (LinastMap.create_mapper ~enter_linast:(rewrite_call id arity) ()) linast
     ) replacements {linast with desc=LLetRec(new_binds, rest)}
   | _ -> linast

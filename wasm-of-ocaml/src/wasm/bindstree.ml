@@ -97,7 +97,8 @@ type instr =
   | MImmediate of immediate
   | MFail of int32 (* Match failure - compiles to a branch out to the block for the switch of same label *)
   | MCallKnown of int32 * immediate list (* Optimized path for statically-known function names *)
-  | MCallIndirect of immediate * immediate list
+  (* bool indicates arguments are passed as tuple rather than curried *)
+  | MCallIndirect of immediate * immediate list * bool
   | MAllocate of allocation_type
   | MIf of immediate * block * block
   | MWhile of block * block

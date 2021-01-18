@@ -74,6 +74,8 @@ type annotation = Pure (* whole term/body pure *) | Fields of annotations list
   (* Indicates that a function has been made tail recursive, so can rewrite its tail calls.
      Kept when other annotations cleared. Also prevents trying to tail call optimise it a second time *)
   | TailCallOptimised
+  (* Arguments to function are all passed together rather than currying *)
+  | Tupled
 (* TODO: Can do much more complex analysis for whether mutable fields can be copied or not based on if anything
          could have actually assigned to them or not
    TODO: Analysis pass to propagate annotations through use of idents i.e. Graph based CSE *)
