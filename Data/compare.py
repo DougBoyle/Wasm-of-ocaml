@@ -287,9 +287,9 @@ def processAndPlotAll(filename, reference):
     plotAll(means, errors, tests)
     return means, errors, tests
 
-def compareClosures():
+def compareTuple():
     old = readFile("optimisations/opts_01_13_12_46.txt")
-    new = readFile("optimisations/newclosures.txt")
+    new = readFile("optimisations/opts_tupled.txt")
     #data_nopt = {"original" : old["None"], "new" : new["None"]}
     data = {"original" : old["All"], "new" : new["All"]}
     tests = get_all_tests(data)
@@ -300,7 +300,7 @@ def compareClosures():
     
 
 #means, errors, tests = processAndPlotAll("opts_01_13_12_46.txt", "None")
-compareClosures()
+compareTuple()
 
 # Exporting data to plot to matlab:
 # tests = ["alltrees_7", "arith_75", "composition", "funcrec", "mergesort_500"]

@@ -57,3 +57,7 @@ opts_01_13_12_46 - Comparison of None/IR/Graph/All opts (with pattern matching o
 newclosures - like opts_01_13_12_46 but with modified implementation of closures to reduce copying/function calls
 
 
+opts_tupled - Functions which are never underapplied or passed around get rewritten to take a single tuple arg rather than curry.
+	Results: Filesize decreases by a couple percent in some cases. Execution time (primarily for funcrec) appears
+		 to have decreased, but too variable to be certain. 
+		(May want to run on larger set of test programs to prove purpose e.g. function with many parameters)
