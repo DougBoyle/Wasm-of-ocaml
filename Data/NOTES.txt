@@ -54,5 +54,6 @@ opts_12_30_13_36 - Comparison of None/IR/Graph/All opts. No inlining or tail cal
 opts_01_13_12_46 - Comparison of None/IR/Graph/All opts (with pattern matching optimised on all).
 	new data is that tailcall optimisation and inlining were added on this version.
 
+newclosures - like opts_01_13_12_46 but with modified implementation of closures to reduce copying/function calls
 
 

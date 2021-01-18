@@ -287,8 +287,20 @@ def processAndPlotAll(filename, reference):
     plotAll(means, errors, tests)
     return means, errors, tests
 
-means, errors, tests = processAndPlotAll("opts_01_13_12_46.txt", "None")
+def compareClosures():
+    old = readFile("optimisations/opts_01_13_12_46.txt")
+    new = readFile("optimisations/newclosures.txt")
+    #data_nopt = {"original" : old["None"], "new" : new["None"]}
+    data = {"original" : old["All"], "new" : new["All"]}
+    tests = get_all_tests(data)
+    means = collect_means(data, tests)
+    errors = collect_deviations(data, tests)
+    tests, means, errors = normalise(means, errors, "original", True)
+    plotAll(means, errors, tests)
+    
 
+#means, errors, tests = processAndPlotAll("opts_01_13_12_46.txt", "None")
+compareClosures()
 
 # Exporting data to plot to matlab:
 # tests = ["alltrees_7", "arith_75", "composition", "funcrec", "mergesort_500"]

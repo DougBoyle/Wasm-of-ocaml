@@ -146,7 +146,7 @@ let get_func_type_idx env typ =
     List.length !(env.func_types) - 1
   | Some((i, _)) -> i
 
-(* Assumes all functions take an int32 - may cause issues when using floats? *)
+(* All functions are i32 i32 -> i32 except main, which is () -> i32 *)
 let get_arity_func_type_idx env arity =
   let has_arity (Types.FuncType(args, _)) = (List.length args) = arity in
   match find_index has_arity !(env.func_types) with
@@ -162,7 +162,8 @@ let get_arity_func_type_idx env arity =
 let encode_num = [Graph.Const(const_int32 1); Graph.Binary(Values.I32 Ast.IntOp.Shl)]
 let decode_num = [Graph.Const(const_int32 1); Graph.Binary(Values.I32 Ast.IntOp.ShrS)]
 
-let untag tag = [
+(* Xor, so can tag/untag a value *)
+let toggle_tag tag = [
   Graph.Const(const_int32 (tag_of_type tag));
   Graph.Binary(Values.I32 Ast.IntOp.Xor);
 ]
@@ -354,17 +355,15 @@ let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) 
   let closure_size = num_free_vars + 1 in
   let get_swap = get_swap env 0 in
   let tee_swap = tee_swap env 0 in
-  (* TODO: Purpose of this? For a recursive function maybe, putting itself into the allocated closure? *)
+  (* A way to access the closure if it hasn't been bound to a variable name i.e. anonymous allocation *)
   let access_lambda = Option.value ~default:(get_swap @ [
       Graph.Const(const_int32 (4 * closure_size));
       Graph.Binary(Values.I32 Ast.IntOp.Sub);
     ]) lambda in
   env.backpatches := (access_lambda, closure_data)::!(env.backpatches);
   (heap_allocate env closure_size) @ tee_swap @
-  [Graph.Const(wrap_int32 (Int32.(add func_idx (of_int env.func_offset)))); store ();]
-   @ get_swap @ [
-    Graph.Const(const_int32 (tag_of_type Closure)); (* Apply the Lambda tag *)
-    Graph.Binary(Values.I32 Ast.IntOp.Or);]
+  [Graph.Const(wrap_int32 (Int32.(add func_idx (of_int env.func_offset)))); store ();] (* function index *)
+   @ get_swap @ (toggle_tag Closure) (* Xor, so sets the tag rather than removing it *)
 
 let allocate_data env vtag elts =
   (* Heap memory layout of ADT types:
@@ -385,8 +384,7 @@ let allocate_data env vtag elts =
     Graph.Const(const_int32 num_elts);
     store ~offset:4l ();
   ] @ (List.flatten @@ List.mapi compile_elt elts) @ get_swap
-   @ [Graph.Const(const_int32 (tag_of_type Data));
-    Graph.Binary(Values.I32 Ast.IntOp.Or);]
+   @ (toggle_tag Data)
 
 let compile_allocation env alloc_type =
   match alloc_type with
@@ -402,7 +400,7 @@ let compile_data_op env imm op =
     let swap_get = get_swap env 0  and swap_tee = tee_swap env 0
     and index_swap_get = get_swap env 1 and index_swap_tee = tee_swap env 1
     and index = compile_imm env idx in
-    block @ (untag Data) @ swap_tee @ [load ~offset:0l ();] @
+    block @ (toggle_tag Data) @ swap_tee @ [load ~offset:0l ();] @
     index @ index_swap_tee @
     (* stack is: index|tag|... *)
     (* Array size is actually a 31-bit int so can use unsigned test to safely check 0 <= index too *)
@@ -417,15 +415,15 @@ let compile_data_op env imm op =
 
   match op with
   | MGet(idx) ->
-    block @ (untag Data) @ [
+    block @ (toggle_tag Data) @ [
         load ~offset:(Int32.mul 4l (Int32.add idx 2l)) (); (* +2 as blocks start with variant tag; arity; ... *)
       ]
   | MSet(idx, imm) ->
-    block @ (untag Data) @ (compile_imm env imm) @ [
+    block @ (toggle_tag Data) @ (compile_imm env imm) @ [
         store ~offset:(Int32.mul 4l (Int32.add idx 2l)) ();
       ] @ const_false (* Return unit *)
   | MGetTag -> (* Not divided by 2 unless actually used in a switch *)
-    block @ (untag Data) @ [
+    block @ (toggle_tag Data) @ [
       load ~offset:0l ();
     ]
   | MArrayGet idx -> check_array_bounds idx [load ~offset:8l ()]
@@ -450,7 +448,7 @@ let do_backpatches env backpatches =
     let get_swap = get_swap env 0 in
     let set_swap = set_swap env 0 in
     (* Put lam in the swap register *)
-    let preamble = lam @ (untag Closure) @ set_swap in
+    let preamble = lam @ (toggle_tag Closure) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store each free variable in the closure *)
       get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
@@ -512,16 +510,17 @@ and compile_instr env instr =
       (* get block to jump to *)
       | _ -> [Graph.Br (add_dummy_loc (List.assoc j env.handler_heights))])
   | MAllocate(alloc) -> (* New - currying appeared to not work before *)
-  let new_backpatches = ref [] in
-  let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in
-  let do_backpatch (lam, {func_idx;variables}) =
+    let new_backpatches = ref [] in
+    (* TODO: Tidy up to better suit single allocation. Currently just a modified version of letrec backpatching *)
+    let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in
+    let do_backpatch (lam, {func_idx;variables}) =
+      if variables = [] then [] else
       let get_swap = get_swap env 0 in
+      let set_swap = set_swap env 0 in
       let tee_swap = tee_swap env 0 in
-      (* TODO: Should skip if nothing to backpatch? *)
-      let backpatch_var idx var = (* Store the var as the first free variable of the lambda *)
+      let backpatch_var idx var =
         get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
-      (* Takes tag off, puts vars in, puts tag back on. TODO: Reduce number of times tag added/removed *)
-      (untag Closure) @ tee_swap @ (List.flatten (List.mapi backpatch_var variables)) @ (untag Closure) in
+      tee_swap @ get_swap @ (toggle_tag Closure) @ set_swap @ (List.flatten (List.mapi backpatch_var variables)) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
     instrs @ (List.flatten (List.map do_backpatch (!new_backpatches)))
 
@@ -530,15 +529,14 @@ and compile_instr env instr =
   | MBinary(op, arg1, arg2) -> compile_binary env op arg1 arg2
   | MSwitch(arg, branches, default) -> compile_switch env arg branches default
   | MStore(binds) -> compile_store env binds (* Difference between MAllocate and MStore - alloc for compound, store for toplevel *)
-  (* args are curried, so unroll this to do many calls *)
   | MCallIndirect(func, args) ->
     let compiled_func = compile_imm env func in
-    let get_swap = get_swap env 0 in
+    let get_closure = get_swap env 0 in
     let tee_swap = tee_swap env 0 in
     List.fold_left
     (fun f arg -> let compiled_arg = compile_imm env arg in
       let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env 2)) in
-      f @ (untag Closure) @ tee_swap @ compiled_arg @ get_swap @ [load ~offset:0l (); Graph.CallIndirect(ftype);])
+      f @ (toggle_tag Closure) @ tee_swap @ compiled_arg @ get_closure @ [load ~offset:0l (); Graph.CallIndirect(ftype);])
     compiled_func args
 
   | MIf(cond, thn, els) ->
