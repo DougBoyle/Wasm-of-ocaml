@@ -11,9 +11,9 @@ type mappers = {map_imm : Linast.imm_expr -> Linast.imm_expr;
 
 let rec map_compound_expr mappers compound =
   let compound' = mappers.enter_compound compound in
-  let new_desc = match compound'.desc with
+  let new_desc = match compound'.c_desc with
     | CImm imm -> CImm (mappers.map_imm imm)
-    | CMatchFail i -> compound'.desc (* No change *)
+    | CMatchFail i -> compound'.c_desc (* No change *)
     | CUnary (op, imm) -> CUnary (op, mappers.map_imm imm)
     | CBinary (op, imm1, imm2) -> CBinary (op, mappers.map_imm imm1, mappers.map_imm imm2)
     | CSetField (imm1, idx, imm2) -> CSetField (mappers.map_imm imm1, idx, mappers.map_imm imm2)
@@ -39,7 +39,7 @@ let rec map_compound_expr mappers compound =
     | CApp (imm, args) -> CApp(mappers.map_imm imm, List.map mappers.map_imm args)
     | CFunction (args, body) -> CFunction(args, map_linast_expr mappers body)
     | CAssign (id, imm) -> CAssign(id, mappers.map_imm imm)
-  in mappers.leave_compound {compound' with desc=new_desc}
+  in mappers.leave_compound {compound' with c_desc=new_desc}
 
 and map_linast_expr mappers linast =
   let linast' = mappers.enter_linast linast in

@@ -9,7 +9,7 @@ exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not ac
 
 (* Don't worry about passing around locations/environments for now, just a hastle *)
 module Imm = struct
-  let mk i_annotations d : imm_expr =
+  let mk i_annotations d =
       {i_desc=d;
        i_loc=defaultLoc;
        i_env=defaultEnv;
@@ -19,11 +19,11 @@ module Imm = struct
 end
 
 module Compound = struct
-  let mk annotations d : compound_expr =
-    {desc=d;
-     loc=defaultLoc;
-     env=defaultEnv;
-     annotations}
+  let mk c_annotations d =
+    {c_desc=d;
+     c_loc=defaultLoc;
+     c_env=defaultEnv;
+     c_annotations}
   let imm ?(annotations=ref []) imm = mk annotations (CImm imm)
   let fail ?(annotations=ref []) i = mk annotations (CMatchFail i)
   let unary ?(annotations=ref []) op imm = mk annotations (CUnary (op, imm))
@@ -45,7 +45,7 @@ module Compound = struct
 end
 
 module LinastExpr = struct
-  let mk annotations d : linast_expr =
+  let mk annotations d =
       {desc=d;
        loc=defaultLoc;
        env=defaultEnv;
@@ -118,7 +118,7 @@ let rec free_vars env (e : linast_expr) =
      (fun acc (_, _, body) -> Ident.Set.union acc (free_vars_comp with_names body)) Ident.Set.empty binds in
     Ident.Set.union free_binds (free_vars with_names body)
 
-and free_vars_comp env (c : compound_expr) = match c.desc with
+and free_vars_comp env c = match c.c_desc with
   | CFunction(args, body) -> free_vars (Ident.Set.union env (Ident.Set.of_list args)) body
   | CIf(cond, thn, els) ->
     Ident.Set.union (free_vars_imm env cond) (Ident.Set.union (free_vars env thn) (free_vars env els))
@@ -153,7 +153,7 @@ and free_vars_comp env (c : compound_expr) = match c.desc with
     Ident.Set.union free_in_body (free_vars (get_handler_env i env) handler)
 
 
-and free_vars_imm env (i : imm_expr) = match i.i_desc with
+and free_vars_imm env i = match i.i_desc with
   | ImmIdent x when not (Ident.Set.mem x env) -> Ident.Set.singleton x
   | _ -> Ident.Set.empty
 
@@ -174,7 +174,7 @@ let rec count_vars (ast : linast_expr) = match ast.desc with
    | LCompound c -> count_vars_comp c
 
 and count_vars_comp c =
-  match c.desc with
+  match c.c_desc with
   | CIf(_, t, f) -> max (count_vars t) (count_vars f)
   | CFor(_, _, _, _, body) -> (count_vars body) + 2 (* 1 for each of start/end value *)
   | CWhile(cond, body) -> (count_vars cond) + (count_vars body)

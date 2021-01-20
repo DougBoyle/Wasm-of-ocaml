@@ -30,7 +30,7 @@ let rec estimate_size linast = match linast.desc with
   | LSeq(compound, rest) -> (estimate_size_compound compound) + (estimate_size rest)
   | LCompound c -> estimate_size_compound c
 
-and estimate_size_compound (compound : compound_expr) = match compound.desc with
+and estimate_size_compound compound = match compound.c_desc with
   | CIf (_, body1, body2) | CWhile (body1, body2)
   | CMatchTry (_, body1, body2) -> 1 + (estimate_size body1) + (estimate_size body2)
   | CFor (_, _, _, _, body) | CFunction (_, body) -> 1 + (estimate_size body)
@@ -54,7 +54,7 @@ let can_remove_if_inlined {local; applications; under_applications; other_uses} 
 (* Typically getters of reference values or function that just calls another function *)
 let function_is_very_small {size} = size < 5 (* 5 chosen arbitrarily *)
 
-(* TODO: Track leave nodes of call graph too i.e. doesn't make any other function calls *)
+(* TODO: Track leaf nodes of call graph too i.e. doesn't make any other function calls *)
 let small_enough_and_in_budge {size} = size < 20 && (!budget) > 20
 
 let should_inline info = List.exists (fun heuristic -> heuristic info)
@@ -90,13 +90,13 @@ let map_imm (imm : Linast.imm_expr) = match imm.i_desc with
 (* Special case for mutable idents (used by tail call optimisation) where they need to be marked,
    as they are stored as idents not immediates *)
 (* Idents assigned to are never function arguments, so can ignore them *)
-let enter_compound (compound : compound_expr) = match compound.desc with
+let enter_compound compound = match compound.c_desc with
   | CApp({i_desc=ImmIdent id}, args) -> mark_app id (List.length args); compound
   | _ -> compound
 
 let enter_linast linast = match linast.desc with
   (* If only use of function is inline, Dead Assignment Elimination will remove it *)
-  | LLet (id, export, {desc = CFunction (parameters, body)}, _) ->
+  | LLet (id, export, {c_desc = CFunction (parameters, body)}, _) ->
     inline_info := Ident.add id
       {applications = 0; under_applications = 0; other_uses = 0; arity = List.length parameters;
       parameters; body; local=(export = Local); size = estimate_size body}
@@ -105,13 +105,13 @@ let enter_linast linast = match linast.desc with
 
 (* Important to copy the annotations in each case, so that analysis on inlined functions doesn't
    affect the annotations on the original function *)
-let substitue (mapping : (Ident.t * imm_expr) list) (imm : imm_expr) : (imm_expr) = match imm.i_desc with
+let substitue (mapping : (Ident.t * imm_expr) list) imm = match imm.i_desc with
   | ImmIdent id ->
     (match List.assoc_opt id mapping with
       | Some imm' -> {imm' with i_annotations = ref (!(imm'.i_annotations))}
       | None -> {imm with i_annotations = ref (!(imm.i_annotations))})
   | _ -> {imm with i_annotations = ref (!(imm.i_annotations))}
-let copy_compound (compound : compound_expr) = {compound with annotations = ref (!(compound.annotations))}
+let copy_compound compound = {compound with c_annotations = ref (!(compound.c_annotations))}
 let copy_linast linast = {linast with annotations = ref (!(linast.annotations))}
 
 (* Rewriting may also need to create a new function if f is under/over applied *)
@@ -139,19 +139,19 @@ let inline_function args {arity; parameters; body; size} =
 
 let leave_linast linast =
   try (match linast.desc with
-  | LLet (id, Local, {desc = CFunction _}, _) -> remove_id id; linast
-  | LLet (id, export, {desc = CApp ({i_desc=ImmIdent f}, args)}, rest) ->
+  | LLet (id, Local, {c_desc = CFunction _}, _) -> remove_id id; linast
+  | LLet (id, export, {c_desc = CApp ({i_desc=ImmIdent f}, args)}, rest) ->
     let info = Ident.find_same f (!inline_info) in
     if should_inline info then
       OptConstants.rewrite_tree (LinastExpr.mklet id export)
        (inline_function args info) rest
     else linast
-  | LSeq({desc = CApp ({i_desc=ImmIdent f}, args)}, rest) ->
+  | LSeq({c_desc = CApp ({i_desc=ImmIdent f}, args)}, rest) ->
     let info = Ident.find_same f (!inline_info) in
     if should_inline info then
       OptConstants.rewrite_tree LinastExpr.seq (inline_function args info) rest
     else linast
-  | LCompound {desc = CApp ({i_desc=ImmIdent f}, args)} ->
+  | LCompound {c_desc = CApp ({i_desc=ImmIdent f}, args)} ->
     let info = Ident.find_same f (!inline_info) in
     if should_inline info then
       inline_function args info

@@ -15,7 +15,7 @@ let add_annotations annot_list annotations =
   List.iter (fun annot -> add_annotation annot annotations) annot_list
 
 (* Updates the annotations on imm *)
-let analyse_imm (imm : imm_expr) = match imm.i_desc with
+let analyse_imm imm = match imm.i_desc with
   | ImmIdent id -> (match Ident.Tbl.find_opt known_tags id with
     (* Update the annotations on that ImmIdent with the tracked annotation *)
     | Some i -> add_annotation (Tag i) imm.i_annotations
@@ -68,26 +68,26 @@ let merge_annotations = function
     ) others (!annotations)
   | _ -> failwith "No elements given to merge"
 
-let rec analyse_compound (compound : compound_expr) = match compound.desc with
+let rec analyse_compound compound = match compound.c_desc with
   (* Copy up annotations *)
   | CImm imm ->
     analyse_imm imm;
-    copy_annotations imm.i_annotations compound.annotations;
+    copy_annotations imm.i_annotations compound.c_annotations;
 
   | CMakeBlock (i, imms) ->
     List.iter analyse_imm imms;
-    add_annotation (Tag i) compound.annotations;
+    add_annotation (Tag i) compound.c_annotations;
     (* Can only keep analysis about fields known to be immutable *)
     List.iter (function ImmutableBlock l ->
-      let imm_list = List.mapi (fun idx (imm : imm_expr) -> if List.nth l idx then Some imm else None) imms in
+      let imm_list = List.mapi (fun idx imm -> if List.nth l idx then Some imm else None) imms in
       if List.exists (function Some _ -> true | _ -> false) imm_list
-        then add_annotation (FieldImms imm_list) compound.annotations | _ -> ()) (!(compound.annotations))
+        then add_annotation (FieldImms imm_list) compound.c_annotations | _ -> ()) (!(compound.c_annotations))
 
   (* Take the intersection of the annotation on each linast expression *)
   | CIf (_, body1, body2) | CMatchTry (_, body1, body2)  ->
     analyse_linast body1;
     analyse_linast body2;
-    add_annotations (merge_annotations [body1.annotations; body2.annotations]) compound.annotations
+    add_annotations (merge_annotations [body1.annotations; body2.annotations]) compound.c_annotations
 
   (* result is always unit so, for constants optimisations, can't do anything *)
   | CWhile (cond, body) ->
@@ -101,7 +101,7 @@ let rec analyse_compound (compound : compound_expr) = match compound.desc with
     (match default with Some body -> analyse_linast body | None -> ());
 
     let bodies = (match default with None -> [] | Some body -> [body]) @ (List.map snd cases) in
-    add_annotations (merge_annotations (List.map (fun body -> body.annotations) bodies)) compound.annotations
+    add_annotations (merge_annotations (List.map (fun body -> body.annotations) bodies)) compound.c_annotations
 
   | _ -> ()
 
@@ -110,10 +110,10 @@ and analyse_linast linast = match linast.desc with
   | LLet(id, mut, bind, body) ->
     analyse_compound bind;
     (if mut <> Mut then
-     (match find_tag_opt bind.annotations with
+     (match find_tag_opt bind.c_annotations with
        | Some (Tag i) -> Ident.Tbl.add known_tags id i
        | _ -> ());
-     (match find_fields_opt bind.annotations with
+     (match find_fields_opt bind.c_annotations with
        | Some (FieldImms imms) -> Ident.Tbl.add known_fields id imms
        | _ -> ()));
     analyse_linast body;

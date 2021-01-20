@@ -94,7 +94,7 @@ let compile_const (c : Asttypes.constant) =
   | Const_char c -> failwith "Characters not yet supported"
   | Const_nativeint _ -> failwith "Native ints not yet supported"
 
-let compile_imm env (i : imm_expr) =
+let compile_imm env i =
   match i.i_desc with
   | ImmConst c -> MImmConst(compile_const c)
   | ImmIdent id -> MImmBinding(find_id id env)
@@ -152,8 +152,8 @@ let compile_function env args body tupled : closure_data =
 let tupled_functions = ref Ident.Set.empty
 
 (* BULK OF CODE *)
-let rec compile_comp env (c : compound_expr) =
-  match c.desc with
+let rec compile_comp env c =
+  match c.c_desc with
   (* Switches left till bottom level to potentially make use of Br_Table *)
   | CSwitch(arg, branches, default) -> let compiled_arg = compile_imm env arg in
     MSwitch(compiled_arg,
@@ -184,7 +184,7 @@ let rec compile_comp env (c : compound_expr) =
     MDataOp(MGetTag, compile_imm env obj)
   | CMatchTry (i, body1, body2) ->
     MTry(i, compile_linast false env body1, compile_linast false env body2)
-  | CFunction(args, body) when List.mem Tupled (!(c.annotations)) ->
+  | CFunction(args, body) when List.mem Tupled (!(c.c_annotations)) ->
     MAllocate(MClosure(compile_function env args body true))
   | CFunction(args, body) ->
     MAllocate(MClosure(compile_function env args body false))
@@ -206,8 +206,8 @@ and compile_linast toplevel env expr =
  match expr.desc with
  | LSeq(hd, tl) -> (compile_comp env hd)::MDrop::(compile_linast toplevel env tl)
  | LLetRec(binds, body) ->
-   let get_loc idx ((id, global, (compound : compound_expr)) as bind) =
-     if List.mem Tupled (!(compound.annotations)) then
+   let get_loc idx ((id, global, compound) as bind) =
+     if List.mem Tupled (!(compound.c_annotations)) then
        tupled_functions := Ident.Set.add id (!tupled_functions);
      (if toplevel then
        match global with
@@ -225,7 +225,7 @@ and compile_linast toplevel env expr =
            [] binds_with_locs in
        MStore(List.rev wasm_binds) :: (compile_linast toplevel new_env body) (* Store takes a list?? *)
  | LLet (id, global, bind, body) ->
-   if List.mem Tupled (!(bind.annotations)) then
+   if List.mem Tupled (!(bind.c_annotations)) then
      tupled_functions := Ident.Set.add id (!tupled_functions);
    let location = if toplevel then (match global with (* As above but only 1 element *)
      | Export -> MGlobalBind(next_export id)

@@ -68,7 +68,7 @@ let update_tbl f tail_called =
 let rec find_tail_calls f funcs linast = match linast.desc with
   | LLetRec (binds, rest) ->
     let funcs' = List.fold_left (fun fs ->
-      (function (id, _, ({desc=CFunction(args, _)} : compound_expr)) -> (id, List.length args)::fs
+      (function (id, _, {c_desc=CFunction(args, _)}) -> (id, List.length args)::fs
         | _ -> fs)) [] binds in
 
     (* As every ident from funcs' is added to the table.
@@ -77,7 +77,7 @@ let rec find_tail_calls f funcs linast = match linast.desc with
       possible_tail_recursive_funcs := Ident.add f Ident.Set.empty (!possible_tail_recursive_funcs))
       funcs';
 
-    List.iter (function (id, _, ({desc=CFunction(_, body)} : compound_expr)) ->
+    List.iter (function (id, _, {c_desc=CFunction(_, body)}) ->
       find_tail_calls (Some id) (funcs' @ funcs) body
       (* Expression must otherwise be a variable, so tbl will not change *)
       | _ -> ()) binds;
@@ -89,7 +89,7 @@ let rec find_tail_calls f funcs linast = match linast.desc with
     find_tail_calls_compound None funcs c;
     find_tail_calls f funcs body
 
-and find_tail_calls_compound f funcs (compound : compound_expr) = match compound.desc with
+and find_tail_calls_compound f funcs compound = match compound.c_desc with
   (* still need to analyse any functions declared within branches *)
   | CWhile (body1, body2) ->
     find_tail_calls None funcs body1;
@@ -115,7 +115,7 @@ and find_tail_calls_compound f funcs (compound : compound_expr) = match compound
     (match f, List.find_opt (fun (id, _) -> Ident.same called id) funcs with
      (* If we later decide both 'f' and 'called' can be tail call optimised, this call will be rewritten *)
      | Some id, Some (_, n) when List.length args = n ->
-       mark_tail_call compound.annotations; update_tbl id called
+       mark_tail_call compound.c_annotations; update_tbl id called
       | _ -> ()
     )
   | _ -> ()
@@ -162,27 +162,27 @@ let rec rewrite_body_single f_id continue_id args linast = match linast.desc wit
   | LSeq (c, rest) ->
     {linast with desc = LSeq(c, rewrite_body_single f_id continue_id args rest)}
   (* Tail call to replace *)
-  | LCompound {desc = CApp({i_desc = ImmIdent f}, new_args); annotations}
-     when Ident.same f_id f && List.mem TailCall (!annotations) ->
+  | LCompound {c_desc = CApp({i_desc = ImmIdent f}, new_args); c_annotations}
+     when Ident.same f_id f && List.mem TailCall (!c_annotations) ->
      rewrite_tail_call_single continue_id args new_args
   (* Recurse on any Linasts within the compound term *)
   | LCompound c -> {linast with desc = LCompound(rewrite_compound_single f_id continue_id args c)}
 
-and rewrite_compound_single f_id continue_id args (compound : compound_expr) = match compound.desc with
+and rewrite_compound_single f_id continue_id args compound = match compound.c_desc with
   | CSwitch (imm, cases, default) ->
-    {compound with desc =
+    {compound with c_desc =
       CSwitch(imm,
         List.map (fun (i, body) -> (i, rewrite_body_single f_id continue_id args body)) cases,
         Option.map (rewrite_body_single f_id continue_id args) default)}
 
   | CIf (imm, body1, body2) ->
-      {compound with desc =
+      {compound with c_desc =
         CIf(imm,
           rewrite_body_single f_id continue_id args body1,
           rewrite_body_single f_id continue_id args body2)}
 
   | CMatchTry (imm, body1, body2) ->
-      {compound with desc =
+      {compound with c_desc =
         CMatchTry(imm,
           rewrite_body_single f_id continue_id args body1,
           rewrite_body_single f_id continue_id args body2)}
@@ -307,15 +307,15 @@ let rec rewrite_body in_tail_pos rewrites linast = match linast.desc with
   | LLetRec (binds, rest) ->
     (* Rewrite functions based on if they are single or mutually recursive *)
     let replaced_binds, rewrites =
-      List.fold_right (fun ((id, global, (compound : compound_expr)) as bind) (binds, rewrites) ->
+      List.fold_right (fun ((id, global, compound) as bind) (binds, rewrites) ->
         if Ident.Set.mem id (!optimise_alone)
-        then (match compound.desc with
+        then (match compound.c_desc with
            | CFunction(args, body) ->
              let new_f = rewrite_function_single id args body in
              ((id, global, new_f)::binds, rewrites)
            | _ -> failwith "LetRec binding wrongly marked as being single tail recursive")
         else if Ident.Set.mem id (!optimise_together)
-        then (match compound.desc with
+        then (match compound.c_desc with
             | CFunction(args, body) ->
               let added, rewrite = rewrite_function id global args body in
               (added @ binds, rewrite::rewrites)
@@ -335,39 +335,39 @@ let rec rewrite_body in_tail_pos rewrites linast = match linast.desc with
   (* Tail call to replace *)
   (* Not every tail call is to a tail-call-optimised function,
      must check it actually has a mapping and that we are in a tail recursive function *)
-  | LCompound {desc = CApp({i_desc = ImmIdent f}, args); annotations}
-     when in_tail_pos && List.mem TailCall (!annotations) ->
+  | LCompound {c_desc = CApp({i_desc = ImmIdent f}, args); c_annotations}
+     when in_tail_pos && List.mem TailCall (!c_annotations) ->
      (match List.find_opt (fun (id, _) -> Ident.same id f) rewrites with
        | Some (_, rewrite) -> rewrite_tail_call rewrite args
        | _ -> linast)
   | LCompound c -> {linast with desc = LCompound(rewrite_compound in_tail_pos rewrites c)}
 
 (* CApp handled above due to rewriting an application producing a linast *)
-and rewrite_compound in_tail_pos rewrites (compound : compound_expr) = match compound.desc with
+and rewrite_compound in_tail_pos rewrites compound = match compound.c_desc with
   | CSwitch (imm, cases, default) ->
-    {compound with desc =
+    {compound with c_desc =
       CSwitch(imm,
         List.map (fun (i, body) -> (i, rewrite_body in_tail_pos rewrites body)) cases,
         Option.map (rewrite_body in_tail_pos rewrites) default)}
 
   | CIf (imm, body1, body2) ->
-      {compound with desc =
+      {compound with c_desc =
         CIf(imm,
           rewrite_body in_tail_pos rewrites body1,
           rewrite_body in_tail_pos rewrites body2)}
 
   | CMatchTry (imm, body1, body2) ->
-      {compound with desc =
+      {compound with c_desc =
         CMatchTry(imm,
           rewrite_body in_tail_pos rewrites body1,
           rewrite_body in_tail_pos rewrites body2)}
   | CWhile (body1, body2) ->
-    {compound with desc = CWhile(rewrite_body false rewrites body1, rewrite_body false rewrites body2)}
-  | CFor (id, imm1, imm2, dir, body) -> {compound with desc =
+    {compound with c_desc = CWhile(rewrite_body false rewrites body1, rewrite_body false rewrites body2)}
+  | CFor (id, imm1, imm2, dir, body) -> {compound with c_desc =
     CFor (id, imm1, imm2, dir, rewrite_body false rewrites body)}
   (* If function has been tail call optimised, can enable replacing mapped tail calls in body *)
-  | CFunction (args, body) -> {compound with desc =
-    CFunction(args, rewrite_body (is_tail_call_optimised compound.annotations) rewrites body)}
+  | CFunction (args, body) -> {compound with c_desc =
+    CFunction(args, rewrite_body (is_tail_call_optimised compound.c_annotations) rewrites body)}
   | _ -> compound
 
 let adjust_max_args linast = match linast.desc with

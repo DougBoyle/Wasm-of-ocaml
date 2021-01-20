@@ -108,8 +108,8 @@ and transl_apply f args =
       let (args, setup) = getSetupAndImms rest in ((Some im) :: args, s @ setup)
   in let (args, argsetup) = getSetupAndImms args in
 
-  let flattenApp (f : compound_expr) args = match f.desc with
-    | CApp(f', args') -> ({f with desc=CApp(f', args' @ args)}, [])
+  let flattenApp f args = match f.c_desc with
+    | CApp(f', args') -> ({f with c_desc=CApp(f', args' @ args)}, [])
     | _ -> let id = Ident.create_local "fun" in (Compound.app (Imm.id id) args, [BLet(id, f)])
 
   (* Convert args into two lists - new variables to abstract over (skipped labelled vars) and whole list of applications *)
@@ -313,11 +313,11 @@ and translate_function param partial = function
       when Parmatch.inactive ~partial pat ->
       (* Add the parameter onto the list of arguments of the inner function, with the necessary pattern matching *)
         (match translate_compound exp with
-          | ({desc=CFunction(args, body);_} as comp, setup) ->
+          | ({c_desc=CFunction(args, body);_} as comp, setup) ->
              let matrix = [([pat], body)] in
              (* Argument binding so 'exported' list not needed *)
              let tree = matrix_to_linast [] (partial = Total) (Imm.id param) matrix in
-            ({comp with desc=CFunction(param::args, tree)}, setup)
+            ({comp with c_desc=CFunction(param::args, tree)}, setup)
           | _ -> assert false (* Know body is a Texp_function, so recursive call should always return a function *)
         )
     | cases ->

@@ -28,7 +28,7 @@ module CompoundHash = struct
           desc1 = desc3 && desc2 = desc4
         | CMakeBlock (i, imms1), CMakeBlock(j, imms2) -> i = j &&
           List.length imms1 = List.length imms2 && List.for_all
-          (fun (({i_desc=desc1} : imm_expr), ({i_desc=desc2} : imm_expr)) -> desc1 = desc2) (List.combine imms1 imms2)
+          (fun ({i_desc=desc1}, {i_desc=desc2}) -> desc1 = desc2) (List.combine imms1 imms2)
         | CGetTag {i_desc=desc1}, CGetTag {i_desc=desc2} -> desc1 = desc2
         (* Due to unique indents, would need alpha-conversion test to determine function equality *)
         | _ -> false (* TODO: Why not define equality for Linasts? Gets too exhaustive?
@@ -49,7 +49,7 @@ module CompoundHash = struct
         | CArrayGet ({i_desc=desc1}, {i_desc=desc2}) ->
           Hashtbl.hash "ArrayGet" lxor Hashtbl.hash desc1 lxor Hashtbl.hash desc2
         | CMakeBlock (i, imms) -> List.fold_left
-          (fun hash ({i_desc} : imm_expr) -> hash lxor Hashtbl.hash i_desc)
+          (fun hash {i_desc} -> hash lxor Hashtbl.hash i_desc)
           (Hashtbl.hash i lxor Hashtbl.hash "MakeBlock") imms
         | CGetTag {i_desc} -> Hashtbl.hash "GetTag" lxor Hashtbl.hash i_desc
         | desc -> Hashtbl.hash desc (* Don't want to be putting these items in the HashTbl *)
@@ -65,24 +65,24 @@ let common_expressions = (CompoundHashtbl.create(50) : Ident.t CompoundHashtbl.t
 let enter_linast linast = (match linast.desc with
   (* Two rules to do copy propagation. Replacing Idents and removing unused let bindings
      is done by existing code for dead assignment elimination and CSE *)
- | LLet(id, Local, {desc = CImm {i_desc = ImmIdent id'}}, _) ->
+ | LLet(id, Local, {c_desc = CImm {i_desc = ImmIdent id'}}, _) ->
     Ident.Tbl.add replaced_idents id id'
   (* Also done for recursive LLetRec in case of useless binding like 'let rec f = g' *)
   | LLetRec(binds, _) -> List.iter
     (function
-      | (id, Local, ({desc = CImm {i_desc = ImmIdent id'}} : compound_expr)) ->
+      | (id, Local, {c_desc = CImm {i_desc = ImmIdent id'}}) ->
         Ident.Tbl.add replaced_idents id id'
       | _ -> ()) binds
 
   (* Track known subexpressions and Idents that can be replaced *)
-  | LLet(id, (Local | Export), body, _) -> (match CompoundHashtbl.find_opt common_expressions body.desc with
+  | LLet(id, (Local | Export), body, _) -> (match CompoundHashtbl.find_opt common_expressions body.c_desc with
     | Some id' -> Ident.Tbl.add replaced_idents id id'
-    | None -> if List.mem Immutable (!(body.annotations)) then
-      CompoundHashtbl.add common_expressions body.desc id)
+    | None -> if List.mem Immutable (!(body.c_annotations)) then
+      CompoundHashtbl.add common_expressions body.c_desc id)
   | _ -> ()
   ); linast
 
-let map_imm (imm : Linast.imm_expr) = match imm.i_desc with
+let map_imm imm = match imm.i_desc with
   | ImmIdent id ->
     (match Ident.Tbl.find_opt replaced_idents id with Some id' -> {imm with i_desc=ImmIdent id'} | None -> imm)
   | _ -> imm
@@ -92,9 +92,9 @@ let map_imm (imm : Linast.imm_expr) = match imm.i_desc with
 (* Ensures bindings that may not happen (e.g. if statements) don't leak into later parts.
    Much more complex graph-based methods needed to determine if something gets bound on all paths or not *)
 let leave_linast linast = (match linast.desc with
-  | LLet(id, _, body, rest) -> (match CompoundHashtbl.find_opt common_expressions body.desc with
+  | LLet(id, _, body, rest) -> (match CompoundHashtbl.find_opt common_expressions body.c_desc with
     (* This was being used as a common expression, remove since no longer in scope *)
-    | Some id' -> if id = id' then CompoundHashtbl.remove common_expressions body.desc
+    | Some id' -> if id = id' then CompoundHashtbl.remove common_expressions body.c_desc
       else Ident.Tbl.remove replaced_idents id (* Replacement rule no longer needed, ident out of scope *)
     (* Some Imm within body has been replaced, hence compound not found in table.
        No way to remove the original expression stored in the table, just try to remove possible ident replacement *)

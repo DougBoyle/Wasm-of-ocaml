@@ -12,10 +12,10 @@ let clear_annotations annotations =
   annotations := List.filter
     (function ImmutableBlock _ | TailCallOptimised | Tupled -> true | _ -> false) (!annotations)
 
-let map_imm (imm : imm_expr) =
+let map_imm imm =
   clear_annotations imm.i_annotations; imm
-let enter_compound (compound : compound_expr) =
-  clear_annotations compound.annotations; compound
+let enter_compound compound =
+  clear_annotations compound.c_annotations; compound
 let enter_linast linast =
   clear_annotations linast.annotations; linast
 

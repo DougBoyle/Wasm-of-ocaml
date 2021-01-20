@@ -10,7 +10,7 @@ let block_id = Ident.create_local "id"
 
 let rec ends_in_a_constant linast = match linast.desc with
   | LLet(_, _, _, body) | LLetRec(_, body) | LSeq(_, body) -> ends_in_a_constant body
-  | LCompound {desc=CImm _} -> true
+  | LCompound {c_desc=CImm _} -> true
   | _ -> false
 
 (* Function call potentially modifies the field, so can't optimise *)

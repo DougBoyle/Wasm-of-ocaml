@@ -12,10 +12,10 @@ let copy_fail from_annots to_annots =
   | _ -> ()
 
 let rec rewrite_fail i body handler = match body.desc with
-  | LCompound {desc=CMatchFail j}
+  | LCompound {c_desc=CMatchFail j}
   (* Below cases should never actually occur, just included for completeness.
      Could technically include lletrec too, but that only ever binds functions *)
-  | LSeq ({desc=CMatchFail j}, _) | LLet (_, _, {desc=CMatchFail j}, _) when i = j -> handler
+  | LSeq ({c_desc=CMatchFail j}, _) | LLet (_, _, {c_desc=CMatchFail j}, _) when i = j -> handler
   (* Assume that body will trigger fail i (so no guards), else rewrite_fail should not have been called *)
   | LSeq (compound, body) -> LinastExpr.seq compound (rewrite_fail i body handler)
   | LLet (id, global, compound, body) ->
@@ -25,11 +25,11 @@ let rec rewrite_fail i body handler = match body.desc with
 
 (* Replace unnecessary MatchTry with rewriten linast *)
 let rewrite_linast linast = match linast.desc with
-  | LCompound {desc=CMatchTry (i, body, handler)} when will_fail i body.annotations ->
+  | LCompound {c_desc=CMatchTry (i, body, handler)} when will_fail i body.annotations ->
     rewrite_fail i body handler
-  | LLet(id, global, {desc=CMatchTry (i, body, handler)}, rest) when will_fail i body.annotations ->
+  | LLet(id, global, {c_desc=CMatchTry (i, body, handler)}, rest) when will_fail i body.annotations ->
     OptConstants.rewrite_tree (LinastExpr.mklet id global) (rewrite_fail i body handler) rest
-  | LSeq({desc=CMatchTry (i, body, handler)}, rest) when will_fail i body.annotations ->
+  | LSeq({c_desc=CMatchTry (i, body, handler)}, rest) when will_fail i body.annotations ->
     OptConstants.rewrite_tree LinastExpr.seq (rewrite_fail i body handler) rest
   | _ -> linast
 
@@ -39,10 +39,10 @@ let rewrite_linast linast = match linast.desc with
 (* Propagate up fail annotations (after any rewriting) *)
 let leave_linast linast =
   let linast = rewrite_linast linast in match linast.desc with
-  | LCompound {desc=CMatchFail i} -> mark_failing i linast.annotations; linast
+  | LCompound {c_desc=CMatchFail i} -> mark_failing i linast.annotations; linast
   (* These cases should never actually occur, just included for completeness.
      If they did occur, can simplify to compounds since rest will never be evaluated. *)
-  | LLet(_, _, ({desc=CMatchFail i} as comp), _) | LSeq (({desc=CMatchFail i} as comp), _) ->
+  | LLet(_, _, ({c_desc=CMatchFail i} as comp), _) | LSeq (({c_desc=CMatchFail i} as comp), _) ->
     mark_failing i linast.annotations; {linast with desc=LCompound comp}
   (* Due to 'fail i' only being introduced during pattern matching, if 2nd part of a sequence
      fails then whole sequence must, 1st part cannot be an assignment or other side effect. *)

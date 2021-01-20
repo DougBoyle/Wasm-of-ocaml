@@ -73,11 +73,11 @@ let unary ppf = function
   | FUnNeg -> fprintf ppf "-."
   | FSqrt -> fprintf ppf "sqrt"
 
-let print_imm ppf (imm : imm_expr) = match imm.i_desc with
+let print_imm ppf imm = match imm.i_desc with
   | ImmIdent id -> Ident.print ppf id
   | ImmConst c -> struct_const ppf c
 
-let rec print_compound ppf (c : compound_expr) = match c.desc with
+let rec print_compound ppf c = match c.c_desc with
     | CImm i -> print_imm ppf i
     | CMatchFail n -> fprintf ppf "@[<2>(fail@ %li)@]" n
     | CUnary (op, imm) -> fprintf ppf "(%a %a)" unary op print_imm imm

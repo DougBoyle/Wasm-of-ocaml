@@ -126,7 +126,8 @@ type compound_expr_desc =
   | CAssign of Ident.t * imm_expr
   (* TODO: Leave out until I know if I can support strings in wasm or not: | CString of string *)
 
-and compound_expr = {desc : compound_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}
+and compound_expr = {c_desc : compound_expr_desc; c_loc : Location.t; c_env : Env.t;
+  mutable c_annotations : annotations}
 
 and linast_expr_desc =
   (* global rules may get more challenging if using mli file or considering redeclarations of variables *)
