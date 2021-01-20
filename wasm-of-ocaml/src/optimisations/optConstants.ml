@@ -11,14 +11,14 @@ let enter_linast linast = (match linast.desc with
   (* Don't try to propagate constants on Mut idents *)
   | LLet(id, (Local | Export), body, rest) -> (match body.desc with
     (* Only immediate constants, binop(im1, im2) first reduced by constant folding *)
-    | CImm {desc=ImmConst c} -> Ident.Tbl.add constant_idents id c
+    | CImm {i_desc=ImmConst c} -> Ident.Tbl.add constant_idents id c
     | _ -> ())
   | _ -> () (* LLetRec is always a function so no constants to optimise *)
   ); linast
 
-let map_imm (imm : imm_expr) = match imm.desc with
+let map_imm (imm : imm_expr) = match imm.i_desc with
   | ImmIdent id ->
-    (match Ident.Tbl.find_opt constant_idents id with Some c -> {imm with desc=ImmConst c} | None -> imm)
+    (match Ident.Tbl.find_opt constant_idents id with Some c -> {imm with i_desc=ImmConst c} | None -> imm)
   | _ -> imm
 
 (* TODO: Update eval_unary/binary if other types ever need supporting for the same ops *)
@@ -88,20 +88,21 @@ let eval_binary = function
 
 (* Once had the chance to replace immIdents with constants, see if unary/binary can be optimised too *)
 let leave_compound (compound : compound_expr) = match compound.desc with
-  | CUnary(op, ({desc=ImmConst c} as imm)) -> {compound with desc=CImm {imm with desc=ImmConst (eval_unary (op, c))}}
-  | CBinary(op, ({desc=ImmConst c1} as imm1), ({desc=ImmConst c2})) ->
-    (try {compound with desc=CImm {imm1 with desc=ImmConst (eval_binary (op, c1, c2))}}
+  | CUnary(op, ({i_desc=ImmConst c} as imm)) ->
+    {compound with desc=CImm {imm with i_desc=ImmConst (eval_unary (op, c))}}
+  | CBinary(op, ({i_desc=ImmConst c1} as imm1), ({i_desc=ImmConst c2})) ->
+    (try {compound with desc=CImm {imm1 with i_desc=ImmConst (eval_binary (op, c1, c2))}}
      with Division_by_zero -> compound) (* Leave runtime division-by-zero error till runtime *)
 
   (* Do actual changing of tree structure here so that analyse.ml can just be a side-effect function *)
   (* Separates analysis from optimisations *)
-  | CGetTag imm -> (match List.find_opt (function Tag _ -> true | _ -> false) (!(imm.annotations)) with
+  | CGetTag imm -> (match List.find_opt (function Tag _ -> true | _ -> false) (!(imm.i_annotations)) with
     | Some (Tag i) -> {compound with desc=CImm (LinastUtils.Imm.const (Asttypes.Const_int i))}
     | None -> compound
     | _ -> failwith "Find returned an annotation of the wrong kind")
   | CField (imm, idx) ->
     (* Returns a value, so can't wrap in a List.iter *)
-    (match List.find_opt (function FieldImms _ -> true | _ -> false) (!(imm.annotations)) with
+    (match List.find_opt (function FieldImms _ -> true | _ -> false) (!(imm.i_annotations)) with
       | None -> compound
       | Some (FieldImms l) -> (match List.nth_opt l idx with (* nth_opt to avoid impossible case errors *)
           | Some (Some imm) -> {compound with desc=CImm imm}
@@ -114,17 +115,17 @@ let leave_compound (compound : compound_expr) = match compound.desc with
 (* Also removes switches with only 1 case *)
 
 let can_simplify_branch : compound_expr -> bool = function
-  | {desc=CIf({desc=ImmConst _}, _, _)}
-  | {desc=CSwitch({desc=ImmConst _}, _, _)}
+  | {desc=CIf({i_desc=ImmConst _}, _, _)}
+  | {desc=CSwitch({i_desc=ImmConst _}, _, _)}
   (* Switch with only 1 case and no default. Only created if known to be exhaustive (hence no default)
      so can safely remove the switch *)
   | {desc=CSwitch(_, [_], None)} -> true
   | _ -> false
 
 let simplify_branch : compound_expr -> linast_expr = function
-  | {desc=CIf({desc=ImmConst (Asttypes.Const_int i)}, branch1, branch2)} -> if i > 0 then branch1 else branch2
+  | {desc=CIf({i_desc=ImmConst (Asttypes.Const_int i)}, branch1, branch2)} -> if i > 0 then branch1 else branch2
   | {desc=CSwitch(_, [(_, body)], None)} -> body
-  | {desc=CSwitch({desc=ImmConst (Asttypes.Const_int i)}, cases, default)} ->
+  | {desc=CSwitch({i_desc=ImmConst (Asttypes.Const_int i)}, cases, default)} ->
     (match List.assoc_opt i cases with
       | Some body -> body
       | None ->
@@ -163,7 +164,7 @@ let leave_linast linast = match linast.desc with
            Implicitly passing out values is starting to look like an issue, any way to avoid this scope issue? *)
   | LLet (id, global, compound, rest) when can_simplify_branch compound ->
     (match compound.desc with (* remove from table *)
-      | CImm {desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
+      | CImm {i_desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
       | _ -> ());
     let branch = simplify_branch compound in
     let mkleaf = LinastUtils.LinastExpr.mklet id global in
@@ -175,7 +176,7 @@ let leave_linast linast = match linast.desc with
       | LLetRec (binds, body) -> {linast with desc=LLetRec(binds, rewrite_tree mkleaf body rest)}
     )
   | LLet(id, _, body, rest) -> (match body.desc with (* remove from table *)
-     | CImm {desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
+     | CImm {i_desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
      | _ -> ()); linast
   | _ -> linast
 

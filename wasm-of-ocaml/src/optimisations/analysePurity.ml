@@ -22,23 +22,23 @@ let copy_immutable_annotation imms annotations =
     annotations := Immutable::(!annotations)
 
 (* Updates the annotations on imm *)
-let analyse_imm (imm : imm_expr) = match imm.desc with
+let analyse_imm (imm : imm_expr) = match imm.i_desc with
   (* Assume imm doesn't already have any annotations on it *)
   | ImmIdent id -> (match Ident.Tbl.find_opt ident_analysis id with
     (* Must copy original annotations in the list of annotations gets modified *)
-    | Some annotations -> imm.annotations <- annotations
+    | Some annotations -> imm.i_annotations <- annotations
     (* Unseen ident, possibly a function argument (nothing assumed, would need to anlayse all calls) *)
     | None -> ())
-  | ImmConst _ ->  add_annotation Immutable imm.annotations;
+  | ImmConst _ ->  add_annotation Immutable imm.i_annotations;
      (* Is this necessary? *)
-     add_annotation Pure imm.annotations
+     add_annotation Pure imm.i_annotations
 
 let rec analyse_compound handlers (compound : compound_expr) = match compound.desc with
   (* Copy up annotations *)
   | CImm imm ->
     analyse_imm imm;
     (* Pure/Immutable added after so need to take a copy *)
-    compound.annotations <- ref (!(imm.annotations));
+    compound.annotations <- ref (!(imm.i_annotations));
     add_annotation Immutable compound.annotations;
     add_annotation Pure compound.annotations
   | CMatchFail (-1l) -> () (* Could mark expression as failing - no different to just constant folding the trap *)
@@ -70,7 +70,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     (function Fields l -> (match List.nth_opt l idx with
            | Some annotations -> compound.annotations <- annotations
            | None -> ())
-      | _ -> ()) (!(imm.annotations));
+      | _ -> ()) (!(imm.i_annotations));
     add_annotation Pure compound.annotations
   | CArraySet _ -> ()
   | CArrayGet _ -> add_annotation Pure compound.annotations (* Cant guarentee anything about fields without more analysis *)
@@ -82,7 +82,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     (function ImmutableBlock l ->
       (* For fixed fields, copy across any annotations from Imms *)
       add_annotation (Fields (List.mapi (fun idx (imm : imm_expr) -> if List.nth l idx
-       then imm.annotations else ref []) imms)) compound.annotations;
+       then imm.i_annotations else ref []) imms)) compound.annotations;
       (* If every field is fixed, block can be viewed as immutable *)
       if List.for_all (fun b -> b) l then add_annotation Immutable compound.annotations | _ -> ())
       (!(compound.annotations));
@@ -147,7 +147,7 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     compound.annotations <- List.fold_left
      (fun func_annots arg -> List.fold_left (* extract just the body annotations, assume nothing else *)
        (fun annots -> (function (Fields [body]) -> body | _ -> annots)) (ref []) (!func_annots))
-     f.annotations args
+     f.i_annotations args
 
   (* Assume the worst of each argument, don't try to analyse everywhere the function is called from *)
   (* Creating a closure is always pure/immutable so pass body as Fields annotation *)

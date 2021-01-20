@@ -25,7 +25,7 @@ let rec apply_variable_rule ~exported (value : Linast.imm_expr) (pats, action) =
         | Tpat_any -> (ps, action)
         | Tpat_var(x, _) ->
         (* TODO: Hack to avoid binding ident to itself at top of a function, remove by an optimisation pass *)
-        let new_bind = match value.desc with ImmIdent i when i = x -> [] | _ -> [BLet(x, Compound.imm value)] in
+        let new_bind = match value.i_desc with ImmIdent i when i = x -> [] | _ -> [BLet(x, Compound.imm value)] in
         (ps, binds_to_anf ~exported new_bind action)
         | _ -> failwith "Not possible to apply variable rule")
 

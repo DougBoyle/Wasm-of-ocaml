@@ -73,7 +73,7 @@ let unary ppf = function
   | FUnNeg -> fprintf ppf "-."
   | FSqrt -> fprintf ppf "sqrt"
 
-let print_imm ppf (imm : imm_expr) = match imm.desc with
+let print_imm ppf (imm : imm_expr) = match imm.i_desc with
   | ImmIdent id -> Ident.print ppf id
   | ImmConst c -> struct_const ppf c
 

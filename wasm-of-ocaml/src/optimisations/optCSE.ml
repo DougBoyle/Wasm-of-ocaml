@@ -13,43 +13,45 @@ open Linast
 module CompoundHash = struct
     type t = Linast.compound_expr_desc (* keys of the table *)
     let equal c1 c2 = match (c1, c2) with
-        | CImm {desc=desc1}, CImm{desc=desc2} -> desc1 = desc2
+        | CImm {i_desc=desc1}, CImm{i_desc=desc2} -> desc1 = desc2
        (* | CMatchFail i, CMatchFail j -> i = j *) (* Can never actually occur as a binding *)
-        | CUnary(op1, {desc=desc1}), CUnary(op2, {desc=desc2}) -> op1 = op2 && desc1 = desc2
-        | CBinary (op1, {desc=desc1}, {desc=desc2}), CBinary (op2, {desc=desc3}, {desc=desc4}) ->
+        | CUnary(op1, {i_desc=desc1}), CUnary(op2, {i_desc=desc2}) -> op1 = op2 && desc1 = desc2
+        | CBinary (op1, {i_desc=desc1}, {i_desc=desc2}), CBinary (op2, {i_desc=desc3}, {i_desc=desc4}) ->
           op1 = op2 && desc1 = desc3 && desc2 = desc4
-        | CSetField ({desc=desc1}, i, {desc=desc2}), CSetField ({desc=desc3}, j, {desc=desc4}) ->
+        | CSetField ({i_desc=desc1}, i, {i_desc=desc2}), CSetField ({i_desc=desc3}, j, {i_desc=desc4}) ->
           i = j && desc1 = desc3 && desc2 = desc4
-        | CField ({desc=desc1}, i), CField ({desc=desc2}, j) -> i = j && desc1 = desc2
-        | CArraySet ({desc=desc1}, {desc=desc2}, {desc=desc3}), CArraySet ({desc=desc4}, {desc=desc5}, {desc=desc6}) ->
+        | CField ({i_desc=desc1}, i), CField ({i_desc=desc2}, j) -> i = j && desc1 = desc2
+        | CArraySet ({i_desc=desc1}, {i_desc=desc2}, {i_desc=desc3}),
+          CArraySet ({i_desc=desc4}, {i_desc=desc5}, {i_desc=desc6}) ->
           desc1 = desc4 && desc2 = desc5 && desc3 = desc6
-        | CArrayGet ({desc=desc1}, {desc=desc2}), CArrayGet ({desc=desc3}, {desc=desc4}) ->
+        | CArrayGet ({i_desc=desc1}, {i_desc=desc2}), CArrayGet ({i_desc=desc3}, {i_desc=desc4}) ->
           desc1 = desc3 && desc2 = desc4
         | CMakeBlock (i, imms1), CMakeBlock(j, imms2) -> i = j &&
           List.length imms1 = List.length imms2 && List.for_all
-          (fun (({desc=desc1} : imm_expr), ({desc=desc2} : imm_expr)) -> desc1 = desc2) (List.combine imms1 imms2)
-        | CGetTag {desc=desc1}, CGetTag {desc=desc2} -> desc1 = desc2
+          (fun (({i_desc=desc1} : imm_expr), ({i_desc=desc2} : imm_expr)) -> desc1 = desc2) (List.combine imms1 imms2)
+        | CGetTag {i_desc=desc1}, CGetTag {i_desc=desc2} -> desc1 = desc2
         (* Due to unique indents, would need alpha-conversion test to determine function equality *)
         | _ -> false (* TODO: Why not define equality for Linasts? Gets too exhaustive?
                               Note - will end up storing compounds that cannot be used?
                               Suggests need to test before logging something as reusable *)
     (* c1 = c2 must guarentee that hash c1 = hash c2 *)
     let hash = function
-        | CImm {desc} -> Hashtbl.hash "Imm" lxor Hashtbl.hash desc
+        | CImm {i_desc} -> Hashtbl.hash "Imm" lxor Hashtbl.hash i_desc
       (*  | CMatchFail i ->  *)
-        | CUnary(op, {desc}) -> Hashtbl.hash "Unary" lxor Hashtbl.hash op lxor Hashtbl.hash desc
-        | CBinary (op, {desc=desc1}, {desc=desc2}) ->
+        | CUnary(op, {i_desc}) -> Hashtbl.hash "Unary" lxor Hashtbl.hash op lxor Hashtbl.hash i_desc
+        | CBinary (op, {i_desc=desc1}, {i_desc=desc2}) ->
           Hashtbl.hash "Binary" lxor Hashtbl.hash op lxor Hashtbl.hash desc1 lxor Hashtbl.hash desc2
-        | CSetField ({desc=desc1}, i, {desc=desc2}) ->
+        | CSetField ({i_desc=desc1}, i, {i_desc=desc2}) ->
           Hashtbl.hash "SetField" lxor Hashtbl.hash i lxor Hashtbl.hash desc1 lxor Hashtbl.hash desc2
-        | CField ({desc}, i) -> Hashtbl.hash "Field" lxor Hashtbl.hash i lxor Hashtbl.hash desc
-        | CArraySet ({desc=desc1}, {desc=desc2}, {desc=desc3}) ->
+        | CField ({i_desc}, i) -> Hashtbl.hash "Field" lxor Hashtbl.hash i lxor Hashtbl.hash i_desc
+        | CArraySet ({i_desc=desc1}, {i_desc=desc2}, {i_desc=desc3}) ->
           Hashtbl.hash "ArraySet" lxor Hashtbl.hash desc1 lxor Hashtbl.hash desc2 lxor Hashtbl.hash desc3
-        | CArrayGet ({desc=desc1}, {desc=desc2}) ->
+        | CArrayGet ({i_desc=desc1}, {i_desc=desc2}) ->
           Hashtbl.hash "ArrayGet" lxor Hashtbl.hash desc1 lxor Hashtbl.hash desc2
         | CMakeBlock (i, imms) -> List.fold_left
-          (fun hash ({desc} : imm_expr) -> hash lxor Hashtbl.hash desc) (Hashtbl.hash i lxor Hashtbl.hash "MakeBlock") imms
-        | CGetTag {desc} -> Hashtbl.hash "GetTag" lxor Hashtbl.hash desc
+          (fun hash ({i_desc} : imm_expr) -> hash lxor Hashtbl.hash i_desc)
+          (Hashtbl.hash i lxor Hashtbl.hash "MakeBlock") imms
+        | CGetTag {i_desc} -> Hashtbl.hash "GetTag" lxor Hashtbl.hash i_desc
         | desc -> Hashtbl.hash desc (* Don't want to be putting these items in the HashTbl *)
 end
 
@@ -63,12 +65,12 @@ let common_expressions = (CompoundHashtbl.create(50) : Ident.t CompoundHashtbl.t
 let enter_linast linast = (match linast.desc with
   (* Two rules to do copy propagation. Replacing Idents and removing unused let bindings
      is done by existing code for dead assignment elimination and CSE *)
- | LLet(id, Local, {desc = CImm {desc = ImmIdent id'}}, _) ->
+ | LLet(id, Local, {desc = CImm {i_desc = ImmIdent id'}}, _) ->
     Ident.Tbl.add replaced_idents id id'
   (* Also done for recursive LLetRec in case of useless binding like 'let rec f = g' *)
   | LLetRec(binds, _) -> List.iter
     (function
-      | (id, Local, ({desc = CImm {desc = ImmIdent id'}} : compound_expr)) ->
+      | (id, Local, ({desc = CImm {i_desc = ImmIdent id'}} : compound_expr)) ->
         Ident.Tbl.add replaced_idents id id'
       | _ -> ()) binds
 
@@ -80,9 +82,9 @@ let enter_linast linast = (match linast.desc with
   | _ -> ()
   ); linast
 
-let map_imm (imm : Linast.imm_expr) = match imm.desc with
+let map_imm (imm : Linast.imm_expr) = match imm.i_desc with
   | ImmIdent id ->
-    (match Ident.Tbl.find_opt replaced_idents id with Some id' -> {imm with desc=ImmIdent id'} | None -> imm)
+    (match Ident.Tbl.find_opt replaced_idents id with Some id' -> {imm with i_desc=ImmIdent id'} | None -> imm)
   | _ -> imm
 
 (* Opposite of enter_linast as binding goes out of scope *)

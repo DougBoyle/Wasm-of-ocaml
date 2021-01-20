@@ -6,10 +6,10 @@ open LinastUtils
 
 
 let is_not_f f = function
-  | ({desc=ImmIdent id} : imm_expr) -> not (Ident.same f id)
+  | ({i_desc=ImmIdent id} : imm_expr) -> not (Ident.same f id)
   | _ -> true
 let is_f f = function
-  | ({desc=ImmIdent id} : imm_expr) -> Ident.same f id
+  | ({i_desc=ImmIdent id} : imm_expr) -> Ident.same f id
   | _ -> false
 
 let rec safe_to_rewrite f arity linast = match linast.desc with

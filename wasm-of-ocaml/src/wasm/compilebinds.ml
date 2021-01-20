@@ -95,7 +95,7 @@ let compile_const (c : Asttypes.constant) =
   | Const_nativeint _ -> failwith "Native ints not yet supported"
 
 let compile_imm env (i : imm_expr) =
-  match i.desc with
+  match i.i_desc with
   | ImmConst c -> MImmConst(compile_const c)
   | ImmIdent id -> MImmBinding(find_id id env)
 
@@ -188,7 +188,7 @@ let rec compile_comp env (c : compound_expr) =
     MAllocate(MClosure(compile_function env args body true))
   | CFunction(args, body) ->
     MAllocate(MClosure(compile_function env args body false))
-  | CApp(({desc=ImmIdent id} as f), args) when Ident.Set.mem id (!(tupled_functions)) ->
+  | CApp(({i_desc=ImmIdent id} as f), args) when Ident.Set.mem id (!(tupled_functions)) ->
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args, true)
   | CApp(f, args) ->
     (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Maybe for optimisation when target known *)

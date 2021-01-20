@@ -15,14 +15,14 @@ let add_annotations annot_list annotations =
   List.iter (fun annot -> add_annotation annot annotations) annot_list
 
 (* Updates the annotations on imm *)
-let analyse_imm (imm : imm_expr) = match imm.desc with
+let analyse_imm (imm : imm_expr) = match imm.i_desc with
   | ImmIdent id -> (match Ident.Tbl.find_opt known_tags id with
     (* Update the annotations on that ImmIdent with the tracked annotation *)
-    | Some i -> add_annotation (Tag i) imm.annotations
+    | Some i -> add_annotation (Tag i) imm.i_annotations
     | None -> ());
     (match Ident.Tbl.find_opt known_fields id with
     (* Update the annotations on that ImmIdent with the tracked annotation *)
-    | Some fields -> add_annotation (FieldImms fields) imm.annotations
+    | Some fields -> add_annotation (FieldImms fields) imm.i_annotations
     | None -> ())
   | _ -> ()
 
@@ -46,7 +46,7 @@ let merge_fieldimms = function
     let new_list = List.init len
     (fun i -> match List.nth l1 i, List.nth l2 i with
       | (None, _) | (_, None) -> None
-      | (Some imm1, Some imm2) -> if imm1.desc = imm2.desc then Some imm1 else None) in
+      | (Some imm1, Some imm2) -> if imm1.i_desc = imm2.i_desc then Some imm1 else None) in
     (* Check there is actually a point in having this annotation still *)
     if List.for_all (function None -> true | _ -> false) new_list then None else Some (FieldImms new_list)
   | _ -> failwith "Filter for only fieldImms annotation failed"
@@ -72,7 +72,7 @@ let rec analyse_compound (compound : compound_expr) = match compound.desc with
   (* Copy up annotations *)
   | CImm imm ->
     analyse_imm imm;
-    copy_annotations imm.annotations compound.annotations;
+    copy_annotations imm.i_annotations compound.annotations;
 
   | CMakeBlock (i, imms) ->
     List.iter analyse_imm imms;

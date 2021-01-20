@@ -83,7 +83,7 @@ let mark_app id num_args =
 let remove_id id =
   inline_info := Ident.remove id (!inline_info)
 
-let map_imm (imm : Linast.imm_expr) = match imm.desc with
+let map_imm (imm : Linast.imm_expr) = match imm.i_desc with
   | ImmIdent id -> count id; imm
   | _ -> imm
 
@@ -91,7 +91,7 @@ let map_imm (imm : Linast.imm_expr) = match imm.desc with
    as they are stored as idents not immediates *)
 (* Idents assigned to are never function arguments, so can ignore them *)
 let enter_compound (compound : compound_expr) = match compound.desc with
-  | CApp({desc=ImmIdent id}, args) -> mark_app id (List.length args); compound
+  | CApp({i_desc=ImmIdent id}, args) -> mark_app id (List.length args); compound
   | _ -> compound
 
 let enter_linast linast = match linast.desc with
@@ -105,12 +105,12 @@ let enter_linast linast = match linast.desc with
 
 (* Important to copy the annotations in each case, so that analysis on inlined functions doesn't
    affect the annotations on the original function *)
-let substitue (mapping : (Ident.t * imm_expr) list) (imm : imm_expr) : (imm_expr) = match imm.desc with
+let substitue (mapping : (Ident.t * imm_expr) list) (imm : imm_expr) : (imm_expr) = match imm.i_desc with
   | ImmIdent id ->
     (match List.assoc_opt id mapping with
-      | Some imm' -> {imm' with annotations = ref (!(imm'.annotations))}
-      | None -> {imm with annotations = ref (!(imm.annotations))})
-  | _ -> {imm with annotations = ref (!(imm.annotations))}
+      | Some imm' -> {imm' with i_annotations = ref (!(imm'.i_annotations))}
+      | None -> {imm with i_annotations = ref (!(imm.i_annotations))})
+  | _ -> {imm with i_annotations = ref (!(imm.i_annotations))}
 let copy_compound (compound : compound_expr) = {compound with annotations = ref (!(compound.annotations))}
 let copy_linast linast = {linast with annotations = ref (!(linast.annotations))}
 
@@ -140,18 +140,18 @@ let inline_function args {arity; parameters; body; size} =
 let leave_linast linast =
   try (match linast.desc with
   | LLet (id, Local, {desc = CFunction _}, _) -> remove_id id; linast
-  | LLet (id, export, {desc = CApp ({desc=ImmIdent f}, args)}, rest) ->
+  | LLet (id, export, {desc = CApp ({i_desc=ImmIdent f}, args)}, rest) ->
     let info = Ident.find_same f (!inline_info) in
     if should_inline info then
       OptConstants.rewrite_tree (LinastExpr.mklet id export)
        (inline_function args info) rest
     else linast
-  | LSeq({desc = CApp ({desc=ImmIdent f}, args)}, rest) ->
+  | LSeq({desc = CApp ({i_desc=ImmIdent f}, args)}, rest) ->
     let info = Ident.find_same f (!inline_info) in
     if should_inline info then
       OptConstants.rewrite_tree LinastExpr.seq (inline_function args info) rest
     else linast
-  | LCompound {desc = CApp ({desc=ImmIdent f}, args)} ->
+  | LCompound {desc = CApp ({i_desc=ImmIdent f}, args)} ->
     let info = Ident.find_same f (!inline_info) in
     if should_inline info then
       inline_function args info

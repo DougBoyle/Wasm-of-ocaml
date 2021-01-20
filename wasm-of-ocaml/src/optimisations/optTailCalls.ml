@@ -108,7 +108,7 @@ and find_tail_calls_compound f funcs (compound : compound_expr) = match compound
   | CIf (_, body1, body2) | CMatchTry (_, body1, body2) ->
     find_tail_calls f funcs body1;
     find_tail_calls f funcs body2
-  | CApp ({desc=ImmIdent called}, args) ->
+  | CApp ({i_desc=ImmIdent called}, args) ->
     (* Check that:
        1) We are in a recursive function and at a tail-call position within it.
        2) The function being called could also be a tail-call optimised function. *)
@@ -162,7 +162,7 @@ let rec rewrite_body_single f_id continue_id args linast = match linast.desc wit
   | LSeq (c, rest) ->
     {linast with desc = LSeq(c, rewrite_body_single f_id continue_id args rest)}
   (* Tail call to replace *)
-  | LCompound {desc = CApp({desc = ImmIdent f}, new_args); annotations}
+  | LCompound {desc = CApp({i_desc = ImmIdent f}, new_args); annotations}
      when Ident.same f_id f && List.mem TailCall (!annotations) ->
      rewrite_tail_call_single continue_id args new_args
   (* Recurse on any Linasts within the compound term *)
@@ -335,7 +335,7 @@ let rec rewrite_body in_tail_pos rewrites linast = match linast.desc with
   (* Tail call to replace *)
   (* Not every tail call is to a tail-call-optimised function,
      must check it actually has a mapping and that we are in a tail recursive function *)
-  | LCompound {desc = CApp({desc = ImmIdent f}, args); annotations}
+  | LCompound {desc = CApp({i_desc = ImmIdent f}, args); annotations}
      when in_tail_pos && List.mem TailCall (!annotations) ->
      (match List.find_opt (fun (id, _) -> Ident.same id f) rewrites with
        | Some (_, rewrite) -> rewrite_tail_call rewrite args

@@ -13,7 +13,7 @@ let mark id = alive := Ident.Set.add id (!alive)
 let is_dead (id, (compound : compound_expr)) =
   if Ident.Set.mem id (!alive) then false else List.mem Pure (!(compound.annotations))
 
-let map_imm (imm : Linast.imm_expr) = match imm.desc with
+let map_imm (imm : imm_expr) = match imm.i_desc with
   (* Ident appears in a compound so mark as used. May remove in later passes if that compound is unused.
      Suggests a DAG structure would actually be more effective, but harder to implement.
      Currently won't spot 'mutually useless' idents that only interact with each other. *)
@@ -32,7 +32,7 @@ let leave_linast linast = match linast.desc with
      Temporary is used and variable is exported, so wouldn't otherwise be optimised.
      Order swapped so that it may be exported in future *)
   | LLet (id1, Local, compound,
-    ({desc = LLet(id2, Export, {desc=CImm {desc=ImmIdent id3}}, rest)} as linast2))
+    ({desc = LLet(id2, Export, {desc=CImm {i_desc=ImmIdent id3}}, rest)} as linast2))
     when Ident.same id1 id3 ->
     {linast with desc=LLet(id2, Export, compound,
     {linast2 with desc=LLet(id1, Local, Compound.imm (Imm.id id2), rest)})}
@@ -41,7 +41,7 @@ let leave_linast linast = match linast.desc with
   (* Top of functions sometimes introduce bindings of a variable to itself, since
      binding is implicit in CApp and function starts with a case statement.
      Note that Ident.same != Ident.equal. Ident.equal only checks names not stamps. *)
-  | LLet(id, _, {desc = CImm {desc = ImmIdent id'}}, body) when Ident.same id id' -> body
+  | LLet(id, _, {desc = CImm {i_desc = ImmIdent id'}}, body) when Ident.same id id' -> body
   (* all binds/body have been processed at this point, so can remove any unused binds now *)
   | LLetRec (binds, body) ->
     let new_binds = List.filter (function (id, Local, comp) -> not(is_dead (id, comp)) | _ -> true) binds

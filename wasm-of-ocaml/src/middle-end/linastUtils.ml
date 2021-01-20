@@ -9,11 +9,11 @@ exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not ac
 
 (* Don't worry about passing around locations/environments for now, just a hastle *)
 module Imm = struct
-  let mk annotations d : imm_expr =
-      {desc=d;
-       loc=defaultLoc;
-       env=defaultEnv;
-       annotations}
+  let mk i_annotations d : imm_expr =
+      {i_desc=d;
+       i_loc=defaultLoc;
+       i_env=defaultEnv;
+       i_annotations}
   let id ?(annotations=ref []) id = mk annotations (ImmIdent id)
   let const ?(annotations=ref []) const = mk annotations (ImmConst const)
 end
@@ -84,7 +84,8 @@ let rec binds_to_anf ?(exported=[]) ?(mut=[]) binds body =
      match bind with
      | BEffect comp -> LinastExpr.seq comp body
      | BLet(id, comp) -> LinastExpr.mklet id (get_global_flag exported mut id) comp body
-     | BLetRec lets -> LinastExpr.mkletrec (List.map (fun (id, e) -> (id, get_global_flag exported mut id, e)) lets) body
+     | BLetRec lets -> LinastExpr.mkletrec
+       (List.map (fun (id, e) -> (id, get_global_flag exported mut id, e)) lets) body
    ) binds body
 
 (* Primative name (string) -> Ident *)
@@ -152,7 +153,7 @@ and free_vars_comp env (c : compound_expr) = match c.desc with
     Ident.Set.union free_in_body (free_vars (get_handler_env i env) handler)
 
 
-and free_vars_imm env (i : imm_expr) = match i.desc with
+and free_vars_imm env (i : imm_expr) = match i.i_desc with
   | ImmIdent x when not (Ident.Set.mem x env) -> Ident.Set.singleton x
   | _ -> Ident.Set.empty
 

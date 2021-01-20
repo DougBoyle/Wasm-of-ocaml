@@ -81,7 +81,7 @@ type annotation = Pure (* whole term/body pure *) | Fields of annotations list
    TODO: Analysis pass to propagate annotations through use of idents i.e. Graph based CSE *)
 and annotations = (annotation list) ref
 
-and imm_expr = {desc : imm_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}
+and imm_expr = {i_desc : imm_expr_desc; i_loc : Location.t; i_env : Env.t; mutable i_annotations : annotations}
 
 
 type partialFlag = Typedtree.partial = Partial | Total
@@ -137,11 +137,3 @@ and linast_expr_desc =
   | LCompound of compound_expr
 
 and linast_expr = {desc : linast_expr_desc; loc : Location.t; env : Env.t; mutable annotations : annotations}
-
-
-(* Both grain and Lambda have a single tree at top, not a list anymore *)
-(* How to close off sequence of let expressions?
-  Lambda puts an object containing all toplevel elements at end.
-  Grain puts `Const false` at end (i.e. filler value) -
-    translated from TExpNull in case program ends with declaration
-*)
