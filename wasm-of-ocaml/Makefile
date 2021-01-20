@@ -3,16 +3,6 @@ INCLUDES=-I src/ocaml/file_formats -I src/ocaml/lambda -I src/ocaml/driver -I sr
         -I src/optimisations -I src/graph -I src
 all:
 	ocamlbuild -pkg wasm $(INCLUDES) main.byte
-ir:
-	ocamlbuild $(INCLUDES) linast.cmi
-graph:
-	ocamlbuild -pkg wasm $(INCLUDES) graph.byte
-linear:
-	ocamlbuild $(INCLUDES) linearise.byte
-wasm:
-	ocamlbuild -pkg wasm $(INCLUDES) compilebinds.byte
-matrix:
-	ocamlbuild $(INCLUDES) compileMatchOpt.byte
 unittest:
 	make all
 	set -e
@@ -23,6 +13,15 @@ rt:
 	mv runtime.wasm samples/runtime.wasm
 lintest:
 	ocamlbuild -pkg ounit2 $(INCLUDES) -I ounit test_linast_utils.byte
+analysistest:
+	ocamlbuild -pkg ounit2 $(INCLUDES) -I ounit test_analysis.byte
+constproptest:
+	ocamlbuild -pkg ounit2 $(INCLUDES) -I ounit test_const_prop.byte
+graphtest:
+	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I ounit test_graph.byte
+testall:
+	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I ounit run_all_tests.byte
+	./run_all_tests.byte
 cleanout:
 	rm benchmarks/out/*.wasm
 	rm benchmarks/js/*.js

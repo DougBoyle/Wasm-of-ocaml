@@ -290,8 +290,9 @@ def processAndPlotAll(filename, reference):
 def compareTuple():
     old = readFile("optimisations/opts_01_13_12_46.txt")
     new = readFile("optimisations/opts_tupled.txt")
+    newer = readFile("optimisations/opts_tupled_wasm.txt")
     #data_nopt = {"original" : old["None"], "new" : new["None"]}
-    data = {"original" : old["All"], "new" : new["All"]}
+    data = {"original" : old["All"], "v1" : new["All"], "v2" : newer["All"]}
     tests = get_all_tests(data)
     means = collect_means(data, tests)
     errors = collect_deviations(data, tests)

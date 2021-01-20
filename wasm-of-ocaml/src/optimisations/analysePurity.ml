@@ -62,19 +62,15 @@ let rec analyse_compound handlers (compound : compound_expr) = match compound.de
     analyse_imm imm;
     List.iter
     (* Extract out any annotations set on that field *)
+    (* The ith element of Fields only contains annotations if that field of the block is immutable,
+       see MakeBlock case below. In this case, value cannot have been overwritten so must be the same,
+       with the same properties e.g. being immutable, pure, etc. since getting the field doesn't change that. *)
     (* TODO: Make use of fact that nth failing => case can never occur.
              Applies to lines 69 and 76. Needs a Impossible annotation *)
     (function Fields l -> (match List.nth_opt l idx with
-           | Some annotations -> (* Immutable depends on if field immutable, not value stored *)
-       compound.annotations <- ref(List.filter (function Immutable -> false | _ -> true) !annotations)
+           | Some annotations -> compound.annotations <- annotations
            | None -> ())
-              | _ -> ()) (!(imm.annotations));
-    (* Add or copy immutable annotation if field can never be changed? *)
-    List.iter
-    (function ImmutableBlock l ->
-       (match List.nth_opt l idx with
-         | Some true -> add_annotation Immutable imm.annotations | _ -> ())
-     | _ -> ()) (!(imm.annotations));
+      | _ -> ()) (!(imm.annotations));
     add_annotation Pure compound.annotations
   | CArraySet _ -> ()
   | CArrayGet _ -> add_annotation Pure compound.annotations (* Cant guarentee anything about fields without more analysis *)

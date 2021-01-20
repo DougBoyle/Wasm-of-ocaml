@@ -9,7 +9,7 @@ let f_arg = Ident.create_local "x"
 let test_fv_x_y_free _ =
   let f = Ident.create_local "f" and y = Ident.create_local "y" and x = Ident.create_local "x" in
   let sample_program =
-    LinastExpr.mklet f Global
+    LinastExpr.mklet f Export
     (Compound.mkfun [f_arg] (LinastExpr.compound (Compound.binary Add (Imm.id f_arg) (Imm.id y))))
     (LinastExpr.compound (Compound.app (Imm.id f) [Imm.id x])) in
   let free_in_prog = Ident.Set.of_list [x; y] in
@@ -21,7 +21,7 @@ let test_fv_x_y_free _ =
 let test_fv_y_free _ =
   let f = Ident.create_local "f" and y = Ident.create_local "y" in
   let sample_program =
-    LinastExpr.mklet f Global
+    LinastExpr.mklet f Export
     (Compound.mkfun [f_arg] (LinastExpr.compound (Compound.imm (Imm.id f_arg))))
     (LinastExpr.compound (Compound.app (Imm.id f) [Imm.id y])) in
   let free_in_prog = Ident.Set.of_list [y] in
