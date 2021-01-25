@@ -24,6 +24,9 @@ class Allocator {
         // TODO: When to actually call refresh?
         this.refresh = memoryManager._refreshViews;
 
+        // TODO: Remove after, just for debugging
+        this.memory_used = 0; // easier than trying to work out by inspecting memory manually
+
         // initialises first block the very first time
         this.memoryManager.uview[0] = 0; // only element of cyclic list points to itself
         this.memoryManager.uview[1] =  this.memoryManager.uview.byteLength >> 2;
@@ -46,9 +49,10 @@ class Allocator {
         if (this.memory.grow(pages) === -1){
             throw "Could not allocate memory"
         }
-        // TODO: Throw an error if memory can't grow any more
         this.refresh();
         this.setSize(ptr, pages << 14);
+        // TODO: Disable when not debugging
+        this.memory_used += pages << 16;
         this.free((ptr + 2)*i32size); // turns this into a block and merges it into adjacent cell if possible
         return this.freep;
     }
@@ -79,6 +83,7 @@ class Allocator {
         // round up to align block
         // *2 to put in terms of 32-bit words rather than 64-bit headers
         const units = (((bytes + headerSize - 1) >> 3) + 1)*2;
+        this.memory_used += units * 4;
         // last block allocated exactly used up the last cell of the free list.
         // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
         if (this.freep == null){
@@ -128,6 +133,8 @@ class Allocator {
     // takes a byte pointer
     free(ptr){
         let blockPtr = (ptr>>2) - 2;
+        // TODO: Remove when not debugging
+        this.memory_used -= this.getSize(blockPtr)*4;
         let p;
         // find the free block
         for (p = this.freep; blockPtr < p || blockPtr > this.getNext(p); p = this.getNext(p)){

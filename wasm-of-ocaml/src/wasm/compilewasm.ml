@@ -129,8 +129,8 @@ let load
   let open Graph in
   Load({ty; align; sz; offset;})
 
-(* Offset of 4, floats have a tag of 01, so +3 overall without untagging *)
-let load_float = load ~ty:Wasm.Types.F64Type ~offset:3l ()
+(* Offset of 8, floats have a tag of 01, so +7 overall without untagging *)
+let load_float = load ~ty:Wasm.Types.F64Type ~offset:7l ()
 
 (* Equivalent to BatDeque.find but on lists *)
 let find_index p l =

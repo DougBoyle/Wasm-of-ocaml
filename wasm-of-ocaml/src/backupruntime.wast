@@ -1,33 +1,49 @@
 (module
   (type $0 (func (result i32)))
-  (type $1 (func (param i32) (result i32)))
-  (import "jsRuntime" "malloc" (func $malloc (type 1)))
-  (import "jsRuntime" "incRef" (func $incRef (type 1)))
-  (import "jsRuntime" "decRef" (func $decRef (type 1)))
-  (import "jsRuntime" "decRefIgnoreZeros" (func $decRefIgnoreZeros (type 1)))
-  ;; memory now imported and re-exported so it gets linked to js functions
-  (memory $mem (export "mem") (import "jsRuntime" "mem") 1)
- ;; (memory (export "mem") 1) ;; initially just a 1 page memory i.e. 64KB. Can use up to 4GB in Wasm (32-bit)
+  (memory (export "mem") 1) ;; initially just a 1 page memory i.e. 64KB. Can use up to 4GB in Wasm (32-bit)
   (global $heap_top (mut i32) (i32.const 0))
   (func $alloc (export "alloc") (param $n i32) (result i32)
     (local $difference i32)
-    local.get $n
-    call $malloc
-    return
+    global.get $heap_top ;; returned value
+	global.get $heap_top
+	local.get $n
+	i32.add
+	global.set $heap_top ;; store updated heap_top
+
+    global.get $heap_top
+	memory.size
+	i32.const 16
+    i32.shl  ;; page size = 2^16 = 65536
+    i32.gt_u
+    if
+      global.get $heap_top
+      i32.const 16
+      i32.shr_u
+      memory.size
+      i32.sub
+      i32.const 1
+      i32.add
+      memory.grow
+
+      i32.const -1
+      i32.eq ;; check memory grow succeeded
+      if
+        unreachable
+      else
+      end
+    else ;; memory not exceeded, do nothing
+    end
   )
   (func $make_float (export "make_float") (param $f f64) (result i32)
     (local $result i32)
-    i32.const 16
+    i32.const 12
     call $alloc
     local.tee $result
     i32.const -1 ;; variant tag for floats, distinguishes from constructor blocks
     i32.store
     local.get $result
-    i32.const 0  ;; set 'arity' to 0 so we can treat it like any other data for GC
-    i32.store
-    local.get $result
     local.get $f
-    f64.store offset=8
+    f64.store offset=4
     local.get $result
     i32.const 1 ;; data block tag
     i32.or

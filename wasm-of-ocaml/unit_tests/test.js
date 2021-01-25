@@ -1,5 +1,6 @@
 const util = require('util');
 const fs = require("fs");
+const {ManagedMemory} = require("../src/memory.js");
 const readFile = util.promisify(fs.readFile);
 const exec = util.promisify(require('child_process').exec);
 
@@ -11,9 +12,17 @@ let fileList = __dirname + "/results.txt";
 
 if (process.argv.length > 2){
 (async () => {
+  var memory = 	new WebAssembly.Memory({ initial: 1});
+  var memoryManager = new ManagedMemory(memory);
+  var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
+    incRef : memoryManager.incRef,
+	decRef : memoryManager.decRef,
+	decRefIgnoreZeros : memoryManager.decRefIgnoreZeros,
+    mem : memory}};
+
   var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
   var module = await WebAssembly.compile(buffer);
-  var instance = await WebAssembly.instantiate(module);
+  var instance = await WebAssembly.instantiate(module, rtimports);
   
   imports = {ocamlRuntime: instance.exports};
   try {
@@ -22,7 +31,17 @@ if (process.argv.length > 2){
 	  var instance = await WebAssembly.instantiate(module, imports);
 	  instance.exports["OCAML$MAIN"]();
 	  console.log(instance.exports);
+//	  console.log(instance.exports.y.value);
+//	  console.log(instance.exports.z.value);
 	 // console.log(imports.ocamlRuntime.alloc(0));
+
+	  // TODO: Just for checking garbage collecting working
+	  console.log("pages allocated:", memory.buffer.byteLength >> 16 );
+	  console.log("remaining memory allocated at end:", memoryManager.allocator.memory_used);
+//	  console.log(memoryManager.uview.slice(instance.exports.x.value >> 2));
+//	  console.log(memoryManager.uview.byteLength);
+//	  console.log(instance.exports.x.value);
+
   } catch (err) {
     console.log(err);
     console.log(err.message);
@@ -39,15 +58,25 @@ if (process.argv.length > 2){
 	  try {
 		  await exec(__dirname + "/../main.byte -d " + __dirname + "/out " + __dirname + "/" + filename + ".ml");
 		  var output = line.slice(1);
+
+		  var memory = 	new WebAssembly.Memory({ initial: 1 });
+		  var memoryManager = new ManagedMemory(memory);
+		  var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
+		    incRef : memoryManager.incRef,
+		    decRef : memoryManager.decRef,
+		    decRefIgnoreZeros : memoryManager.decRefIgnoreZeros,
+		    mem : memory}};
+
+		  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
+		  var module = await WebAssembly.compile(buffer);
+		  var instance = await WebAssembly.instantiate(module, rtimports);
+
+		  var imports = {ocamlRuntime: instance.exports};
+		  var buffer = await readFile(__dirname + "/out/" + basename + ".wasm");
+		  var module = await WebAssembly.compile(buffer);
+		  var instance = await WebAssembly.instantiate(module, imports);
+
 		  if (line[line.length - 1] == "!"){
-			  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
-			  var module = await WebAssembly.compile(buffer);
-			  var instance = await WebAssembly.instantiate(module);
-			  
-			  var imports = {ocamlRuntime: instance.exports};
-			  var buffer = await readFile(__dirname + "/out/" + basename + ".wasm");
-			  var module = await WebAssembly.compile(buffer);
-			  var instance = await WebAssembly.instantiate(module, imports);
 			  try {
 				instance.exports["OCAML$MAIN"]();
 			  } catch (err) {
@@ -61,14 +90,6 @@ if (process.argv.length > 2){
 			  }
 			  console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Did not trap");
 		  } else {
-			  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
-			  var module = await WebAssembly.compile(buffer);
-			  var instance = await WebAssembly.instantiate(module);
-			  
-			  var imports = {ocamlRuntime: instance.exports};
-			  var buffer = await readFile(__dirname + "/out/" + basename + ".wasm");
-			  var module = await WebAssembly.compile(buffer);
-			  var instance = await WebAssembly.instantiate(module, imports);
 			  try {
 				instance.exports["OCAML$MAIN"]();
 			  } catch (err) {
