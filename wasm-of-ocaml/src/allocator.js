@@ -5,6 +5,7 @@
 
 // Header size is 8 bytes, a 32-bit 'next' ptr and a 32-bit 'size' field
 let headerSize = 8;
+let logHeaderSize = 3; // rather than doing integer division as (x/headerSize)>>0, just shift >> 3
 
 // allocator works in terms of header sizes, but malloc gets input/output in byte size/address
 // NO! Needs to work in terms of 32-bit blocks (i.e. half headers)
@@ -40,7 +41,11 @@ class Allocator {
         // convert to number of pages to allocate, rounded up
         let pages = (units*i32size + 65535)>>16;
         const ptr = this.memory.buffer.byteLength >> 2;
-        this.memory.grow(pages);
+        // documented error value in
+        // https://webassembly.github.io/spec/core/syntax/instructions.html#syntax-instr-memory
+        if (this.memory.grow(pages) === -1){
+            throw "Could not allocate memory"
+        }
         // TODO: Throw an error if memory can't grow any more
         this.refresh();
         this.setSize(ptr, pages << 14);
@@ -73,8 +78,7 @@ class Allocator {
     malloc(bytes){
         // round up to align block
         // *2 to put in terms of 32-bit words rather than 64-bit headers
-        const units = ((bytes + headerSize - 1)/headerSize + 1)*2;
-
+        const units = (((bytes + headerSize - 1) >> 3) + 1)*2;
         // last block allocated exactly used up the last cell of the free list.
         // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
         if (this.freep == null){
@@ -123,11 +127,11 @@ class Allocator {
 
     // takes a byte pointer
     free(ptr){
-        let blockPtr = i32size*ptr - 2;
+        let blockPtr = (ptr>>2) - 2;
         let p;
         // find the free block
         for (p = this.freep; blockPtr < p || blockPtr > this.getNext(p); p = this.getNext(p)){
-            if (p > this.getNext(p) && (blockPtr > p || blockPtr < this.getNext(p))){
+            if (p >= this.getNext(p) && (blockPtr > p || blockPtr < this.getNext(p))){
                 // block to free is at one end of list
                 break;
             }
