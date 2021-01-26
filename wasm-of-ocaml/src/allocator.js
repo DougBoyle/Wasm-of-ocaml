@@ -119,6 +119,7 @@ class Allocator {
                 }
                 this.freep = prev;
                 // return a pointer in terms of bytes to the data, not the header
+       //         console.log("Allocating: ",i32size * (p+2), units * 4);
                 return i32size * (p+2);
 
             }
@@ -133,6 +134,7 @@ class Allocator {
     // takes a byte pointer
     free(ptr){
         let blockPtr = (ptr>>2) - 2;
+   //     console.log("Lower Freeing: ", ptr, this.getSize(blockPtr)*4);
         // TODO: Remove when not debugging
         this.memory_used -= this.getSize(blockPtr)*4;
         let p;

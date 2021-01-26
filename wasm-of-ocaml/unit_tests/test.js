@@ -97,8 +97,8 @@ if (process.argv.length > 2){
 					console.log('\x1b[91m%s\x1b[0m', filename + " failed test: Trap occured");
 					continue;
 				  } else{
-					 console.log("ERROR: Some other error occured during execution");
-					 throw(err);
+					 console.log('\x1b[91m%s\x1b[0m', filename + " error: " + err);
+					 continue;
 				  }
 			  }
 			  var passed = true;

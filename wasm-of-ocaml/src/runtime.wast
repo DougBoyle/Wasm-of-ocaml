@@ -23,7 +23,7 @@
     i32.store
     local.get $result
     i32.const 0  ;; set 'arity' to 0 so we can treat it like any other data for GC
-    i32.store
+    i32.store offset=4
     local.get $result
     local.get $f
     f64.store offset=8

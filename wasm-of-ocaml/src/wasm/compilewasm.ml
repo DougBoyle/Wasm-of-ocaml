@@ -187,6 +187,8 @@ let toggle_tag tag = [
   Graph.Binary(Values.I32 Ast.IntOp.Xor);
 ]
 
+(* TODO: Why does Grain do decref ignore_zeros for DROP and Cleanup_locals *)
+
 (* TODO: FIX POSSIBLE MEMORY LEAK
    TODO: MOVE TO Translate function in Graph so that use of all locals at end doesn't stop
      dead locals from being removed (annoying as it requires looking up the function type to get # args) *)
@@ -200,7 +202,7 @@ let cleanup_locals arity locals =
   (* increments whatever is on the stack currently - TODO: CAUSES MEMORY LEAK, COMPARE WITH GRAIN *)
   (call_incref []) @
   (List.flatten (List.init locals (fun i ->
-   (call_decref
+   (call_decref_ignore_zero (* TODO: Remove this *)
      [Graph.LocalGet (add_dummy_loc (Int32.add arity (Int32.of_int (i + (List.length swap_slots)))))])
     @ [Graph.Drop])))
 
@@ -255,7 +257,8 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
       if not(is_get) then
         failwith "Internal error: attempted to emit instruction which would mutate closure contents"
     end;
-      [Graph.LocalGet(add_dummy_loc Int32.zero); load ~offset:(Int32.mul 4l (Int32.add 1l i)) ()]
+      (* Add 2 since closure is now [func idx; arity; elements] *)
+      [Graph.LocalGet(add_dummy_loc Int32.zero); load ~offset:(Int32.mul 4l (Int32.add 2l i)) ()]
 
 (* TODO: Work out why ignore_zero necessary *)
 (*
@@ -409,7 +412,7 @@ let heap_allocate env (num_words : int) =
 (* Closure represented in memory as [function index, free vars...] *)
 let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) =
   let num_free_vars = List.length variables in
-  let closure_size = num_free_vars + 1 in
+  let closure_size = num_free_vars + 2 in
   let get_swap = get_swap env 0 in
   let tee_swap = tee_swap env 0 in
   (* A way to access the closure if it hasn't been bound to a variable name i.e. anonymous allocation *)
@@ -508,7 +511,7 @@ let do_backpatches env backpatches =
     let preamble = lam @ (toggle_tag Closure) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store each free variable in the closure *)
-      get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
+      get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 2))) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
   (List.flatten (List.map do_backpatch backpatches))
 
@@ -565,7 +568,8 @@ and compile_block env block =
 
 and compile_instr env instr =
   match instr with
-  | MDrop -> (call_decref []) @ [Graph.Drop] (* TODO: Look at how Grain compiles sequences into Ignores *)
+  (* TODO: Remove ignore_zero *)
+  | MDrop -> (call_decref_ignore_zero []) @ [Graph.Drop] (* TODO: Look at how Grain compiles sequences into Ignores *)
   | MImmediate(imm) -> compile_imm env imm
   | MFail j -> (match j with
       | -1l -> [Graph.Unreachable] (* trap *)
@@ -582,7 +586,7 @@ and compile_instr env instr =
       let set_swap = set_swap env 0 in
       let tee_swap = tee_swap env 0 in
       let backpatch_var idx var =
-        get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
+        get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 2))) ();] in
       tee_swap @ get_swap @ (toggle_tag Closure) @ set_swap @ (List.flatten (List.mapi backpatch_var variables)) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
     instrs @ (List.flatten (List.map do_backpatch (!new_backpatches)))

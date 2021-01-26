@@ -137,10 +137,11 @@ class ManagedMemory {
     }
     count--;
     if (count === 0){
+    //  console.log("Freeing: ", rawPtr);
       // free object
       for (let element of this.references(userPtr)){
      //   console.log("recursively decrementing:", element);
-        this._decRef(element, false);
+        this._decRef(element, true);
       }
       this.allocator.free(rawPtr);
     } else {
