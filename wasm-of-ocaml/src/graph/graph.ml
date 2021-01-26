@@ -116,8 +116,11 @@ let rec translate_instr instr = add_dummy_loc (match instr.it with
   | Binary op -> Ast.Binary op
   | Convert op -> Ast.Convert op)
 
+
+(* TODO: Add cleanup of locals at end *)
 let translate_funcs funcs =
-  List.map (fun {ftype; locals; body} -> add_dummy_loc {ftype; locals; Ast.body=List.map translate_instr body}) funcs
+  List.map (fun {ftype; locals; body} ->
+    add_dummy_loc {ftype; locals; Ast.body=List.map translate_instr body}) funcs
 
 let translate_to_wasm {types; globals; tables; memories; funcs; elems; data; imports; exports} =
   add_dummy_loc {

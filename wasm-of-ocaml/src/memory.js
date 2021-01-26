@@ -31,6 +31,7 @@
  *   userPtr : The pointer returned (and referenced by) to the Grain runtime
  */
 const {Allocator} = require("./allocator");
+const headerSize = 8;// 32 bits in bytes (extra space needed for 64-bit alignment)
 
 class ManagedMemory {
   constructor(memory) {
@@ -40,7 +41,6 @@ class ManagedMemory {
     this._u16view = new Uint16Array(memory.buffer);
     // TODO: This can be smaller? e.g. just 32 bit alignment?
     // only actually using the first 2 bytes for a counter (should possibly use 4 bytes)?
-    this._headerSize = 8; // 32 bits in bytes (extra space needed for 64-bit alignment)
     // TODO: Initialise this when runtime instantiated
     this._runtime = null;
 
@@ -48,7 +48,10 @@ class ManagedMemory {
     this._refreshViews = this._refreshViews.bind(this);
     this.malloc = this.malloc.bind(this);
     this.decRef = this.decRef.bind(this);
+    this.incRef = this.incRef.bind(this);
     this.references = this.references.bind(this);
+    this._setRefCount = this._setRefCount.bind(this);
+    this._getRefCount = this._getRefCount.bind(this);
     this.decRefIgnoreZeros = this.decRefIgnoreZeros.bind(this);
 
     this.allocator = new Allocator(this);
@@ -71,13 +74,13 @@ class ManagedMemory {
 
   malloc(bytes){
     // 2 bytes used for a counter, don't bother with the more complex header Grain uses
-    let ptr = this.allocator.malloc(bytes + this._headerSize);
+    let ptr = this.allocator.malloc(bytes + headerSize);
     // initialise reference count to 1
     // no type information stored, can be gotten from the tagged pointer passed to incr/decr
 
     // we don't actually use the lower 48-bits of the header, just there for alignment
     this._u16view[ptr>>1] = 1;
-    return ptr + this._headerSize; // return pointer to data rather than header
+    return ptr + headerSize; // return pointer to data rather than header
   }
 
   // [TODO] These next three methods can probably be made more efficient
@@ -86,14 +89,13 @@ class ManagedMemory {
   }
 
   _setRefCount(rawPtr, count) {
-    console.log("called setcount");
     this._u16view[rawPtr>>1] = count;
   }
 
   incRef(userPtr) {
     // addresses for values stored in memory end in a 1, integer literals end in 0
     if (userPtr & 1){
-      let rawPtr = (userPtr & ~3) - this._headerSize;
+      let rawPtr = (userPtr & ~3) - headerSize;
       this._setRefCount(rawPtr, this._getRefCount(rawPtr) + 1)
     }
     return userPtr;
@@ -111,7 +113,7 @@ class ManagedMemory {
     if (userPtr & 1) {
       // TODO: Do we need to check for cycles ever?
       let arity = this._view[untaggedPtr + 1];
-      console.log("arity is:", arity);
+  //    console.log("arity is:", arity);
       for (let i = 0; i < arity; i++){
         // TODO: Inline whole function so that we don't need 'yield'
         yield this._view[untaggedPtr + i + 2];
@@ -124,7 +126,7 @@ class ManagedMemory {
     if ((userPtr & 1) == 0) {
       return;
     }
-    let rawPtr = (userPtr & ~3) - this._headerSize;
+    let rawPtr = (userPtr & ~3) - headerSize;
     let count = this._getRefCount(rawPtr);
     if (count === 0){
       if (ignoreZero){
@@ -137,7 +139,7 @@ class ManagedMemory {
     if (count === 0){
       // free object
       for (let element of this.references(userPtr)){
-        console.log("recursively decrementing:", element);
+     //   console.log("recursively decrementing:", element);
         this._decRef(element, false);
       }
       this.allocator.free(rawPtr);

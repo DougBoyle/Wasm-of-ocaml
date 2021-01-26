@@ -8,17 +8,16 @@
   ;; memory now imported and re-exported so it gets linked to js functions
   (memory $mem (export "mem") (import "jsRuntime" "mem") 1)
  ;; (memory (export "mem") 1) ;; initially just a 1 page memory i.e. 64KB. Can use up to 4GB in Wasm (32-bit)
+ ;; For now, just re-export rather than having to change things in compilewasm
+  (export "malloc" (func $malloc))
+  (export "incRef" (func $incRef))
+  (export "decRef" (func $decRef))
+  (export "decRefIgnoreZeros" (func $decRefIgnoreZeros))
   (global $heap_top (mut i32) (i32.const 0))
-  (func $alloc (export "alloc") (param $n i32) (result i32)
-    (local $difference i32)
-    local.get $n
-    call $malloc
-    return
-  )
   (func $make_float (export "make_float") (param $f f64) (result i32)
     (local $result i32)
     i32.const 16
-    call $alloc
+    call $malloc
     local.tee $result
     i32.const -1 ;; variant tag for floats, distinguishes from constructor blocks
     i32.store
@@ -180,7 +179,7 @@
     if (result i32)
       ;; list non-empty
       i32.const 16
-      call $alloc
+      call $malloc
 
       local.tee $result
       i32.const 2 ;; Dependent on runtime encoding of tags

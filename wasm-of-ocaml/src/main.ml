@@ -101,7 +101,9 @@ let _ = Arg.parse [
     ("-passes-ir", Arg.Set_int num_passes_ir, "Set number of IR passes");
     ("-Nopt-graph", Arg.Clear opt_graph, "Disable Graph level optimisations");
     ("-passes-graph", Arg.Set_int num_passes_graph, "Set number of graph passes");
-    ("-Nopt-patterns", Arg.Clear Linearise.use_optimised_pattern_compilation, "Disable optimised pattern compilation");
+    ("-Nopt-patterns", Arg.Clear Linearise.use_optimised_pattern_compilation,
+      "Disable optimised pattern compilation");
+ (*   ("-No-gc", Arg.Set Compilewasm.no_gc, "Disable garbage collection"); *)
   ]
   (fun f -> if (!input) = "" then input := f else raise (Arg.Bad "Only one file allowed"))
   "Usage: main.byte [<file>]"

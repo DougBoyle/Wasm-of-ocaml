@@ -4,6 +4,9 @@ open Wasm
 (* Grain uses deque package: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatDeque.html
    and similar lists: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatList.html *)
 
+(* Switch GC off *)
+let no_gc = ref false
+
 (* Associate a dummy location to a value - Wasm.Ast.instr = instr' Source.phrase so every part needs location *)
 let add_dummy_loc (x : 'a) : 'a Source.phrase = Source.(x @@ no_region)
 (* for Graph terms *)
@@ -39,17 +42,26 @@ let swap_slots = [Types.I32Type; Types.I32Type]
 (* Ignore anything exception or printing related (could technically handle specific print cases with js calls) *)
 (* Primitives still not translated to idents at this stage - aids constant propagation if I want to do at this level *)
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
-let alloc_ident = Ident.create_persistent "alloc"
+let malloc_ident = Ident.create_persistent "malloc"
 let compare_ident = Ident.create_persistent "compare"
 let abs_ident = Ident.create_persistent "abs"
 let min_ident = Ident.create_persistent "min"
 let max_ident = Ident.create_persistent "max"
 let append_ident = Ident.create_persistent "@"
 let make_float_ident = Ident.create_persistent "make_float"
+(* For garbage collection *)
+let incref_ident = Ident.create_persistent "incRef"
+let decref_ident = Ident.create_persistent "decRef"
+let decref_ignore_zero_ident = Ident.create_persistent "decRefIgnoreZeros"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
-let runtime_imports = [
-  { mimp_name=alloc_ident; mimp_type=([I32Type], [I32Type]); };
+let runtime_imports =
+  (if !no_gc then [] else
+   [{ mimp_name=incref_ident; mimp_type=([I32Type], [I32Type]); };
+    { mimp_name=decref_ident; mimp_type=([I32Type], [I32Type]); };
+    { mimp_name=decref_ignore_zero_ident; mimp_type=([I32Type], [I32Type]); };])
+  @
+  [{ mimp_name=malloc_ident; mimp_type=([I32Type], [I32Type]); };
   { mimp_name=compare_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
   { mimp_name=abs_ident; mimp_type=([I32Type], [I32Type]); };
   { mimp_name=min_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
@@ -68,17 +80,25 @@ let init_env = {
 }
 
 (* Finds the function number each runtime import was bound to during setup *)
-let lookup_runtime_func env itemname =
+let lookup_runtime_func itemname =
   Hashtbl.find imported_funcs itemname
-let var_of_runtime_func env itemname =
-  add_dummy_loc @@ lookup_runtime_func env itemname
-let call_alloc env = Graph.Call(var_of_runtime_func env alloc_ident)
-let call_compare env = Graph.Call(var_of_runtime_func env compare_ident)
-let call_abs env = Graph.Call(var_of_runtime_func env abs_ident)
-let call_min env = Graph.Call(var_of_runtime_func env min_ident)
-let call_max env = Graph.Call(var_of_runtime_func env max_ident)
-let call_append env = Graph.Call(var_of_runtime_func env append_ident)
-let make_float env = Graph.Call(var_of_runtime_func env make_float_ident)
+let var_of_runtime_func itemname =
+  add_dummy_loc (lookup_runtime_func itemname)
+let call_malloc env = Graph.Call(var_of_runtime_func malloc_ident)
+let call_compare env = Graph.Call(var_of_runtime_func compare_ident)
+let call_abs env = Graph.Call(var_of_runtime_func abs_ident)
+let call_min env = Graph.Call(var_of_runtime_func min_ident)
+let call_max env = Graph.Call(var_of_runtime_func max_ident)
+let call_append env = Graph.Call(var_of_runtime_func append_ident)
+let make_float env = Graph.Call(var_of_runtime_func make_float_ident)
+
+(* Note, just puts the call as a suffix, so can pass arg=[] if already on stack *)
+let call_incref arg =
+  if !no_gc then arg else arg @ [Graph.Call(var_of_runtime_func incref_ident)]
+let call_decref arg =
+  if !no_gc then arg else arg @ [Graph.Call(var_of_runtime_func decref_ident)]
+let call_decref_ignore_zero arg =
+  if !no_gc then arg else arg @ [Graph.Call(var_of_runtime_func decref_ignore_zero_ident)]
 
 (* TODO: Support strings *)
 
@@ -110,7 +130,6 @@ let const_true = compile_const init_env const_true
 let const_false = compile_const init_env const_false (* also equals unit i.e. () *)
 
 (* WebAssembly helpers *)
-(* These instructions get helpers due to their verbosity *)
 let store
     ?ty:(ty=Wasm.Types.I32Type)
     ?align:(align=2)
@@ -168,8 +187,28 @@ let toggle_tag tag = [
   Graph.Binary(Values.I32 Ast.IntOp.Xor);
 ]
 
+(* TODO: FIX POSSIBLE MEMORY LEAK
+   TODO: MOVE TO Translate function in Graph so that use of all locals at end doesn't stop
+     dead locals from being removed (annoying as it requires looking up the function type to get # args) *)
+(*
+  Adds some code which decrements the references of any locals before the function returns.
+  Result is incremented, all locals get decremented, then result returned.
+  TODO: NOTE THAT OVERALL EFFECT IS TO INCREMENT THE COUNT IF VARIABLE WAS NOT ALREADY ALLOCATED TO A LOCAL
+*)
+let cleanup_locals arity locals =
+  if !no_gc then [] else
+  (* increments whatever is on the stack currently - TODO: CAUSES MEMORY LEAK, COMPARE WITH GRAIN *)
+  (call_incref []) @
+  (List.flatten (List.init locals (fun i ->
+   (call_decref
+     [Graph.LocalGet (add_dummy_loc (Int32.add arity (Int32.of_int (i + (List.length swap_slots)))))])
+    @ [Graph.Drop])))
+
 (* Locals in a function are ordered as [arguments (first is closure), swap locals, locals] *)
-let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
+let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
+  (env : env) (b : binding) : Graph.instr' list =
+  let incref = if skip_incref then [] else call_incref [] in
+  let decref = if skip_decref then (fun arg -> []) else (fun arg -> (call_decref arg) @ [Graph.Drop]) in
   let (++) a b = Int32.(add (of_int a) b) in
   match b with
   | MArgBind(i) ->
@@ -178,6 +217,9 @@ let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
     if is_get then
       [Graph.LocalGet(slot)]
     else
+    (* Update reference count by incrementing the value being set and decrementing the old value *)
+      incref @
+      (decref [Graph.LocalGet(slot)]) @
       [Graph.LocalSet(slot)]
   | MLocalBind(i) ->
     (* Local bindings need to be offset to account for arguments and swap variables *)
@@ -185,6 +227,8 @@ let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
     if is_get then
      [Graph.LocalGet(slot)]
     else
+     incref @
+     (decref [Graph.LocalGet(slot)]) @
      [Graph.LocalSet(slot)]
  | MSwapBind(i) ->
     (* Swap bindings need to be offset to account for arguments *)
@@ -192,7 +236,9 @@ let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
     if is_get then
       [Graph.LocalGet(slot)]
     else
-      [Graph.LocalSet(slot)]
+     incref @
+     (decref [Graph.LocalGet(slot)]) @
+     [Graph.LocalSet(slot)]
   | MGlobalBind(i) ->
     (* Global bindings need to be offset to account for any imports *)
     let slot = add_dummy_loc i in
@@ -200,7 +246,9 @@ let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
       [Graph.GlobalGet(slot)]
     else
       (* Used to initialise globals, and tracking shared mutable varaibles next/continue/result for TCO *)
-      [Graph.GlobalSet(slot)]
+     incref @
+     (decref [Graph.GlobalGet(slot)]) @
+     [Graph.GlobalSet(slot)]
   | MClosureBind(i) ->
     (* Closure bindings need to be calculated *)
     begin
@@ -208,6 +256,14 @@ let compile_bind ~is_get (env : env) (b : binding) : Graph.instr' list =
         failwith "Internal error: attempted to emit instruction which would mutate closure contents"
     end;
       [Graph.LocalGet(add_dummy_loc Int32.zero); load ~offset:(Int32.mul 4l (Int32.add 1l i)) ()]
+
+(* TODO: Work out why ignore_zero necessary *)
+(*
+Present in Grain but seemingly unused
+
+(* Calls decref on the thing being dropped *)
+let safe_drop arg = (call_decref_ignore_zero arg) @ [Graph.Drop]
+*)
 
 let get_swap ?ty:(typ=Types.I32Type) env idx =
   match typ with
@@ -217,12 +273,13 @@ let get_swap ?ty:(typ=Types.I32Type) env idx =
     compile_bind ~is_get:true env (MSwapBind(Int32.of_int idx))
   | _ -> raise Not_found (* Will get an error indicating need to add extra swap slots if other types used in future *)
 
+(* On both this and tee_swap, we skip modifying reference counts as swap locals aren't considered references *)
 let set_swap ?ty:(typ=Types.I32Type) env idx =
   match typ with
   | Types.I32Type ->
     if idx > (List.length swap_slots) then
       raise Not_found;
-    compile_bind ~is_get:false env (MSwapBind(Int32.of_int idx))
+    compile_bind ~is_get:false ~skip_incref:true ~skip_decref:true env (MSwapBind(Int32.of_int idx))
   | _ -> raise Not_found
 
 let tee_swap ?ty:(typ=Types.I32Type) env idx =
@@ -343,7 +400,7 @@ let round_up (num : int) (multiple : int) : int =
   multiple * (((num - 1) / multiple) + 1)
 
 let heap_allocate env (num_words : int) =
-  [Graph.Const(const_int32 (4 * num_words)); call_alloc env;]
+  [Graph.Const(const_int32 (4 * num_words)); call_malloc env;]
 
 (* Not sure check_memory needed *)
 (* Not doing strings initially, so can leave out allocate_string/buf_to_ints *)
@@ -374,7 +431,7 @@ let allocate_data env vtag elts =
   let tee_swap = tee_swap env 0 in
   let compile_elt idx elt =
     get_swap @
-    (compile_imm env elt) @ [
+    (call_incref (compile_imm env elt)) @ [
       store ~offset:(Int32.of_int(4 * (idx + 2))) ();
     ] in
   (heap_allocate env (num_elts + 2)) @ tee_swap @
@@ -451,7 +508,7 @@ let do_backpatches env backpatches =
     let preamble = lam @ (toggle_tag Closure) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store each free variable in the closure *)
-      get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
+      get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
   (List.flatten (List.map do_backpatch backpatches))
 
@@ -459,7 +516,12 @@ let do_backpatches env backpatches =
 let rec compile_store env binds =
   let process_binds env =
     let process_bind (b, instr) acc =
-      let store_bind = compile_bind ~is_get:false env b in
+      (* If instruction is an alloc/call, reference count will have already been incremented so
+         store_bind needs to not increment again *)
+      let store_bind = match instr with
+       | MAllocate _ | MCallKnown _ | MCallIndirect _ ->
+         compile_bind ~is_get:false ~skip_incref:true env b
+       | _ -> compile_bind ~is_get:false env b in
       let get_bind = compile_bind ~is_get:true env b in
       let compiled_instr = match instr with
         | MAllocate(MClosure(cdata)) ->
@@ -503,7 +565,7 @@ and compile_block env block =
 
 and compile_instr env instr =
   match instr with
-  | MDrop -> [Graph.Drop]
+  | MDrop -> (call_decref []) @ [Graph.Drop] (* TODO: Look at how Grain compiles sequences into Ignores *)
   | MImmediate(imm) -> compile_imm env imm
   | MFail j -> (match j with
       | -1l -> [Graph.Unreachable] (* trap *)
@@ -511,7 +573,8 @@ and compile_instr env instr =
       | _ -> [Graph.Br (add_dummy_loc (List.assoc j env.handler_heights))])
   | MAllocate(alloc) -> (* New - currying appeared to not work before *)
     let new_backpatches = ref [] in
-    (* TODO: Tidy up to better suit single allocation. Currently just a modified version of letrec backpatching *)
+    (* TODO: Tidy up to better suit single allocation. Currently just a modified version of letrec backpatching
+         Should at least detect allocating data vs function *)
     let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in
     let do_backpatch (lam, {func_idx;variables}) =
       if variables = [] then [] else
@@ -519,7 +582,7 @@ and compile_instr env instr =
       let set_swap = set_swap env 0 in
       let tee_swap = tee_swap env 0 in
       let backpatch_var idx var =
-        get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
+        get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 1))) ();] in
       tee_swap @ get_swap @ (toggle_tag Closure) @ set_swap @ (List.flatten (List.mapi backpatch_var variables)) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
     instrs @ (List.flatten (List.map do_backpatch (!new_backpatches)))
@@ -618,7 +681,7 @@ and compile_instr env instr =
 let compile_function env {index; arity; stack_size; body=body_instrs} =
   let arity_int = Int32.to_int arity in
   let body_env = {env with num_args=arity_int} in
-  let body = List.map add_dummy_edges (compile_block body_env body_instrs) in
+  let body = compile_block body_env body_instrs in
   let ftype_idx = get_arity_func_type_idx env arity_int in
   let ftype = add_dummy_loc Int32.(of_int ftype_idx) in
   let locals = List.append swap_slots @@ List.init (stack_size) (fun _ -> Types.I32Type) in
@@ -626,7 +689,7 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
   {
     ftype;
     locals;
-    body;
+    body = List.map add_dummy_edges (body @ (cleanup_locals arity stack_size));
   }
 
 (* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works
