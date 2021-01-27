@@ -183,8 +183,6 @@ let toggle_tag tag = [
   Graph.Binary(Values.I32 Ast.IntOp.Xor);
 ]
 
-(* TODO: Why does Grain do decref ignore_zeros for DROP and Cleanup_locals *)
-
 (* TODO: FIX POSSIBLE MEMORY LEAK
    TODO: MOVE TO Translate function in Graph so that use of all locals at end doesn't stop
      dead locals from being removed (annoying as it requires looking up the function type to get # args) *)
@@ -193,14 +191,22 @@ let toggle_tag tag = [
   Result is incremented, all locals get decremented, then result returned.
   TODO: NOTE THAT OVERALL EFFECT IS TO INCREMENT THE COUNT IF VARIABLE WAS NOT ALREADY ALLOCATED TO A LOCAL
 *)
+(* Decrement each local variable and argument. Except for the closure argument *)
+(* TODO: Replace with use of compile_binds *)
 let cleanup_locals arity locals =
+  (* Special case where MAIN (arity 0) has no locals, then do nothing *)
   if !no_gc then [] else
-  (* increments whatever is on the stack currently - TODO: CAUSES MEMORY LEAK, COMPARE WITH GRAIN *)
-  (call_incref []) @
-  (List.flatten (List.init locals (fun i ->
-   (call_decref
-     [Graph.LocalGet (add_dummy_loc (Int32.add arity (Int32.of_int (i + (List.length swap_slots)))))])
-    @ [Graph.Drop])))
+  List.flatten
+  (* cleanup args. Max needed for MAIN function, which has no args *)
+  ((List.init (max 0 ((Int32.to_int arity) - 1))
+    (fun i -> (call_decref
+    [Graph.LocalGet (add_dummy_loc (Int32.of_int (i + 1)))]) @ [Graph.Drop])) @
+  (* cleanup locals *)
+  (List.init locals
+    (fun i -> (call_decref
+    [Graph.LocalGet (add_dummy_loc
+     (Int32.of_int (i + (List.length swap_slots) + (Int32.to_int arity))))]) @ [Graph.Drop])))
+
 
 (* Locals in a function are ordered as [arguments (first is closure), swap locals, locals] *)
 let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
@@ -598,7 +604,7 @@ and compile_instr env instr =
     let compiled_func = compile_imm env func in
     let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env
       (if tupled then ((List.length args) + 1) else 2))) in
-    let compiled_args = List.map (compile_imm env) args in
+    let compiled_args = List.map (fun arg -> call_incref (compile_imm env arg)) args in
     let get_closure = get_swap env 0 in
     let tee_closure = tee_swap env 0 in
     if tupled
@@ -674,16 +680,28 @@ and compile_instr env instr =
 
   (* Not actually used? *)
   | MCallKnown(func_idx, args) ->
-    let compiled_args = List.flatten @@ List.map (compile_imm env) args in
+    let compiled_args = List.flatten (List.map (fun arg -> call_incref (compile_imm env arg)) args) in
     compiled_args @ [
        Graph.Call(add_dummy_loc
          (Int32.(add func_idx (of_int env.func_offset))));
     ]
 
+let rec get_last = function
+  | [] -> failwith "No last element for an empty list"
+  | [x] -> x
+  | x::xs -> get_last xs
 
-
+(* After a function terminates, we must decrement each arg and local variable.
+   If the result is one of the args or local variables, that must first be incremented so
+   that it isn't freed when decremented. Therefore, we add an increment to the end of the function.
+   (Not an issue if argument given to a function call, as it will be incremented when function called) *)
+let add_increment body =
+  match get_last body with
+    | MImmediate (MImmBinding (MArgBind _ | MLocalBind _)) -> true
+    | _ -> false
 
 let compile_function env {index; arity; stack_size; body=body_instrs} =
+  let should_add_incr = add_increment body_instrs in
   let arity_int = Int32.to_int arity in
   let body_env = {env with num_args=arity_int} in
   let body = compile_block body_env body_instrs in
@@ -694,7 +712,9 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
   {
     ftype;
     locals;
-    body = List.map add_dummy_edges (body @ (cleanup_locals arity stack_size));
+    body = List.map add_dummy_edges (body @
+      (if should_add_incr then call_incref [] else []) @
+      (cleanup_locals arity stack_size));
   }
 
 (* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works

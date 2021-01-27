@@ -29,7 +29,7 @@ let ir_passes = [
   ("inline", OptInline.optimise);
   (* Where functions can't be inlined, see if they are always fully applied so can remove currying *)
   ("tuples", OptTuple.optimise);
-  ("deadassign", OptDeadAssignments.optimise);
+ (* ("deadassign", OptDeadAssignments.optimise); *)
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
   ("tail calls", OptTailCalls.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)

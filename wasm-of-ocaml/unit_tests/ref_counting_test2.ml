@@ -5,9 +5,9 @@
 (* ISSUE: fails to garbage collect [] if not written this way, since it will be incremented
    on the assumption that it is a local that will then be decremented when all locals are decremented *)
 let rec f x =
-  let a = [] in
-  a
- (* [] *)
+ (* let a = [] in
+  a *)
+  []
 
 (* Move out of top-level so variables are locals, not globals *)
 let main _ =
