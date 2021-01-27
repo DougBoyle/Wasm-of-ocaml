@@ -80,6 +80,7 @@ class ManagedMemory {
 
     // we don't actually use the lower 48-bits of the header, just there for alignment
     this._u16view[ptr>>1] = 1;
+    console.log("malloc, ptr is:", ptr);
     return ptr + headerSize; // return pointer to data rather than header
   }
 
@@ -96,7 +97,9 @@ class ManagedMemory {
     // addresses for values stored in memory end in a 1, integer literals end in 0
     if (userPtr & 1){
       let rawPtr = (userPtr & ~3) - headerSize;
-      this._setRefCount(rawPtr, this._getRefCount(rawPtr) + 1)
+      let count = this._getRefCount(rawPtr);
+      console.log("incr: count is", count, rawPtr);
+      this._setRefCount(rawPtr,  count + 1)
     }
     return userPtr;
   }
@@ -128,6 +131,7 @@ class ManagedMemory {
     }
     let rawPtr = (userPtr & ~3) - headerSize;
     let count = this._getRefCount(rawPtr);
+    console.log("decr: count is", count, rawPtr);
     if (count === 0){
       if (ignoreZero){
         return;

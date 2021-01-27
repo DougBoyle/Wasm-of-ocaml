@@ -52,14 +52,12 @@ let make_float_ident = Ident.create_persistent "make_float"
 (* For garbage collection *)
 let incref_ident = Ident.create_persistent "incRef"
 let decref_ident = Ident.create_persistent "decRef"
-let decref_ignore_zero_ident = Ident.create_persistent "decRefIgnoreZeros"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
 let runtime_imports =
   (if !no_gc then [] else
    [{ mimp_name=incref_ident; mimp_type=([I32Type], [I32Type]); };
-    { mimp_name=decref_ident; mimp_type=([I32Type], [I32Type]); };
-    { mimp_name=decref_ignore_zero_ident; mimp_type=([I32Type], [I32Type]); };])
+    { mimp_name=decref_ident; mimp_type=([I32Type], [I32Type]); };])
   @
   [{ mimp_name=malloc_ident; mimp_type=([I32Type], [I32Type]); };
   { mimp_name=compare_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
@@ -97,8 +95,6 @@ let call_incref arg =
   if !no_gc then arg else arg @ [Graph.Call(var_of_runtime_func incref_ident)]
 let call_decref arg =
   if !no_gc then arg else arg @ [Graph.Call(var_of_runtime_func decref_ident)]
-let call_decref_ignore_zero arg =
-  if !no_gc then arg else arg @ [Graph.Call(var_of_runtime_func decref_ignore_zero_ident)]
 
 (* TODO: Support strings *)
 
@@ -202,7 +198,7 @@ let cleanup_locals arity locals =
   (* increments whatever is on the stack currently - TODO: CAUSES MEMORY LEAK, COMPARE WITH GRAIN *)
   (call_incref []) @
   (List.flatten (List.init locals (fun i ->
-   (call_decref_ignore_zero (* TODO: Remove this *)
+   (call_decref
      [Graph.LocalGet (add_dummy_loc (Int32.add arity (Int32.of_int (i + (List.length swap_slots)))))])
     @ [Graph.Drop])))
 
@@ -265,7 +261,7 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
 Present in Grain but seemingly unused
 
 (* Calls decref on the thing being dropped *)
-let safe_drop arg = (call_decref_ignore_zero arg) @ [Graph.Drop]
+let safe_drop arg = (call_decref arg) @ [Graph.Drop]
 *)
 
 let get_swap ?ty:(typ=Types.I32Type) env idx =
@@ -423,6 +419,8 @@ let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) 
   env.backpatches := (access_lambda, closure_data)::!(env.backpatches);
   (heap_allocate env closure_size) @ tee_swap @
   [Graph.Const(wrap_int32 (Int32.(add func_idx (of_int env.func_offset)))); store ();] (* function index *)
+   (* Store number of variables *)
+   @ get_swap @ [Graph.Const(const_int32 num_free_vars); store ~offset:4l ();]
    @ get_swap @ (toggle_tag Closure) (* Xor, so sets the tag rather than removing it *)
 
 let allocate_data env vtag elts =
@@ -569,7 +567,7 @@ and compile_block env block =
 and compile_instr env instr =
   match instr with
   (* TODO: Remove ignore_zero *)
-  | MDrop -> (call_decref_ignore_zero []) @ [Graph.Drop] (* TODO: Look at how Grain compiles sequences into Ignores *)
+  | MDrop -> (call_decref []) @ [Graph.Drop] (* TODO: Look at how Grain compiles sequences into Ignores *)
   | MImmediate(imm) -> compile_imm env imm
   | MFail j -> (match j with
       | -1l -> [Graph.Unreachable] (* trap *)
@@ -681,6 +679,9 @@ and compile_instr env instr =
        Graph.Call(add_dummy_loc
          (Int32.(add func_idx (of_int env.func_offset))));
     ]
+
+
+
 
 let compile_function env {index; arity; stack_size; body=body_instrs} =
   let arity_int = Int32.to_int arity in

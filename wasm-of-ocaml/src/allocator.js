@@ -80,6 +80,7 @@ class Allocator {
     // K&R initialises the list to a static header with size 0. Can assume this will never be adjacent
     // to blocks provided by the OS, and has size 0, so free list will never be emptied.
     malloc(bytes){
+        console.log("ALLC malloc");
         // round up to align block
         // *2 to put in terms of 32-bit words rather than 64-bit headers
         const units = (((bytes + headerSize - 1) >> 3) + 1)*2;
@@ -133,6 +134,7 @@ class Allocator {
 
     // takes a byte pointer
     free(ptr){
+        console.log("ALLOC free");
         let blockPtr = (ptr>>2) - 2;
    //     console.log("Lower Freeing: ", ptr, this.getSize(blockPtr)*4);
         // TODO: Remove when not debugging
