@@ -698,9 +698,9 @@ let rec get_last = function
    (Not an issue if argument given to a function call, as it will be incremented when function called) *)
 let rec add_increment body =
   match Utils.split_last [] body with
-    (* Definte yes *)
-    | rest, MImmediate (MImmBinding (MArgBind _ | MLocalBind _))
-    | rest, MDataOp ((MGet _ | MArrayGet _), _) -> body @ [MIncrement]
+    (* Increment needed *)
+    | rest, (MImmediate (MImmBinding _) |  MDataOp ((MGet _ | MArrayGet _), _)) ->
+      body @ [MIncrement]
     (* Can't tell if result needs incrementing or not, may cause a memory leak.
       'return' is moved within each loop and handled recursively.
       Slight breaking of layers, need an Increment instruction in bindstree to make this work nicely *)
@@ -712,6 +712,7 @@ let rec add_increment body =
       rest @ [MSwitch(i,
        List.map (fun (i, body) -> (i, add_increment body)) cases,
       add_increment default)]
+    (* Increment not needed *)
     | _ -> body
 
 let compile_function env {index; arity; stack_size; body=body_instrs} =

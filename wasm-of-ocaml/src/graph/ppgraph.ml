@@ -1,41 +1,6 @@
 open Graph
 open Format
 
-(*
-let print_typ ppf = function
-  | I32Type -> fprintf ppf "i32"
-  | I64Type -> fprintf ppf "i64"
-  | F32Type -> failwith "Should never have 32-bit float in OCaml"
-  | F64Type -> fprintf ppf "f64"
-
-let rec print_const ppf = function
-  | MConstI32 n -> fprintf ppf "%lil" n
-  | MConstI64 n -> fprintf ppf "%LiL" n
-  | MConstF64 f -> fprintf ppf "%f" f
-
-let binary = Pplinast.binary
-let unary = Pplinast.unary
-
-let print_bind ppf = function
-  | MArgBind i -> fprintf ppf "arg(%li)" i
-  | MLocalBind i -> fprintf ppf "local(%li)" i
-  | MGlobalBind i -> fprintf ppf "global(%li)" i
-  | MClosureBind i -> fprintf ppf "free-var(%li)" i
-  | MSwapBind i -> fprintf ppf "swap-var(%li)" i
-
-let print_imm ppf = function
-  | MImmBinding b -> print_bind ppf b
-  | MImmConst c -> print_const ppf c
-
-let print_imms ppf args = List.iter (fun e -> fprintf ppf "@ %a" print_imm e) args
-
-let print_alloc ppf = function
-  | MClosure {func_idx; variables} (* Arity ignored *) ->
-    fprintf ppf "@[closure(func(%li)@ %a)@]" func_idx print_imms variables
-  | MData(i, args) ->
-    fprintf ppf "@[<2>(makeblock %li%a)@]" i print_imms args
-*)
-
 let print_live ppf instr =
   let spc = ref false in
   Set32.iter (fun i -> if !spc then fprintf ppf " " else spc := true;
