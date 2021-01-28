@@ -86,6 +86,7 @@ let rec print_instr ppf = function
         binds in
      fprintf ppf  "@[<2>(store@ (@[<hv 1>%a@]))@]" bindings binds
     | MDrop -> fprintf ppf "drop"
+    | MIncrement -> fprintf ppf "increment"
 
 and print_block ppf (block : instr list) =
     let print_body ppf instrs =

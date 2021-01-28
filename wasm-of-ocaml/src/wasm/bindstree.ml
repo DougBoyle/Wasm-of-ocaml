@@ -107,12 +107,14 @@ type instr =
   (* After being evaluated at start, changing value doesn't change limit of loop, so need to save to var *)
   | MFor of binding * immediate * Asttypes.direction_flag * binding * immediate * block
   | MTry of int32 * block * block
-  | MSwitch of immediate * (int32 * block) list * block
+  | MSwitch of immediate * (int32 * block) list * block (* TODO: Should default case be optional? *)
   | MUnary of unop * immediate
   | MBinary of binop * immediate * immediate
   | MDataOp of data_op * immediate
   | MStore of (binding * instr) list (* Items in the same list have their backpatching delayed until the end of that list *)
   | MDrop (* Ignore the result of the last expression. Used for sequences. *)
+  (* For garbage collection *)
+  | MIncrement
 
 and block = instr list
 

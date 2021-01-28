@@ -16,6 +16,7 @@
 *)
 open Graph
 open Wasm
+open Utils
 
 let rec is_global_instr i {it} = match it with
   | Block (_, body) | Loop (_, body) -> List.exists (is_global_instr i) body
@@ -62,11 +63,6 @@ let rec update_export mapping (({it={name; edesc}} as export) : Ast.export) =
     | GlobalExport ({it = i} as var) ->
       {export with it = {name; edesc={edesc with it = GlobalExport {var with it = List.assoc i mapping}}}}
     | _ -> export
-
-let rec split_last acc = function
-  | [] -> failwith "Can't get last element of empty list"
-  | [x] -> List.rev acc, x
-  | x::xs -> split_last (x::acc) xs
 
 let optimise ({funcs; globals; exports} as module_) =
   let other_funcs, main = split_last [] funcs in

@@ -7,3 +7,8 @@ let rec fold_lefti f e l =
 let rec take n l = if n = 0 then ([], l) else match l with
   | [] -> assert false (* Should never happen *)
   | x::xs -> let (h, t) = take (n-1) xs in (x::h, t)
+
+let rec split_last acc = function
+  | [] -> failwith "Can't get last element of empty list"
+  | [x] -> List.rev acc, x
+  | x::xs -> split_last (x::acc) xs

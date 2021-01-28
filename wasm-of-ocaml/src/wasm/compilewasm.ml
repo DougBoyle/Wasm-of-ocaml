@@ -685,6 +685,7 @@ and compile_instr env instr =
        Graph.Call(add_dummy_loc
          (Int32.(add func_idx (of_int env.func_offset))));
     ]
+  | MIncrement -> call_incref [] (* Used as necessary before function returns *)
 
 let rec get_last = function
   | [] -> failwith "No last element for an empty list"
@@ -695,13 +696,26 @@ let rec get_last = function
    If the result is one of the args or local variables, that must first be incremented so
    that it isn't freed when decremented. Therefore, we add an increment to the end of the function.
    (Not an issue if argument given to a function call, as it will be incremented when function called) *)
-let add_increment body =
-  match get_last body with
-    | MImmediate (MImmBinding (MArgBind _ | MLocalBind _)) -> true
-    | _ -> false
+let rec add_increment body =
+  match Utils.split_last [] body with
+    (* Definte yes *)
+    | rest, MImmediate (MImmBinding (MArgBind _ | MLocalBind _))
+    | rest, MDataOp ((MGet _ | MArrayGet _), _) -> body @ [MIncrement]
+    (* Can't tell if result needs incrementing or not, may cause a memory leak.
+      'return' is moved within each loop and handled recursively.
+      Slight breaking of layers, need an Increment instruction in bindstree to make this work nicely *)
+    | rest, MIf (cond, body1, body2) ->
+      rest @ [MIf(cond, add_increment body1, add_increment body2)]
+    | rest, MTry (i, body1, body2) ->
+      rest @ [MTry(i, add_increment body1, add_increment body2)]
+    | rest, MSwitch (i, cases, default) ->
+      rest @ [MSwitch(i,
+       List.map (fun (i, body) -> (i, add_increment body)) cases,
+      add_increment default)]
+    | _ -> body
 
 let compile_function env {index; arity; stack_size; body=body_instrs} =
-  let should_add_incr = add_increment body_instrs in
+  let body_instrs = add_increment body_instrs in
   let arity_int = Int32.to_int arity in
   let body_env = {env with num_args=arity_int} in
   let body = compile_block body_env body_instrs in
@@ -712,9 +726,7 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
   {
     ftype;
     locals;
-    body = List.map add_dummy_edges (body @
-      (if should_add_incr then call_incref [] else []) @
-      (cleanup_locals arity stack_size));
+    body = List.map add_dummy_edges (body @ (cleanup_locals arity stack_size));
   }
 
 (* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works

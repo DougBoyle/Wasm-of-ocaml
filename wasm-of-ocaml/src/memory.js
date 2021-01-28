@@ -147,6 +147,8 @@ class ManagedMemory {
      //   console.log("recursively decrementing:", element);
         this._decRef(element, true);
       }
+      // Only necessary to check for double-free issues
+     // this._setRefCount(rawPtr, count);
       this.allocator.free(rawPtr);
     } else {
       this._setRefCount(rawPtr, count);
