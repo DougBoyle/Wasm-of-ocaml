@@ -51,6 +51,7 @@ type func =
 {
   ftype : Ast.var;
   locals : value_type list;
+  num_swaps : int; (* Important for garbage collection *)
   body : instr list;
 }
 
@@ -81,6 +82,9 @@ let empty_module =
 }
 
 let add_dummy_loc (x : 'a) : 'a Source.phrase = Source.(x @@ no_region)
+
+let add_dummy_edges instr = {it=instr; pred = ref []; succ = ref [];
+  id = get_id (); live = ref Set32.empty}
 
 let translate_globals globals =
   List.map (fun global -> add_dummy_loc {Ast.gtype=global;
@@ -116,18 +120,36 @@ let rec translate_instr instr = add_dummy_loc (match instr.it with
   | Binary op -> Ast.Binary op
   | Convert op -> Ast.Convert op)
 
+(* TODO: Refactor rewriting into a separate file so that we don't specify Decref as function 1 here *)
+let cleanup_locals (types : Ast.type_ list) {ftype; locals; num_swaps} =
+  if !(Compilerflags.no_gc) then [] else
+
+  let arity = match List.nth types (Int32.to_int ftype.it) with
+    {it=Wasm.Types.FuncType (args, _)} -> List.length args in
+  List.map add_dummy_edges
+  (List.flatten
+  (* cleanup args. Max needed for MAIN function, which has no args *)
+  ((List.init (max 0 (arity - 1))
+    (fun i -> ( (*call_decref*)
+    [LocalGet (add_dummy_loc (Int32.of_int (i + 1))); Call (add_dummy_loc 1l)]) @ [Drop])) @
+  (* cleanup locals, but not swap variables *)
+  (List.init ((List.length locals) - num_swaps)
+    (fun i -> ((*call_decref*)
+    [LocalGet (add_dummy_loc
+     (Int32.of_int (i + num_swaps + arity))); Call (add_dummy_loc 1l)]) @ [Drop]))))
+
 
 (* TODO: Add cleanup of locals at end *)
-let translate_funcs funcs =
-  List.map (fun {ftype; locals; body} ->
-    add_dummy_loc {ftype; locals; Ast.body=List.map translate_instr body}) funcs
+let translate_funcs types funcs =
+  List.map (fun ({ftype; locals; body} as f) ->
+    add_dummy_loc {ftype; locals; Ast.body=List.map translate_instr (body @ (cleanup_locals types f))}) funcs
 
 let translate_to_wasm {types; globals; tables; memories; funcs; elems; data; imports; exports} =
   add_dummy_loc {
   types;
   globals = translate_globals globals;
   tables; memories;
-  funcs = translate_funcs funcs;
+  funcs = translate_funcs types funcs;
   Ast.start=None;
   elems; data; imports; exports;
   }

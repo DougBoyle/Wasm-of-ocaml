@@ -9,9 +9,9 @@ let print_wat = ref false
 
 (* Optimisation settings *)
 let opt_ir = ref true
-let num_passes_ir = ref 5
+let num_passes_ir = ref 3
 let opt_graph = ref true
-let num_passes_graph = ref 5
+let num_passes_graph = ref 3
 
 (* Prevents .cmi files being generated.
 If compiling multiple files together, remove this so cmi's can be used in type checking. *)
@@ -29,7 +29,7 @@ let ir_passes = [
   ("inline", OptInline.optimise);
   (* Where functions can't be inlined, see if they are always fully applied so can remove currying *)
   ("tuples", OptTuple.optimise);
- (* ("deadassign", OptDeadAssignments.optimise); *)
+  ("deadassign", OptDeadAssignments.optimise);
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
   ("tail calls", OptTailCalls.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
@@ -103,7 +103,7 @@ let _ = Arg.parse [
     ("-passes-graph", Arg.Set_int num_passes_graph, "Set number of graph passes");
     ("-Nopt-patterns", Arg.Clear Linearise.use_optimised_pattern_compilation,
       "Disable optimised pattern compilation");
- (*   ("-No-gc", Arg.Set Compilewasm.no_gc, "Disable garbage collection"); *)
+    ("-No-gc", Arg.Set Compilerflags.no_gc, "Disable garbage collection");
   ]
   (fun f -> if (!input) = "" then input := f else raise (Arg.Bad "Only one file allowed"))
   "Usage: main.byte [<file>]"

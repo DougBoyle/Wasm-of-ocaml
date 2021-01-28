@@ -4,14 +4,8 @@ open Wasm
 (* Grain uses deque package: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatDeque.html
    and similar lists: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatList.html *)
 
-(* Switch GC off *)
-let no_gc = ref false
 
-(* Associate a dummy location to a value - Wasm.Ast.instr = instr' Source.phrase so every part needs location *)
-let add_dummy_loc (x : 'a) : 'a Source.phrase = Source.(x @@ no_region)
-(* for Graph terms *)
-let add_dummy_edges instr = {Graph.it=instr; Graph.pred = ref []; Graph.succ = ref [];
-  Graph.id = Graph.get_id (); live = ref Graph.Set32.empty}
+open Compilerflags
 
 (* Needed as Wasm Ast represents module names (e.g. in import list) as "name" type, which is actually int list *)
 let encode_string : string -> int list = Utf8.decode
@@ -81,7 +75,7 @@ let init_env = {
 let lookup_runtime_func itemname =
   Hashtbl.find imported_funcs itemname
 let var_of_runtime_func itemname =
-  add_dummy_loc (lookup_runtime_func itemname)
+  Graph.add_dummy_loc (lookup_runtime_func itemname)
 let call_malloc env = Graph.Call(var_of_runtime_func malloc_ident)
 let call_compare env = Graph.Call(var_of_runtime_func compare_ident)
 let call_abs env = Graph.Call(var_of_runtime_func abs_ident)
@@ -98,15 +92,15 @@ let call_decref arg =
 
 (* TODO: Support strings *)
 
-let const_int32 n = add_dummy_loc (Values.I32Value.to_value (Int32.of_int n))
-let const_int64 n = add_dummy_loc (Values.I64Value.to_value (Int64.of_int n))
-let const_float64 n = add_dummy_loc (Values.F64Value.to_value (Wasm.F64.of_float n))
+let const_int32 n = Graph.add_dummy_loc (Values.I32Value.to_value (Int32.of_int n))
+let const_int64 n = Graph.add_dummy_loc (Values.I64Value.to_value (Int64.of_int n))
+let const_float64 n = Graph.add_dummy_loc (Values.F64Value.to_value (Wasm.F64.of_float n))
 
 (* These are like the above 'const' functions, but take inputs
    of the underlying types instead *)
-let wrap_int32 n = add_dummy_loc (Values.I32Value.to_value n)
-let wrap_int64 n = add_dummy_loc (Values.I64Value.to_value n)
-let wrap_float64 env n = [Graph.Const (add_dummy_loc (Values.F64Value.to_value n)); make_float env]
+let wrap_int32 n = Graph.add_dummy_loc (Values.I32Value.to_value n)
+let wrap_int64 n = Graph.add_dummy_loc (Values.I64Value.to_value n)
+let wrap_float64 env n = [Graph.Const (Graph.add_dummy_loc (Values.F64Value.to_value n)); make_float env]
 
 (* TODO: Work out which of these actually needed *)
 (* For integers taken out of wasmtree - all tags/ints need doubling (but not memory offsets) *)
@@ -183,31 +177,6 @@ let toggle_tag tag = [
   Graph.Binary(Values.I32 Ast.IntOp.Xor);
 ]
 
-(* TODO: FIX POSSIBLE MEMORY LEAK
-   TODO: MOVE TO Translate function in Graph so that use of all locals at end doesn't stop
-     dead locals from being removed (annoying as it requires looking up the function type to get # args) *)
-(*
-  Adds some code which decrements the references of any locals before the function returns.
-  Result is incremented, all locals get decremented, then result returned.
-  TODO: NOTE THAT OVERALL EFFECT IS TO INCREMENT THE COUNT IF VARIABLE WAS NOT ALREADY ALLOCATED TO A LOCAL
-*)
-(* Decrement each local variable and argument. Except for the closure argument *)
-(* TODO: Replace with use of compile_binds *)
-let cleanup_locals arity locals =
-  (* Special case where MAIN (arity 0) has no locals, then do nothing *)
-  if !no_gc then [] else
-  List.flatten
-  (* cleanup args. Max needed for MAIN function, which has no args *)
-  ((List.init (max 0 ((Int32.to_int arity) - 1))
-    (fun i -> (call_decref
-    [Graph.LocalGet (add_dummy_loc (Int32.of_int (i + 1)))]) @ [Graph.Drop])) @
-  (* cleanup locals *)
-  (List.init locals
-    (fun i -> (call_decref
-    [Graph.LocalGet (add_dummy_loc
-     (Int32.of_int (i + (List.length swap_slots) + (Int32.to_int arity))))]) @ [Graph.Drop])))
-
-
 (* Locals in a function are ordered as [arguments (first is closure), swap locals, locals] *)
 let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
   (env : env) (b : binding) : Graph.instr' list =
@@ -217,7 +186,7 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
   match b with
   | MArgBind(i) ->
     (* No adjustments are needed for argument bindings *)
-    let slot = add_dummy_loc i in
+    let slot = Graph.add_dummy_loc i in
     if is_get then
       [Graph.LocalGet(slot)]
     else
@@ -227,7 +196,7 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
       [Graph.LocalSet(slot)]
   | MLocalBind(i) ->
     (* Local bindings need to be offset to account for arguments and swap variables *)
-    let slot = add_dummy_loc ((env.num_args + (List.length swap_slots)) ++ i) in
+    let slot = Graph.add_dummy_loc ((env.num_args + (List.length swap_slots)) ++ i) in
     if is_get then
      [Graph.LocalGet(slot)]
     else
@@ -236,7 +205,7 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
      [Graph.LocalSet(slot)]
  | MSwapBind(i) ->
     (* Swap bindings need to be offset to account for arguments *)
-    let slot = add_dummy_loc (env.num_args ++ i) in
+    let slot = Graph.add_dummy_loc (env.num_args ++ i) in
     if is_get then
       [Graph.LocalGet(slot)]
     else
@@ -245,7 +214,7 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
      [Graph.LocalSet(slot)]
   | MGlobalBind(i) ->
     (* Global bindings need to be offset to account for any imports *)
-    let slot = add_dummy_loc i in
+    let slot = Graph.add_dummy_loc i in
     if is_get then
       [Graph.GlobalGet(slot)]
     else
@@ -260,7 +229,7 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
         failwith "Internal error: attempted to emit instruction which would mutate closure contents"
     end;
       (* Add 2 since closure is now [func idx; arity; elements] *)
-      [Graph.LocalGet(add_dummy_loc Int32.zero); load ~offset:(Int32.mul 4l (Int32.add 2l i)) ()]
+      [Graph.LocalGet(Graph.add_dummy_loc Int32.zero); load ~offset:(Int32.mul 4l (Int32.add 2l i)) ()]
 
 (* TODO: Work out why ignore_zero necessary *)
 (*
@@ -291,7 +260,7 @@ let tee_swap ?ty:(typ=Types.I32Type) env idx =
  match typ with
   | Types.I32Type ->
     if idx > (List.length swap_slots) then raise Not_found else
-    [Graph.LocalTee(add_dummy_loc (Int32.of_int (env.num_args + idx)))]
+    [Graph.LocalTee(Graph.add_dummy_loc (Int32.of_int (env.num_args + idx)))]
   | _ -> raise Not_found
 
 let compile_imm (env : env) (i : immediate) : Graph.instr' list =
@@ -320,7 +289,7 @@ let compile_unary env op arg : Graph.instr' list =
     ]
   | Abs -> compiled_arg @ [call_abs env]
   (* Skip calling make_float and just create the float constant 0.0 directly *)
-  | FUnNeg -> [Graph.Const (add_dummy_loc (Values.F64Value.to_value (Wasm.F64.of_float 0.0)));] @
+  | FUnNeg -> [Graph.Const (Graph.add_dummy_loc (Values.F64Value.to_value (Wasm.F64.of_float 0.0)));] @
     compiled_arg @ [load_float; Graph.Binary(Values.F64 Ast.FloatOp.Sub); make_float env]
   | FSqrt -> compiled_arg @ [load_float; Graph.Unary(Values.F64 Ast.FloatOp.Sqrt); make_float env]
 
@@ -353,17 +322,17 @@ let compile_binary (env : env) op arg1 arg2 : Graph.instr' list =
     swap_tee @
     decode_num @ [
       Graph.If(ValBlockType (Some Types.I32Type),
-             List.map add_dummy_edges
+             List.map Graph.add_dummy_edges
              (compile_imm (enter_block env) arg2), (* Recompile with updated trap handlers *)
-             List.map add_dummy_edges swap_get)
+             List.map Graph.add_dummy_edges swap_get)
     ]
   | OR ->
     compiled_arg1 @
     swap_tee @
     decode_num @ [
       Graph.If(ValBlockType (Some Types.I32Type),
-             List.map add_dummy_edges swap_get,
-             List.map add_dummy_edges (compile_imm (enter_block env) arg2))
+             List.map Graph.add_dummy_edges swap_get,
+             List.map Graph.add_dummy_edges (compile_imm (enter_block env) arg2))
     ]
   | GT ->
     compiled_arg1 @ compiled_arg2 @
@@ -470,12 +439,12 @@ let compile_data_op env imm op =
     (* Array size is actually a 31-bit int so can use unsigned test to safely check 0 <= index too *)
     [Graph.Compare(Values.I32 Ast.IntOp.GtU); (* 0 <= index < number of element *)
     Graph.If(ValBlockType (Some Types.I32Type),
-    List.map add_dummy_edges
+    List.map Graph.add_dummy_edges
     (* Calculate address as 4*(idx + 2) = 4*idx + 2 *)
     (swap_get @ index_swap_get @ decode_num @ [
     Graph.Const(wrap_int32 4l); Graph.Binary(Values.I32 Ast.IntOp.Mul);
     Graph.Binary(Values.I32 Ast.IntOp.Add)] @ action),
-    [add_dummy_edges Graph.Unreachable]);] in
+    [Graph.add_dummy_edges Graph.Unreachable]);] in
 
   match op with
   | MGet(idx) ->
@@ -547,24 +516,24 @@ and compile_switch env arg branches default =
   let compile_table labels =
     let max_label = List.fold_left max 0 labels in
     let labs_to_branches = List.mapi (fun i l -> (l, i+1)) labels in
-    let default = add_dummy_loc 0l in
+    let default = Graph.add_dummy_loc 0l in
     (* +1 since List.init n creates cases for 0 up to (n-1) *)
     List.init (max_label + 1) (fun l -> match List.assoc_opt l labs_to_branches with
-      | Some b -> add_dummy_loc (Int32.of_int b) | None -> default) in
+      | Some b -> Graph.add_dummy_loc (Int32.of_int b) | None -> default) in
   let rec build_branches i seen = function
     (* Base case, do actual arg eval, branch table and default case *)
     | [] ->
      [Graph.Block(ValBlockType None, (* Only left by branch table *)
-      List.map add_dummy_edges
+      List.map Graph.add_dummy_edges
         ((compile_imm (enter_block ~n:(i + 2) env) arg) @
-        decode_num @ [Graph.BrTable (compile_table seen, add_dummy_loc 0l)]))]
-        @ (compile_block (enter_block ~n:(i + 1) env) default) @ [Graph.Br(add_dummy_loc (Int32.of_int i))]
+        decode_num @ [Graph.BrTable (compile_table seen, Graph.add_dummy_loc 0l)]))]
+        @ (compile_block (enter_block ~n:(i + 1) env) default) @ [Graph.Br(Graph.add_dummy_loc (Int32.of_int i))]
     (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
     | (l, action)::rest -> (Graph.Block(ValBlockType None,
-      List.map add_dummy_edges
+      List.map Graph.add_dummy_edges
       ((build_branches (i+1) ((Int32.to_int l)::seen) rest))))
-      :: (compile_block (enter_block ~n:(i+1) env) action) @ [Graph.Br(add_dummy_loc (Int32.of_int i))] in
-  [Graph.Block(ValBlockType (Some Types.I32Type), List.map add_dummy_edges (build_branches 0 [] branches))]
+      :: (compile_block (enter_block ~n:(i+1) env) action) @ [Graph.Br(Graph.add_dummy_loc (Int32.of_int i))] in
+  [Graph.Block(ValBlockType (Some Types.I32Type), List.map Graph.add_dummy_edges (build_branches 0 [] branches))]
 
 
 and compile_block env block =
@@ -578,7 +547,7 @@ and compile_instr env instr =
   | MFail j -> (match j with
       | -1l -> [Graph.Unreachable] (* trap *)
       (* get block to jump to *)
-      | _ -> [Graph.Br (add_dummy_loc (List.assoc j env.handler_heights))])
+      | _ -> [Graph.Br (Graph.add_dummy_loc (List.assoc j env.handler_heights))])
   | MAllocate(alloc) -> (* New - currying appeared to not work before *)
     let new_backpatches = ref [] in
     (* TODO: Tidy up to better suit single allocation. Currently just a modified version of letrec backpatching
@@ -602,7 +571,7 @@ and compile_instr env instr =
   | MStore(binds) -> compile_store env binds (* Difference between MAllocate and MStore - alloc for compound, store for toplevel *)
   | MCallIndirect(func, args, tupled) ->
     let compiled_func = compile_imm env func in
-    let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env
+    let ftype = Graph.add_dummy_loc (Int32.of_int (get_arity_func_type_idx env
       (if tupled then ((List.length args) + 1) else 2))) in
     let compiled_args = List.map (fun arg -> call_incref (compile_imm env arg)) args in
     let get_closure = get_swap env 0 in
@@ -623,23 +592,23 @@ and compile_instr env instr =
     let compiled_els = (compile_block (enter_block env) els) in
     compiled_cond @
     [Graph.If(ValBlockType (Some Types.I32Type),
-     List.map add_dummy_edges compiled_thn,
-     List.map add_dummy_edges compiled_els)]
+     List.map Graph.add_dummy_edges compiled_thn,
+     List.map Graph.add_dummy_edges compiled_els)]
 
   | MWhile(cond, body) ->
     let compiled_cond = compile_block (enter_block ~n:2 env) cond in
     let compiled_body = (compile_block (enter_block ~n:2 env) body) in
     [Graph.Block(ValBlockType (Some Types.I32Type),
-     List.map add_dummy_edges
+     List.map Graph.add_dummy_edges
         [Graph.Loop(ValBlockType (Some Types.I32Type),
-         List.map add_dummy_edges
+         List.map Graph.add_dummy_edges
               (const_false @
               compiled_cond @
               [Graph.Test(Values.I32 Ast.IntOp.Eqz);
-               Graph.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
+               Graph.BrIf (Graph.add_dummy_loc @@ Int32.of_int 1)] @
               [Graph.Drop] @
               compiled_body @
-              [Graph.Br (add_dummy_loc @@ Int32.of_int 0)]))])]
+              [Graph.Br (Graph.add_dummy_loc @@ Int32.of_int 0)]))])]
 
   | MFor(arg, start_expr, direction, end_arg, end_expr, body) ->
     let compiled_start = compile_imm env start_expr in
@@ -648,22 +617,22 @@ and compile_instr env instr =
     compiled_start @ (compile_bind ~is_get:false env arg) @
     compiled_end @ (compile_bind ~is_get:false env end_arg) @
     [Graph.Block(ValBlockType (Some Types.I32Type),
-     List.map add_dummy_edges
+     List.map Graph.add_dummy_edges
         [Graph.Loop(ValBlockType (Some Types.I32Type),
-         List.map add_dummy_edges
+         List.map Graph.add_dummy_edges
               (const_false @ (* Return unit value when loop fails *)
               (compile_bind ~is_get:true env arg) @
               (compile_bind ~is_get:true env end_arg) @
               [Graph.Compare(Values.I32
                 (match direction with Upto -> Ast.IntOp.GtS | Downto -> Ast.IntOp.LtS))] @
-              [Graph.BrIf (add_dummy_loc @@ Int32.of_int 1)] @
+              [Graph.BrIf (Graph.add_dummy_loc @@ Int32.of_int 1)] @
               compiled_body @
               (compile_bind ~is_get:true env arg) @
               [Graph.Const(encoded_const_int 1); (* For loop actually takes steps of 2 due to encoding *)
                Graph.Binary(Values.I32
                  (match direction with Upto -> Ast.IntOp.Add | Downto -> Ast.IntOp.Sub));] @
               (compile_bind ~is_get:false env arg) @ (* TODO: Could use Tee here? Avoiding 'get' at top *)
-              [Graph.Br (add_dummy_loc @@ Int32.of_int 0)]))])]
+              [Graph.Br (Graph.add_dummy_loc @@ Int32.of_int 0)]))])]
 
   (* Creates two blocks. Inner block is usual 'try' body, outer block is that + handler body.
      If try case succeeds, Br 1 jumps to the end of the outer block so just returns result.
@@ -673,16 +642,16 @@ and compile_instr env instr =
     let compiled_body = compile_block {body_env with handler_heights = (i,0l)::body_env.handler_heights} body in
     let handler_body = compile_block (enter_block env) handler in
     [Graph.Block(ValBlockType (Some Types.I32Type), (* Outer 'try/with' block, returns result *)
-      List.map add_dummy_edges
+      List.map Graph.add_dummy_edges
        ([Graph.Block(ValBlockType None, (* inner block for body - only left by fail *)
-           List.map add_dummy_edges (compiled_body @ [Graph.Br (add_dummy_loc 1l)]))]  (* try case succeeded, skip handler *)
+           List.map Graph.add_dummy_edges (compiled_body @ [Graph.Br (Graph.add_dummy_loc 1l)]))]  (* try case succeeded, skip handler *)
         @ handler_body))]
 
   (* Not actually used? *)
   | MCallKnown(func_idx, args) ->
     let compiled_args = List.flatten (List.map (fun arg -> call_incref (compile_imm env arg)) args) in
     compiled_args @ [
-       Graph.Call(add_dummy_loc
+       Graph.Call(Graph.add_dummy_loc
          (Int32.(add func_idx (of_int env.func_offset))));
     ]
   | MIncrement -> call_incref [] (* Used as necessary before function returns *)
@@ -721,13 +690,14 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
   let body_env = {env with num_args=arity_int} in
   let body = compile_block body_env body_instrs in
   let ftype_idx = get_arity_func_type_idx env arity_int in
-  let ftype = add_dummy_loc Int32.(of_int ftype_idx) in
+  let ftype = Graph.add_dummy_loc Int32.(of_int ftype_idx) in
   let locals = List.append swap_slots @@ List.init (stack_size) (fun _ -> Types.I32Type) in
   let open Graph in (* so func' record type in scope *)
   {
     ftype;
     locals;
-    body = List.map add_dummy_edges (body @ (cleanup_locals arity stack_size));
+    num_swaps=List.length swap_slots;
+    body = List.map Graph.add_dummy_edges body;
   }
 
 (* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works
@@ -742,11 +712,11 @@ let compile_imports env =
     let module_name = encode_string (Ident.name runtime_mod) in
     let item_name = encode_string (Ident.name mimp_name) in
     let idesc = let func_type = Types.FuncType(args, ret) in
-        add_dummy_loc @@ Ast.FuncImport(add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
+        Graph.add_dummy_loc @@ Ast.FuncImport(Graph.add_dummy_loc @@ Int32.of_int @@ get_func_type_idx env func_type)
     in
     (* Wasm.Ast import' type *)
     let open Wasm.Ast in
-    add_dummy_loc {
+    Graph.add_dummy_loc {
       module_name;
       item_name;
       idesc;
@@ -755,10 +725,10 @@ let compile_imports env =
    (imports @
     (* Single memory/table required by a Wasm module -- imported rather than created itself? *)
     [
-      add_dummy_loc {
+      Graph.add_dummy_loc {
         Ast.module_name=encode_string (Ident.name runtime_mod);
         Ast.item_name=encode_string "mem";
-        Ast.idesc=add_dummy_loc (Ast.MemoryImport (Types.MemoryType({
+        Ast.idesc=Graph.add_dummy_loc (Ast.MemoryImport (Types.MemoryType({
             Types.min=Int32.zero;
             Types.max=None;
           })));
@@ -772,9 +742,9 @@ let compile_exports env {functions; exports; num_globals} =
     let name = encode_string exported_name in
     let export =
       let open Wasm.Ast in
-      add_dummy_loc {
+      Graph.add_dummy_loc {
         name;
-        edesc=add_dummy_loc (Ast.GlobalExport (add_dummy_loc ex_global_index)); (* Export global directly *)
+        edesc=Graph.add_dummy_loc (Ast.GlobalExport (Graph.add_dummy_loc ex_global_index)); (* Export global directly *)
       } in
     export
   in
@@ -783,12 +753,12 @@ let compile_exports env {functions; exports; num_globals} =
      i.e. export "i" is function i. No clashes as variable names can't start with digits *)
   let compile_lambda_export i _ =
     let name = encode_string (string_of_int (i + env.func_offset)) in
-    let edesc = add_dummy_loc (Ast.FuncExport(add_dummy_loc @@ Int32.of_int (i + env.func_offset))) in
+    let edesc = Graph.add_dummy_loc (Ast.FuncExport(Graph.add_dummy_loc @@ Int32.of_int (i + env.func_offset))) in
     let open Wasm.Ast in
-    add_dummy_loc { name; edesc } in
+    Graph.add_dummy_loc { name; edesc } in
   let heap_adjust_idx = env.func_offset + (List.length functions) in
   let main_idx = heap_adjust_idx in
-  let main_idx = add_dummy_loc (Int32.of_int main_idx) in
+  let main_idx = Graph.add_dummy_loc (Int32.of_int main_idx) in
   (* Make each function visible outside of module *)
   let compiled_lambda_exports = List.mapi compile_lambda_export functions in
   (* Export the varaibles/functions declared in the program using their actual names *)
@@ -796,13 +766,13 @@ let compile_exports env {functions; exports; num_globals} =
      compiled_lambda_exports @ (* Export each function which could be needed to execute a closure *)
         compiled_exports @ (* Export each global variable *)
         [
-          add_dummy_loc {
+          Graph.add_dummy_loc {
             Ast.name=encode_string "OCAML$MAIN";
-            Ast.edesc=add_dummy_loc (Ast.FuncExport main_idx);
+            Ast.edesc=Graph.add_dummy_loc (Ast.FuncExport main_idx);
           }; (* Export the memory - makes JS wrapper neater *)
-         add_dummy_loc {
+         Graph.add_dummy_loc {
             Ast.name=encode_string "$mem";
-            Ast.edesc=add_dummy_loc (Ast.MemoryExport (add_dummy_loc 0l)); (* Index of the only memory *)
+            Ast.edesc=Graph.add_dummy_loc (Ast.MemoryExport (Graph.add_dummy_loc 0l)); (* Index of the only memory *)
             };
         ]
 
@@ -812,12 +782,12 @@ let compile_elems env prog =
   (* Elems initialises the function table, just initialise ith element of table to point to function i (last line) *)
   (* https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format - Defining a table in wasm *)
   [
-    add_dummy_loc {
-      index=add_dummy_loc (Int32.zero);
-      offset=add_dummy_loc [
-        add_dummy_loc (Ast.Const(const_int32 0));
+    Graph.add_dummy_loc {
+      index=Graph.add_dummy_loc (Int32.zero);
+      offset=Graph.add_dummy_loc [
+        Graph.add_dummy_loc (Ast.Const(const_int32 0));
       ];
-      init=List.init table_size (fun n -> (add_dummy_loc (Int32.of_int n)));
+      init=List.init table_size (fun n -> (Graph.add_dummy_loc (Int32.of_int n)));
     };
   ]
 let compile_globals env {num_globals} =
@@ -884,7 +854,7 @@ let compile_wasm_module prog =
   let exports = compile_exports env prog in
   let globals = compile_globals env prog in
   let elems = compile_elems env prog in
-  let types = List.map add_dummy_loc (!(env.func_types)) in
+  let types = List.map Graph.add_dummy_loc (!(env.func_types)) in
   let ret = {
     empty_module with
     funcs;
@@ -892,7 +862,7 @@ let compile_wasm_module prog =
     exports;
     globals;
     (* Create a function table large enough to hold pointers to each function in the program *)
-    tables=[add_dummy_loc {
+    tables=[Graph.add_dummy_loc {
       Ast.ttype = TableType({min=Int32.of_int(compute_table_size env prog); max=None}, FuncRefType)}];
     elems;
     types;

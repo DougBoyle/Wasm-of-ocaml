@@ -5,7 +5,16 @@ open Graph
 open GraphUtils
 
 (* So that types/functions tables don't need to be passed around. Only ever optimising one program at a time *)
-let mod_tbls = ref Graph.empty_module
+let types_lst = ref ([] : Wasm.Ast.type_ list)
+let func_types = ref []
+
+let generate_type_table {types; funcs; imports} =
+  func_types :=
+  ((List.fold_right (fun (import : Wasm.Ast.import) lst -> match import.it.Wasm.Ast.idesc.it with
+    | Wasm.Ast.FuncImport {it = i} -> (List.nth types (Int32.to_int i) )::lst
+    | _ -> lst) imports []) @
+  (List.map (fun func -> (List.nth types (Int32.to_int func.ftype.it))) funcs))
+
 
 (* Function to find point in code where previous argument started being constructed
  Idea is that code is something like:
@@ -48,7 +57,7 @@ let rec split_stack n instrs = if n = 0 then ([], instrs)
       let new_n = match typ with
         (* actually quite heavily constrained in MVP e.g. Blocks can't take arguments *)
         | Wasm.Ast.VarBlockType {it} ->
-          (match List.nth (!mod_tbls).types (Int32.to_int it) with
+          (match List.nth (!types_lst) (Int32.to_int it) with
            {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results))
         (* leaves stack unchanged *)
         | Wasm.Ast.ValBlockType None -> n
@@ -58,13 +67,15 @@ let rec split_stack n instrs = if n = 0 then ([], instrs)
     (* Doesn't actually occur - need to look up type of func (i is the func index) *)
     (* Easy to calculate since we know imports only contains functions *)
     | ({it=Call {it}} as instr)::rest ->
-      let func = List.nth (!mod_tbls).funcs ((Int32.to_int it) - (List.length Compilewasm.runtime_imports)) in
-      let new_n = match List.nth (!mod_tbls).types (Int32.to_int func.ftype.it) with
+      let new_n = match List.nth (!func_types) ((Int32.to_int it) (* - (List.length Compilewasm.runtime_imports) *)) with
+   (*   let func = List.nth (!mod_tbls).funcs ((Int32.to_int it) - (List.length Compilewasm.runtime_imports)) in
+      Printf.printf "functype\n";
+      let new_n = match List.nth (!mod_tbls).types (Int32.to_int func.ftype.it) with *)
         {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results)
       in let above, rest = split_stack new_n rest in (instr::above, rest)
     (* Need to look up type in types (i is the type index) *)
     | ({it=CallIndirect {it}} as instr)::rest ->
-      let new_n = match List.nth (!mod_tbls).types (Int32.to_int it) with
+      let new_n = match List.nth (!types_lst) (Int32.to_int it) with
         {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results)
       in let above, rest = split_stack new_n rest in (instr::above, rest)
 
@@ -133,7 +144,8 @@ let rec remove_drops = function
       List.rev (remove_drops (List.rev body2)))}:: (remove_drops rest)
   | instr::rest -> instr::(remove_drops rest)
 
-let optimise ({funcs} as module_) =
-  mod_tbls := module_;
+let optimise ({funcs; types} as module_) =
+  types_lst := types;
+  generate_type_table module_;
   {module_ with funcs=List.map (fun ({body} as f) ->
     {f with body=List.rev (remove_drops  (List.rev body))}) funcs}

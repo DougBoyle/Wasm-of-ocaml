@@ -4,7 +4,7 @@
 \def\authorname{Douglas Boyle\xspace}
 \def\authorcollege{Churchill College\xspace}
 %\def\authoremail{Sarah.Jones@cl.cam.ac.uk}
-\def\dissertationtitle{Optimising compiler from OCaml to Webassembly}
+\def\dissertationtitle{Optimising compiler from OCaml to WebAssembly}
 \def\wordcount{\#\#\#\#\#}
 
 
@@ -15,6 +15,17 @@
 \usepackage{graphicx}  % allows inclusion of PDF, PNG and JPG images
 \usepackage{verbatim}
 \usepackage{docmute}   % only needed to allow inclusion of proposal.tex
+\usepackage{fancyhdr}
+
+
+%\renewcommand{\headrulewidth}{0.4pt}
+%\fancyheadoffset[LO,LE,RO,RE]{0pt}
+%\fancyfootoffset[LO,LE,RO,RE]{0pt}
+%\pagestyle{fancy}
+%\fancyhead{}
+%\fancyhead[LO,RE]{{\bfseries \authorname}\\ dab80@cam.ac.uk}
+%\setlength{\headheight}{22.55pt}
+
 
 
 %% START OF DOCUMENT
@@ -38,57 +49,55 @@
 
 %\onehalfspacing
 
-\newpage
+ %\newpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Title
 
 
-\pagestyle{empty}
+%\pagestyle{empty}
 
-\rightline{\LARGE \textbf{\authorname} }
+%\rightline{\LARGE \textbf{\authorname} }
 
-\vspace*{60mm}
-\begin{center}
-\Huge
-\textbf{Progress Report} \\[5mm]
-Computer Science Tripos -- Part II \\[5mm]
-\today  % today's date
-\end{center}
+%\vspace*{60mm}
+%\begin{center}
+%\Huge
+%\textbf{Progress Report} \\[5mm]
+%Computer Science Tripos -- Part II \\[5mm]
+%\today  % today's date
+%\end{center}
 
 
-\newpage
+%\newpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Proforma, table of contents and list of figures
-\pagestyle{plain}
+%\pagestyle{plain}
 
 
 {\large
 \begin{tabular}{ll}
-Name:               & \bf\authorname     \\
-Email: 		& \bf{dab80@cam.ac.uk} \\
-College:            & \bf\authorcollege     \\
-Project Title:      & \bf\dissertationtitle \\
+Name:               & \authorname     \\
+Email: 		& {dab80@cam.ac.uk} \\
+%College:            & \authorcollege     \\
+Project Title:      & \dissertationtitle \\
 Supervisor:         &  Dr T.~Jones                   \\ 
 Director of Studies: & Dr J.~Fawcett \\
 Overseers: & Dr S.~Holden and Dr N.~Krishnaswami
 \end{tabular}
 }
 
+Using the output of the OCaml compiler's parser and type-checker, I have implemented translation to a linearised intermediate representation, followed by WebAssembly code generation. I have also written a runtime system in WebAssembly providing functions such as memory allocation, and a small JavaScript wrapper to simplify interacting with the WebAssembly representations of values. Except for the module and object language and exceptions, these support all of the syntax constructs of OCaml. Rather than try to implement all of OCaml's primitive types and operations, just the integer, comparison, boolean and list operations were implemented initially. This has since been extended to support references and the basic floating point operations, allowing a wider range of programs to be compiled. 
 
-\section*{Work Completed} % Of course update this as the project develops
-Using the parser and type-checker of the official OCaml compiler, I have implemented translation to a linearised IR and WebAssembly code generation from this. I have also written a runtime system in WebAssembly for performing memory allocation and comparisons, and a small JavaScript wrapper to simplify interacting with the WebAssembly representations of values. Except for the module and object language and exceptions, these support all of the syntax constructs of OCaml such as arbitrary pattern matching and polymorphic functions. Rather than try to implement all of OCaml's primitive operations, just the integer operations were implemented initially and this has been extended to support references and the basic floating point operations, allowing a wider range of programs to be compiled. 
-
-I also wrote a set of benchmark OCaml programs with equivalent programs in both C and Grain, a functional language with a compiler to WebAssembly.
-Where possible, these benchmarks were adapted from existing benchmarks found online so that they would closer resemble real programs.
-I have collected data on the performance of compiled code for each of these languages in terms of heap usage, execution time and file size. I additionally compared this with the result of running Js\_of\_ocaml on the benchmark programs and executing them in JavaScript.
+I have also written a set of benchmark OCaml programs with equivalent programs in both C and Grain.
+Where possible, these benchmarks were adapted from existing benchmarks available online so that they closer resemble real programs.
+I have collected data on the performance of compiled code for each of these languages in terms of heap usage, execution time and file size. I additionally compared this with the result of running Js\_of\_ocaml on the OCaml benchmark programs and executing them in JavaScript.
 
 % Include a graph of comparative performance?
 
-This meets the original success criteria for my project. Having achieved that, I have implemented several optimisations to my compiler. This includes tail call optimisations for both recursive and mutually recursive functions, constant propagation and dead assignment elimination. All of these were done on the intermediate representation. In addition, a small number of optimisations have been implemented on the WebAssembly representation of programs, which maps directly to blocks and instructions in WebAssembly but with instructions within a function linked together by a graph indicating possible execution orders. Optimisations were identified by comparing compiled WebAssembly with the output of running the \verb|wasm-opt| tool on it. This identified several peephole optimisations such as removing dead assignments introduced by the temporary local variables used to compile some of the IR operations.
+This meets the original success criteria for my project. Having achieved that, I have implemented several optimisations to my compiler. These include tail call optimisations for both recursive and mutually recursive functions, constant propagation, and dead assignment elimination. All of these were done on the intermediate representation. In addition, a couple of optimisations have been implemented on the lower level representation. This representation maps directly to blocks and instructions in WebAssembly but also maintains a flow graph of possible execution sequences for easier analysis. Optimisations were identified by comparing compiled WebAssembly with the output of running the \verb|wasm-opt| tool on it. For example, dead assignments would sometimes be introduced for the temporary local variables used to compile IR operations.
 
 % Say about measuring impact of optimisations?
 
-I am therefore about a fortnight ahead of my schedule, so now plan to research implementing garbage collection in WebAssembly and decide if this is a worthwhile change to my compiler. If not, I will continue to further optimise my compiler, most likely by adding function inlining or optimising how functions are called where the function being called can be identified statically. After this I will begin writing the dissertation.
+Lastly, based on the runtime system of the Grain compiler, I have implemented a reference counting garbage collector in JavaScript which is imported into WebAssembly modules at runtime. This puts me about three weeks ahead of schedule. For the next few weeks before I start writing the dissertation, I will look at reducing the overhead of garbage collection and alternative methods capable of collecting cyclic structures. I also need to collect more detailed data on the performance impact of my optimisations and the benefit and overhead of garbage collection.
 
  
 \end{document}

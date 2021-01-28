@@ -60,14 +60,21 @@ let rec used_locals set = function
     used_locals (used_locals (used_locals set body1) body2) rest
   | _::rest -> used_locals set rest
 
+(* Separately count how many swap variables were still used *)
+let rec count_remaining_swaps num_args used = function
+  | 0 -> 0
+  | n -> if Set32.mem (Int32.of_int (num_args + n - 1)) used
+    then 1 + (count_remaining_swaps num_args used (n-1))
+    else count_remaining_swaps num_args used (n-1)
+
 (* This will invalidate all liveness information for remapped locals.
    Not tracked since it will be recalculated anyway on the next pass. *)
-let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; body} =
-  (* Must not modify locals which are function arguments. Until functions without closures added, always 2,
-     but checked here to ensure compatibility if that ever changes *)
+let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; num_swaps; body} =
+  (* Must not modify locals which are function arguments *)
   let num_args = match List.nth types (Int32.to_int ftype.it) with
     {it=Wasm.Types.FuncType (args, _)} -> List.length args in
   let used = used_locals (Set32.of_list (List.init num_args Int32.of_int)) body in
+  let new_swaps = count_remaining_swaps num_args used num_swaps in
   (* Set.elements is guarenteed to return elements in sorted order *)
   let mapping = List.mapi (fun i x -> (x, Int32.of_int i)) (Set32.elements used) in
   let rec map instr = {instr with it = match instr.it with
@@ -80,7 +87,8 @@ let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; body} =
     | x -> x
     } in
   (* types of locals filtered to keep the ones that have mappings i.e. just remove the unused ones *)
-  {ftype; locals=List.filteri (fun i _ -> List.mem_assoc (Int32.of_int i) mapping) locals; body=List.map map body}
+  {ftype; locals=List.filteri (fun i _ -> List.mem_assoc (Int32.of_int i) mapping) locals;
+   num_swaps=new_swaps; body=List.map map body}
 
 let optimise ({funcs; types} as module_) =
   List.iter (fun {body} -> analyse_liveness (List.rev body)) funcs;
