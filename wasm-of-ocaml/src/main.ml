@@ -1,3 +1,5 @@
+open Compilerflags
+
 (* Command line options/arguments *)
 let input  = ref ""
 let output = ref ""
@@ -84,7 +86,7 @@ let main () =
   (* Wasm level optimisations *)
   let graph = optimise_graph graph in
 
-  let wasm = Graph.translate_to_wasm graph in
+  let wasm = OutputWasm.translate_to_wasm graph in
   Compilewasm.validate_module wasm;
 
   let binary = Wasm.Encode.encode wasm in
@@ -101,9 +103,9 @@ let _ = Arg.parse [
     ("-passes-ir", Arg.Set_int num_passes_ir, "Set number of IR passes");
     ("-Nopt-graph", Arg.Clear opt_graph, "Disable Graph level optimisations");
     ("-passes-graph", Arg.Set_int num_passes_graph, "Set number of graph passes");
-    ("-Nopt-patterns", Arg.Clear Linearise.use_optimised_pattern_compilation,
+    ("-Nopt-patterns", Arg.Clear use_optimised_pattern_compilation,
       "Disable optimised pattern compilation");
-    ("-No-gc", Arg.Set Compilerflags.no_gc, "Disable garbage collection");
+    ("-No-gc", Arg.Set no_gc, "Disable garbage collection");
   ]
   (fun f -> if (!input) = "" then input := f else raise (Arg.Bad "Only one file allowed"))
   "Usage: main.byte [<file>]"

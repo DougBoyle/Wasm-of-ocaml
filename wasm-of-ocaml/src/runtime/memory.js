@@ -30,7 +30,7 @@
  *   rawPtr  : The pointer returned by the call to malloc()
  *   userPtr : The pointer returned (and referenced by) to the Grain runtime
  */
-const {Allocator} = require("./allocator");
+const {Allocator} = require(process.env.OCAML_TO_WASM_RT + "/allocator");
 const headerSize = 8;// 32 bits in bytes (extra space needed for 64-bit alignment)
 
 class ManagedMemory {

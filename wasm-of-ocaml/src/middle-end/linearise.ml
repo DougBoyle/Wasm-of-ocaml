@@ -4,6 +4,7 @@ open Types
 open CompileMatch
 open LinastUtils
 open Utils
+open Compilerflags
 
 (* c_rhs isn't actually examined to work out if a pattern is partial or not, since that only
    depends on the pattern and guard, so a dummy expression is put in its place.  *)
@@ -29,9 +30,6 @@ let translate_ident path = function
 let get_id_from_pattern = function
     | {pat_desc=Tpat_var(id, _)} -> id
     | _ -> raise NotSupported
-
-(* Allows switching between basic and optimised pattern matching algorithms *)
-let use_optimised_pattern_compilation = ref true
 
 let matrix_to_compound total value matrix =
   if !use_optimised_pattern_compilation

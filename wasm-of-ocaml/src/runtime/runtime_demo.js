@@ -1,4 +1,4 @@
-const rt = require("./ocaml.js");
+const rt = require(process.env.OCAML_TO_WASM_RT + "/ocaml.js");
 
 (async () => {
     var instance = await rt.instantiate(__dirname + "/../unit_tests/out/arith.wasm");

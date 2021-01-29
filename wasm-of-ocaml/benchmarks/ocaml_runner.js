@@ -1,6 +1,7 @@
 // TODO: Decide about using the runtime wrapper or not. Adds extra work
 //       Can improve efficiency by exporting globals directly rather than wrappers to them
-//const rt = require("../src/ocaml.js");
+// TODO: Update benchmarks to use memory manager
+//const rt = require(process.env.OCAML_TO_WASM_RT +  "/ocaml.js");
 const { performance } = require('perf_hooks');
 const util = require('util');
 const fs = require("fs");
@@ -12,7 +13,7 @@ const readFile = util.promisify(fs.readFile);
     var f = process.argv[2];
     const simple_name = f.substring(f.indexOf('/') + 1, f.indexOf('.'));
 
-    var buffer = await readFile('../samples/runtime.wasm');
+    var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
     var module = await WebAssembly.compile(buffer);
     var runtime = await WebAssembly.instantiate(module);
 

@@ -1,2 +1,9 @@
 OCaml packages used:
 wasm.1.1.1   (See https://github.com/WebAssembly/spec/tree/master/interpreter)
+ounit2
+
+------------------------------------------------------------------------------
+
+Environment variables used:
+OCAML_TO_WASM_RT = path to src/runtime directory,
+  used by JavaScript scripts for unit testing and benchmarking to load runtime system

@@ -1,6 +1,6 @@
 const util = require('util');
 const fs = require("fs");
-const {ManagedMemory} = require("../src/memory.js");
+const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory.js");
 const readFile = util.promisify(fs.readFile);
 const exec = util.promisify(require('child_process').exec);
 
@@ -20,7 +20,7 @@ if (process.argv.length > 2){
 	decRefIgnoreZeros : memoryManager.decRefIgnoreZeros,
     mem : memory}};
 
-  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
+  var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
   var module = await WebAssembly.compile(buffer);
   var instance = await WebAssembly.instantiate(module, rtimports);
   
@@ -67,7 +67,7 @@ if (process.argv.length > 2){
 		    decRefIgnoreZeros : memoryManager.decRefIgnoreZeros,
 		    mem : memory}};
 
-		  var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
+		  var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
 		  var module = await WebAssembly.compile(buffer);
 		  var instance = await WebAssembly.instantiate(module, rtimports);
 

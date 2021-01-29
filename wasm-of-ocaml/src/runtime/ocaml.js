@@ -12,9 +12,9 @@ function wrap_ptr(i, instance){
 			// Interpret floats
 			const tag = mem[i/4>>0];
 			if (tag == -1){
-				// get just that float
-				// +3 due to tag of 1, DataView to allow reading in Little Endian
-				const f = new DataView(instance.exports["$mem"].buffer).getFloat64(i+3, true /* littleEndian */);
+				// get just the float
+				// +7 due to tag of 1, DataView to allow reading in Little Endian
+				const f = new DataView(instance.exports["$mem"].buffer).getFloat64(i+7, true /* littleEndian */);
 				result = () => f;
 				break;
 			}
@@ -29,10 +29,9 @@ function wrap_ptr(i, instance){
 				return ar;
 			}
 		    break;
-		case 3: // For now assume only every 1 argument. Tuples should just be a pointer
+		case 3: // Externally visible functions only ever take 1 argument
 			const func_idx = mem[i/4>>0]; // function pointer is at start of closure
 			result = arg => wrap_ptr(instance.exports[func_idx](i ^ 3, arg._wasm), instance);
-			//return instance.exports[func_idx].apply(null, [ptr ^ 3].concat(args));
 		    break;
 		default:
 		  // just an int, use as is for wasm, halve when returning
@@ -45,6 +44,7 @@ function wrap_ptr(i, instance){
 // Returns an object which initially just has a 'setup' function. Calling that runs OCAML$MAIN and returns its value,
 // while also initialising each of the exported fields on the instance.
 // TODO: Encode location of runtime wasm file better
+// TODO: Use JavaScript runtime system
 async function instantiate(file){
 	var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
 	var module = await WebAssembly.compile(buffer);

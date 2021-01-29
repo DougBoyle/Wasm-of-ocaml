@@ -1,5 +1,5 @@
 let mem = new WebAssembly.Memory({initial : 2});
-const manager = require("./src/memory.js");
+const manager = require(process.env.OCAML_TO_WASM_RT + "/memory.js");
 let memmanager = new manager.ManagedMemory(mem);
 
 /*

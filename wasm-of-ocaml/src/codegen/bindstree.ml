@@ -131,7 +131,7 @@ type export = {
 
 type binds_function = {
   index: int32;
-  arity: int32; (* Note from grain code to do: Proper typing of arguments *)
+  arity: int32;
   body: block;
   stack_size: int;
 } 
@@ -142,12 +142,8 @@ type binds_program = {
   main_body: block;
   main_body_stack_size: int;
   num_globals: int;
-  (* signature: Cmi_format.cmi_infos; Just annotation, not actually used to produce wasm (just cmi files etc.) *)
 } 
 
-(* Why these rather than just 0/1? Likely due to Grain GC needing to represent things in a certain way, can simplify for mine *)
-(* TODO: Decide what actual values should be -- Currently using tags so must be 0/1 i.e. LSB not MSB
-         May cause issues when type tagging added - come back to this*)
 (* Matches values used by IR currently i.e. true -> const 1, false -> const 0 *)
 let const_true =  MConstI32 (Int32.of_int 1)
 let const_false = MConstI32 (Int32.of_int 0)

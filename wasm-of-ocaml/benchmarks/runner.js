@@ -6,6 +6,7 @@ const filename = process.argv[2];
 const simple_name = filename.substring(filename.indexOf('/') + 1, filename.indexOf('.'));
 const filesize = fs.statSync(filename).size;
 // Handle all files (except memory for grain)
+// TODO: Update to use memory manager JavaScript file
 (async () => {
     if (filename.endsWith(".js")){
         gc(); // measure baseline memory, need to run node with --expose-gc
@@ -34,7 +35,7 @@ const filesize = fs.statSync(filename).size;
         var heap_top = "sbrk" in instance.exports ? instance.exports.sbrk() : 0;
         console.log(simple_name, millis, heap_top, filesize);
     } else {
-        var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
+        var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
         var module = await WebAssembly.compile(buffer);
         var runtime = await WebAssembly.instantiate(module);
         var buffer = await readFile(filename);
