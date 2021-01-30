@@ -14,12 +14,12 @@ let rec peephole = function
 
   (* Replace set i; get i -> tee i
      If local i isn't used again, tee i will be remove but set i; get i would not be (appears to be live) *)
-  | ({it=LocalSet ({it=i} as var)} as first)::({it=LocalGet {it=j}} as second)::rest when i = j ->
+  | ({it=LocalSet ({it=i} as var, incr, decr)} as first)::({it=LocalGet {it=j}} as second)::rest when i = j ->
     merge_instrs first second;
-   {first with it = LocalTee var; succ=second.succ}::(peephole rest)
+   {first with it = LocalTee (var, incr, decr); succ=second.succ}::(peephole rest)
 
   (* Remove get i; set i -- achieves nothing *)
-  | ({it=LocalGet {it=i}} as first)::({it=LocalSet {it=j}} as second)::rest when i = j ->
+  | ({it=LocalGet {it=i}} as first)::({it=LocalSet ({it=j}, _, _)} as second)::rest when i = j ->
     remove_instr first;
     remove_instr second;
     peephole rest

@@ -48,7 +48,8 @@ let incref_ident = Ident.create_persistent "incRef"
 let decref_ident = Ident.create_persistent "decRef"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
-let runtime_imports =
+(* Function needed to delay evaluation of no_gc *)
+let runtime_imports _ =
   (if !no_gc then [] else
    [{ mimp_name=incref_ident; mimp_type=([I32Type], [I32Type]); };
     { mimp_name=decref_ident; mimp_type=([I32Type], [I32Type]); };])
@@ -61,7 +62,7 @@ let runtime_imports =
   { mimp_name=append_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
   { mimp_name=make_float_ident; mimp_type=([F64Type], [I32Type]); };]
 
-let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length runtime_imports)
+let imported_funcs : (Ident.t, int32) Hashtbl.t = Hashtbl.create (List.length (runtime_imports ()))
 
 let init_env = {
   num_args=0;
@@ -89,6 +90,9 @@ let call_incref arg =
   if !no_gc then arg else arg @ [Call(var_of_runtime_func incref_ident)]
 let call_decref arg =
   if !no_gc then arg else arg @ [Call(var_of_runtime_func decref_ident)]
+
+let decref_drop _ =
+  if !no_gc then [Drop] else [Call(var_of_runtime_func decref_ident); Drop]
 
 (* TODO: Support strings *)
 
@@ -178,10 +182,8 @@ let toggle_tag tag = [
 ]
 
 (* Locals in a function are ordered as [arguments (first is closure), swap locals, locals] *)
-let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
+let compile_bind ~is_get ?(incref=true) ?(decref=true)
   (env : env) (b : binding) : instr' list =
-  let incref = if skip_incref then [] else call_incref [] in
-  let decref = if skip_decref then (fun arg -> []) else (fun arg -> (call_decref arg) @ [Drop]) in
   let (++) a b = Int32.(add (of_int a) b) in
   match b with
   | MArgBind(i) ->
@@ -191,27 +193,21 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
       [LocalGet(slot)]
     else
     (* Update reference count by incrementing the value being set and decrementing the old value *)
-      incref @
-      (decref [LocalGet(slot)]) @
-      [LocalSet(slot)]
+      [LocalSet(slot, incref, decref)]
   | MLocalBind(i) ->
     (* Local bindings need to be offset to account for arguments and swap variables *)
     let slot = add_dummy_loc ((env.num_args + (List.length swap_slots)) ++ i) in
     if is_get then
      [LocalGet(slot)]
     else
-     incref @
-     (decref [LocalGet(slot)]) @
-     [LocalSet(slot)]
+     [LocalSet(slot, incref, decref)]
  | MSwapBind(i) ->
     (* Swap bindings need to be offset to account for arguments *)
     let slot = add_dummy_loc (env.num_args ++ i) in
     if is_get then
       [LocalGet(slot)]
     else
-     incref @
-     (decref [LocalGet(slot)]) @
-     [LocalSet(slot)]
+     [LocalSet(slot, incref, decref)]
   | MGlobalBind(i) ->
     (* Global bindings need to be offset to account for any imports *)
     let slot = add_dummy_loc i in
@@ -219,9 +215,7 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
       [GlobalGet(slot)]
     else
       (* Used to initialise globals, and tracking shared mutable varaibles next/continue/result for TCO *)
-     incref @
-     (decref [GlobalGet(slot)]) @
-     [GlobalSet(slot)]
+     [GlobalSet(slot, incref, decref)]
   | MClosureBind(i) ->
     (* Closure bindings need to be calculated *)
     begin
@@ -230,14 +224,6 @@ let compile_bind ~is_get ?(skip_incref=false) ?(skip_decref=false)
     end;
       (* Add 2 since closure is now [func idx; arity; elements] *)
       [LocalGet(add_dummy_loc Int32.zero); load ~offset:(Int32.mul 4l (Int32.add 2l i)) ()]
-
-(* TODO: Work out why ignore_zero necessary *)
-(*
-Present in Grain but seemingly unused
-
-(* Calls decref on the thing being dropped *)
-let safe_drop arg = (call_decref arg) @ [Drop]
-*)
 
 let get_swap ?ty:(typ=Types.I32Type) env idx =
   match typ with
@@ -253,14 +239,14 @@ let set_swap ?ty:(typ=Types.I32Type) env idx =
   | Types.I32Type ->
     if idx > (List.length swap_slots) then
       raise Not_found;
-    compile_bind ~is_get:false ~skip_incref:true ~skip_decref:true env (MSwapBind(Int32.of_int idx))
+    compile_bind ~is_get:false ~incref:false ~decref:false env (MSwapBind(Int32.of_int idx))
   | _ -> raise Not_found
 
 let tee_swap ?ty:(typ=Types.I32Type) env idx =
  match typ with
   | Types.I32Type ->
     if idx > (List.length swap_slots) then raise Not_found else
-    [LocalTee(add_dummy_loc (Int32.of_int (env.num_args + idx)))]
+    [LocalTee(add_dummy_loc (Int32.of_int (env.num_args + idx)), false, false)]
   | _ -> raise Not_found
 
 let compile_imm (env : env) (i : immediate) : instr' list =
@@ -496,7 +482,7 @@ let rec compile_store env binds =
          store_bind needs to not increment again *)
       let store_bind = match instr with
        | MAllocate _ | MCallKnown _ | MCallIndirect _ ->
-         compile_bind ~is_get:false ~skip_incref:true env b
+         compile_bind ~is_get:false ~incref:false env b
        | _ -> compile_bind ~is_get:false env b in
       let get_bind = compile_bind ~is_get:true env b in
       let compiled_instr = match instr with
@@ -542,7 +528,7 @@ and compile_block env block =
 and compile_instr env instr =
   match instr with
   (* TODO: Remove ignore_zero *)
-  | MDrop -> (call_decref []) @ [Drop] (* TODO: Look at how Grain compiles sequences into Ignores *)
+  | MDrop -> decref_drop ()
   | MImmediate(imm) -> compile_imm env imm
   | MFail j -> (match j with
       | -1l -> [Unreachable] (* trap *)
@@ -703,7 +689,7 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
 (* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works
    Shouldn't actually import any global costnats, so +2 from grain version removed (grain runtime has 2 globals in it) *)
 let compute_table_size env {functions} =
-  (List.length functions) + (List.length runtime_imports)
+  (List.length functions) + (List.length (runtime_imports ()))
 
 (* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
 (* TODO: Understand what all of ths does/is needed for *)
@@ -721,7 +707,7 @@ let compile_imports env =
       item_name;
       idesc;
     } in
-  let imports = List.map compile_import runtime_imports in
+  let imports = List.map compile_import (runtime_imports ()) in
    (imports @
     (* Single memory/table required by a Wasm module -- imported rather than created itself? *)
     [
@@ -843,8 +829,8 @@ let rec fold_lefti f e l =
 
 (* Sets up 'env' with all the imported runtime functions *)
 let prepare env =
-  List.iteri (fun idx {mimp_name;} -> Hashtbl.add imported_funcs mimp_name (Int32.of_int idx)) runtime_imports;
-  {env with func_offset=List.length runtime_imports;}
+  List.iteri (fun idx {mimp_name;} -> Hashtbl.add imported_funcs mimp_name (Int32.of_int idx)) (runtime_imports ());
+  {env with func_offset=List.length (runtime_imports ());}
 
 let compile_wasm_module prog =
   let open Graph in

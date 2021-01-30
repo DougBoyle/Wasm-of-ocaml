@@ -13,7 +13,7 @@ let rec analyse_instr = function
   | {it=LocalGet {it=i}} as instr ->
     let new_live =  Set32.add i (get_live_at_succ instr) in
     if Set32.equal new_live (!(instr.live)) then () else (liveness_changing := true; instr.live := new_live)
-  | {it=(LocalTee {it=i} | LocalSet {it=i})} as instr  ->
+  | {it=(LocalTee ({it=i}, _, _) | LocalSet ({it=i}, _, _))} as instr  ->
     let new_live = Set32.remove i (get_live_at_succ instr) in
     if Set32.equal new_live (!(instr.live)) then () else (liveness_changing := true; instr.live := new_live)
   | {it=(Block(_, body)|Loop(_, body))} ->
@@ -30,13 +30,19 @@ let rec analyse_liveness rev_body =
 
 (* No need to reset liveness analysis. Any which aren't valid on next pass will be removed, while rest remain correct *)
 let rec optimise_instrs = function
-  (* Look at successors, not that actual node (else would never be live) *)
-  | ({it=LocalTee {it=i}} as instr)::rest ->
+  | ({it=LocalTee ({it=i}, _, _)} as instr)::rest ->
     if Set32.mem i (get_live_at_succ instr) then instr::(optimise_instrs rest)
     else (remove_instr instr; optimise_instrs rest)
-  | ({it=LocalSet {it=i}} as instr)::rest ->
+  | ({it=LocalSet ({it=i}, _, decref)} as instr)::rest ->
     if Set32.mem i (get_live_at_succ instr) then instr::(optimise_instrs rest)
-    else {instr with it=Drop}::(optimise_instrs rest)
+    (* If decref is false, we don't care about this local slot in terms of reference counting the value it stores.
+       Otherwise, if garbage collection is enabled, we need to insert a decrement as it won't be decremented at the
+       end of the function now. *)
+    else if (!(Compilerflags.no_gc)) || (not decref) then {instr with it=Drop}::(optimise_instrs rest)
+    else (* Some work needed to insert a decref drop without breaking flow graph *)
+    let drop_instr = {instr with it=Drop} in
+    (add_before drop_instr (Call(Compilewasm.var_of_runtime_func Compilewasm.decref_ident)))::drop_instr::(optimise_instrs rest)
+
   | ({it=Block(typ, body)} as instr)::rest ->
     (* Unnecessarily recreates body if no changes *)
     {instr with it=Block(typ, optimise_instrs body)}::(optimise_instrs rest)
@@ -52,7 +58,7 @@ let rec optimise_instrs = function
    check type to ensure compatibility if some functions modified to not take closure. *)
 let rec used_locals set = function
   | [] -> set
-  | ({it=LocalTee {it=i} | LocalSet {it=i} | LocalGet {it=i}})::rest ->
+  | ({it=LocalTee ({it=i}, _, _) | LocalSet ({it=i}, _, _) | LocalGet {it=i}})::rest ->
     used_locals (Set32.add i set) rest
   | {it=Block(_, body)|Loop(_, body)}::rest  ->
     used_locals (used_locals set body) rest
@@ -79,8 +85,8 @@ let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; num_swaps
   let mapping = List.mapi (fun i x -> (x, Int32.of_int i)) (Set32.elements used) in
   let rec map instr = {instr with it = match instr.it with
     | LocalGet ({it=i} as var) -> LocalGet{var with it = List.assoc i mapping}
-    | LocalSet ({it=i} as var) -> LocalSet{var with it = List.assoc i mapping}
-    | LocalTee ({it=i} as var) -> LocalTee{var with it = List.assoc i mapping}
+    | LocalSet ({it=i} as var, incr, decr) -> LocalSet ({var with it = List.assoc i mapping}, incr, decr)
+    | LocalTee ({it=i} as var, incr, decr) -> LocalTee ({var with it = List.assoc i mapping}, incr, decr)
     | Block(typ, body) -> Block(typ, List.map map body)
     | Loop(typ, body) -> Loop(typ, List.map map body)
     | If(typ, body1, body2) -> If(typ, List.map map body1, List.map map body2)
@@ -91,6 +97,6 @@ let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; num_swaps
    num_swaps=new_swaps; body=List.map map body}
 
 let optimise ({funcs; types} as module_) =
-  List.iter (fun {body} -> analyse_liveness (List.rev body)) funcs;
+  (List.iter (fun {body} -> analyse_liveness (List.rev body)) funcs;
   let new_funcs = List.map (fun ({body} as f) -> {f with body=optimise_instrs body}) funcs in
-  {module_ with funcs=List.map (map_remaining_locals types) new_funcs}
+  {module_ with funcs=List.map (map_remaining_locals types) new_funcs})

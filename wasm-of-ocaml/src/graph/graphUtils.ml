@@ -30,6 +30,18 @@ let add_after original action =
   original.succ := [new_instr];
   new_instr
 
+(* Used for inserting a decrement call before a Drop instruction when removing unused LocalSet instructions.
+   As above just with pred/succ switched *)
+let add_before original action =
+  let new_instr = {succ = ref [original]; it = action; pred = ref (!(original.pred));
+    live = ref Graph.Set32.empty; Graph.id = Graph.get_id ();} in
+  (* Update the successors of the original instruction that they have a new successor *)
+  List.iter (fun next_instr ->
+    next_instr.succ :=  new_instr::(List.filter (fun i -> not(instr_eq i original)) (!(next_instr.succ))) )
+    (!(original.pred));
+  original.pred := [new_instr];
+  new_instr
+
 (* For replacing a Set/Get with a Tee, keep the first instruction and update instructions which
   point back to the second instruction. Actual instruction used is created by caller *)
 let merge_instrs first second =

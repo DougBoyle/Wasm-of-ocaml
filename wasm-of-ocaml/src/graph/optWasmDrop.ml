@@ -109,8 +109,8 @@ let rec propagate_drop drop_instr = function
   (* Can't optimise 'Call' without knowing that function is immutable (future optimisation) *)
   | ({it=LocalGet _ | GlobalGet _ | MemorySize | Const _} as instr)::rest ->
     remove_instr drop_instr; remove_instr instr; rest
-  | ({it=LocalTee x} as instr)::rest ->
-    remove_instr drop_instr; {instr with it=LocalSet x}::rest
+  | ({it=LocalTee (x, incr, decr)} as instr)::rest ->
+    remove_instr drop_instr; {instr with it=LocalSet (x, incr, decr)}::rest
   (* Assumes no out of bounds memory accesses, should be true for compiled Wasm.
      Also assumes conversions always succeed (not used anyway). *)
   | ({it=Load _ | Test _ | Unary _ | Convert _} as instr)::rest ->

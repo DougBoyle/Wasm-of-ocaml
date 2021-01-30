@@ -21,7 +21,7 @@ open Utils
 let rec is_global_instr i {it} = match it with
   | Block (_, body) | Loop (_, body) -> List.exists (is_global_instr i) body
   | If (_, body1, body2) -> List.exists (is_global_instr i) body1 || List.exists (is_global_instr i) body2
-  | GlobalGet {it=j} | GlobalSet {it=j} when i = j -> true (* Shouldn't see Set outside of main function *)
+  | GlobalGet {it=j} | GlobalSet ({it=j}, _, _) when i = j -> true
   | _ -> false
 
 let is_global_used i funcs exports =
@@ -39,7 +39,7 @@ let rec update_globals mapping ({it} as instr) = match it with
   | If (typ, body1, body2) ->
     {instr with it = If(typ, List.map (update_globals mapping) body1, List.map (update_globals mapping) body2)}
   | GlobalGet ({it=i} as var) -> {instr with it = GlobalGet {var with it = List.assoc i mapping}}
-  | GlobalSet ({it=i} as var) -> {instr with it = GlobalSet {var with it = List.assoc i mapping}}
+  | GlobalSet ({it=i} as var, incr, decr) -> {instr with it = GlobalSet ({var with it = List.assoc i mapping}, incr, decr)}
   | _ -> instr
 
 let rec replace_globals mapping ({it} as instr) = match it with
@@ -51,9 +51,9 @@ let rec replace_globals mapping ({it} as instr) = match it with
     (match List.assoc_opt i mapping with
       | Some j -> {instr with it = LocalGet {var with it = j}}
       | None -> instr)
-  | GlobalSet ({it=i} as var) ->
+  | GlobalSet ({it=i} as var, incr, decr) ->
     (match List.assoc_opt i mapping with
-      | Some j -> {instr with it = LocalSet {var with it = j}}
+      | Some j -> {instr with it = LocalSet ({var with it = j}, incr, decr)}
       | None -> instr)
   | _ -> instr
 

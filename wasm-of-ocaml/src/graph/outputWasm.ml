@@ -6,35 +6,57 @@ let translate_globals globals =
   List.map (fun global -> add_dummy_loc {Ast.gtype=global;
     Ast.value=add_dummy_loc [add_dummy_loc (Ast.Const (add_dummy_loc (Values.I32Value.to_value 0l)))]}) globals
 
-let rec translate_instr instr = add_dummy_loc (match instr.it with
-  | Unreachable -> Ast.Unreachable
-  | Nop -> Ast.Nop
-  | Drop -> Ast.Drop
-  | Select -> Ast.Select
-  | Block (blocktype, body) -> Ast.Block(blocktype, List.map translate_instr body)
-  | Loop (blocktype, body) -> Ast.Loop(blocktype, List.map translate_instr body)
-  | If (blocktype, body1, body2) -> Ast.If(blocktype, List.map translate_instr body1, List.map translate_instr body2)
-  | Br i -> Ast.Br i
-  | BrIf i -> Ast.BrIf i
-  | BrTable (vars, i) -> Ast.BrTable (vars, i)
-  | Return -> Ast.Return
-  | Call i -> Ast.Call i
-  | CallIndirect i -> Ast.CallIndirect i
-  | LocalGet i -> Ast.LocalGet i
-  | LocalSet i -> Ast.LocalSet i
-  | LocalTee i -> Ast.LocalTee i
-  | GlobalGet i -> Ast.GlobalGet i
-  | GlobalSet i -> Ast.GlobalSet i
-  | Load op -> Ast.Load op
-  | Store op -> Ast.Store op
-  | MemorySize -> Ast.MemorySize
-  | MemoryGrow -> Ast.MemoryGrow
-  | Const c -> Ast.Const c
-  | Test op -> Ast.Test op
-  | Compare op -> Ast.Compare op
-  | Unary op -> Ast.Unary op
-  | Binary op -> Ast.Binary op
-  | Convert op -> Ast.Convert op)
+(* Has to be written this way due to Set/Tee possibly mapping to multiple instructions when gc enabled *)
+let rec translate_body body = 
+  List.fold_right (fun instr rest -> match instr.it with
+  | Unreachable -> Ast.Unreachable :: rest
+  | Nop -> Ast.Nop :: rest
+  | Drop -> Ast.Drop :: rest
+  | Select -> Ast.Select :: rest
+  | Block (blocktype, body) -> Ast.Block(blocktype, List.map add_dummy_loc (translate_body body)) :: rest
+  | Loop (blocktype, body) -> Ast.Loop(blocktype, List.map add_dummy_loc (translate_body body)) :: rest
+  | If (blocktype, body1, body2) ->
+    Ast.If(blocktype, List.map add_dummy_loc (translate_body body1),
+      List.map add_dummy_loc (translate_body body2)) :: rest
+  | Br i -> Ast.Br i :: rest
+  | BrIf i -> Ast.BrIf i :: rest
+  | BrTable (vars, i) -> Ast.BrTable (vars, i) :: rest
+  | Return -> Ast.Return :: rest
+  | Call i -> Ast.Call i :: rest
+  | CallIndirect i -> Ast.CallIndirect i :: rest
+  | LocalGet i -> Ast.LocalGet i :: rest
+  (* Include an incref/decref as required. Done in a block just so it stays as 1 instruction *)
+  | LocalSet (i, incr, decr) ->
+    if (incr || decr) && (not (!(Compilerflags.no_gc))) then
+    ((if incr then [Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.incref_ident)] else []) @
+       (if decr then [Ast.LocalGet i; Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.decref_ident); Ast.Drop] else []) @
+       [Ast.LocalSet i]) @ rest
+    else Ast.LocalSet i :: rest
+  | LocalTee (i, incr, decr) ->
+    if (incr || decr) && (not (!(Compilerflags.no_gc))) then
+    ((if incr then [Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.incref_ident)] else []) @
+       (if decr then [Ast.LocalGet i; Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.decref_ident); Ast.Drop] else []) @
+       [Ast.LocalTee i]
+      ) @ rest
+    else Ast.LocalTee i :: rest
+  | GlobalGet i -> Ast.GlobalGet i :: rest
+  | GlobalSet (i, incr, decr) ->
+    if (incr || decr) && (not (!(Compilerflags.no_gc))) then
+    ((if incr then [Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.incref_ident)] else []) @
+       (if decr then [Ast.GlobalGet i; Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.decref_ident); Ast.Drop] else []) @
+       [Ast.GlobalSet i]
+      ) @ rest
+    else Ast.GlobalSet i :: rest
+  | Load op -> Ast.Load op :: rest
+  | Store op -> Ast.Store op :: rest
+  | MemorySize -> Ast.MemorySize :: rest
+  | MemoryGrow -> Ast.MemoryGrow :: rest
+  | Const c -> Ast.Const c :: rest
+  | Test op -> Ast.Test op :: rest
+  | Compare op -> Ast.Compare op :: rest
+  | Unary op -> Ast.Unary op :: rest
+  | Binary op -> Ast.Binary op :: rest
+  | Convert op -> Ast.Convert op :: rest) body []
 
 let cleanup_locals (types : Ast.type_ list) {ftype; locals; num_swaps} =
   if !(Compilerflags.no_gc) then [] else
@@ -53,7 +75,10 @@ let cleanup_locals (types : Ast.type_ list) {ftype; locals; num_swaps} =
 
 let translate_funcs types funcs =
   List.map (fun ({ftype; locals; body} as f) ->
-    add_dummy_loc {ftype; locals; Ast.body=List.map translate_instr (body @ (cleanup_locals types f))}) funcs
+    add_dummy_loc {ftype; locals;
+    Ast.body= List.map add_dummy_loc (translate_body (body @ (cleanup_locals types f)))}) funcs
+
+(*    List.map translate_instr (body @ (cleanup_locals types f))}) funcs *)
 
 let translate_to_wasm {types; globals; tables; funcs; elems; data; imports; exports} =
   add_dummy_loc {

@@ -31,10 +31,10 @@ let rec print_instr ppf instr = match instr.it with
   | Call _ -> fprintf ppf "%d:Call [%a]" instr.id print_live instr
   | CallIndirect _ -> fprintf ppf "%d:CallIndirect [%a]" instr.id print_live instr
   | LocalGet {it=i} -> fprintf ppf "%d:LocalGet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
-  | LocalSet {it=i} -> fprintf ppf "%d:LocalSet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
-  | LocalTee {it=i} -> fprintf ppf "%d:LocalTee %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | LocalSet ({it=i}, _, _) -> fprintf ppf "%d:LocalSet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | LocalTee ({it=i}, _, _) -> fprintf ppf "%d:LocalTee %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
   | GlobalGet {it=i} -> fprintf ppf "%d:GlobalGet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
-  | GlobalSet {it=i} -> fprintf ppf "%d:GlobalSet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
+  | GlobalSet ({it=i}, _, _) -> fprintf ppf "%d:GlobalSet %li [%a] {last: %a, next: %a}" instr.id i print_live instr print_last instr print_next instr
   | Load _ -> fprintf ppf "%d:Load [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | Store _ -> fprintf ppf "%d:Store [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | MemorySize -> fprintf ppf "%d:MemorySize [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
