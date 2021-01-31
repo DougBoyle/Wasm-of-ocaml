@@ -1,19 +1,53 @@
 (module
   (type $0 (func (result i32)))
   (type $1 (func (param i32) (result i32)))
+
+
+
   (import "jsRuntime" "malloc" (func $malloc (type 1)))
-  (import "jsRuntime" "incRef" (func $incRef (type 1)))
-  (import "jsRuntime" "decRef" (func $decRef (type 1)))
-  (import "jsRuntime" "decRefIgnoreZeros" (func $decRefIgnoreZeros (type 1)))
+  ;; for debugging sp
+;;  (import "jsRuntime" "log" (func $log (type 1)))
+ ;; (export "log" (func $log))
   ;; memory now imported and re-exported so it gets linked to js functions
-  (memory $mem (export "mem") (import "jsRuntime" "mem") 1)
- ;; (memory (export "mem") 1) ;; initially just a 1 page memory i.e. 64KB. Can use up to 4GB in Wasm (32-bit)
+  (memory $mem (export "mem") (import "jsRuntime" "mem") 2) ;; now require minimum of 2 pages, 1st just for stack
+
+  ;; for manipulating stack. 1st page is used purely for stack so limit is 2^16 = 65536 bytes
+  (global $sp (mut i32) (i32.const 0))
+  (func $create_fun (export "create_fun") (param $size i32)
+    global.get $sp
+    local.get $size
+    i32.add
+
+  ;;  call $log
+    global.set $sp
+
+    ;; check for overflow
+    global.get $sp
+    i32.const 65536
+    i32.gt_u
+    if ;; overflow, trap
+      unreachable
+    else ;; no overflow, do nothing
+    end
+  )
+  (func $exit_fun (export "exit_fun") (param $size i32)
+    global.get $sp
+    local.get $size
+    i32.sub
+    global.set $sp
+  )
+ ;; takes adjusted index, so first argument is 4, and swap slots aren't included  (x4 to get i32 index)
+ (func $update_local (export "update_local") (param $value i32) (param $index i32) (result i32)
+    global.get $sp
+    local.get $index
+    i32.sub
+    local.get $value
+    i32.store
+    local.get $value ;; returns the value it was passed
+  )
+
  ;; For now, just re-export rather than having to change things in compilewasm
   (export "malloc" (func $malloc))
-  (export "incRef" (func $incRef))
-  (export "decRef" (func $decRef))
-  (export "decRefIgnoreZeros" (func $decRefIgnoreZeros))
-  (global $heap_top (mut i32) (i32.const 0))
   (func $make_float (export "make_float") (param $f f64) (result i32)
     (local $result i32)
     i32.const 16

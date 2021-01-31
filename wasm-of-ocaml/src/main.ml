@@ -50,10 +50,10 @@ let optimise_ir program =
   else program
 
 let graph_passes = [
-   OptGlobals.optimise;
-   OptWasmPeephole.optimise;
+  (* OptGlobals.optimise;
+   OptWasmPeephole.optimise;  -- for now, disable all optimisations. Will need adjusting for shadow stack
    Deadlocals.optimise;
-   OptWasmDrop.optimise
+   OptWasmDrop.optimise *)
 ]
 let optimise_graph program =
   if !opt_graph then

@@ -12,17 +12,17 @@ let fileList = __dirname + "/results.txt";
 
 if (process.argv.length > 2){
 (async () => {
-  var memory = 	new WebAssembly.Memory({ initial: 1});
+  var memory = 	new WebAssembly.Memory({ initial: 2});
   var memoryManager = new ManagedMemory(memory);
   var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
-    incRef : memoryManager.incRef,
-	decRef : memoryManager.decRef,
-	decRefIgnoreZeros : memoryManager.decRefIgnoreZeros,
+//	overflow : memoryManager.overflow,
+//	log : memoryManager.log,
     mem : memory}};
 
   var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
   var module = await WebAssembly.compile(buffer);
   var instance = await WebAssembly.instantiate(module, rtimports);
+  memoryManager.setRuntime(instance);
   
   imports = {ocamlRuntime: instance.exports};
   try {
@@ -59,17 +59,16 @@ if (process.argv.length > 2){
 		  await exec(__dirname + "/../main.byte -d " + __dirname + "/out " + __dirname + "/" + filename + ".ml");
 		  var output = line.slice(1);
 
-		  var memory = 	new WebAssembly.Memory({ initial: 1 });
+		  var memory = 	new WebAssembly.Memory({ initial: 2});
 		  var memoryManager = new ManagedMemory(memory);
 		  var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
-		    incRef : memoryManager.incRef,
-		    decRef : memoryManager.decRef,
-		    decRefIgnoreZeros : memoryManager.decRefIgnoreZeros,
+		    overflow : memoryManager.overflow,
 		    mem : memory}};
 
 		  var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
 		  var module = await WebAssembly.compile(buffer);
 		  var instance = await WebAssembly.instantiate(module, rtimports);
+		  memoryManager.setRuntime(instance);
 
 		  var imports = {ocamlRuntime: instance.exports};
 		  var buffer = await readFile(__dirname + "/out/" + basename + ".wasm");

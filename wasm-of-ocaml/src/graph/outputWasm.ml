@@ -26,27 +26,10 @@ let rec translate_body body =
   | CallIndirect i -> Ast.CallIndirect i :: rest
   | LocalGet i -> Ast.LocalGet i :: rest
   (* Include an incref/decref as required. Done in a block just so it stays as 1 instruction *)
-  | LocalSet (i, incr, decr) ->
-    if (incr || decr) && (not (!(Compilerflags.no_gc))) then
-    ((if incr then [Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.incref_ident)] else []) @
-       (if decr then [Ast.LocalGet i; Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.decref_ident); Ast.Drop] else []) @
-       [Ast.LocalSet i]) @ rest
-    else Ast.LocalSet i :: rest
-  | LocalTee (i, incr, decr) ->
-    if (incr || decr) && (not (!(Compilerflags.no_gc))) then
-    ((if incr then [Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.incref_ident)] else []) @
-       (if decr then [Ast.LocalGet i; Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.decref_ident); Ast.Drop] else []) @
-       [Ast.LocalTee i]
-      ) @ rest
-    else Ast.LocalTee i :: rest
+  | LocalSet i -> Ast.LocalSet i :: rest
+  | LocalTee i -> Ast.LocalTee i :: rest
   | GlobalGet i -> Ast.GlobalGet i :: rest
-  | GlobalSet (i, incr, decr) ->
-    if (incr || decr) && (not (!(Compilerflags.no_gc))) then
-    ((if incr then [Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.incref_ident)] else []) @
-       (if decr then [Ast.GlobalGet i; Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.decref_ident); Ast.Drop] else []) @
-       [Ast.GlobalSet i]
-      ) @ rest
-    else Ast.GlobalSet i :: rest
+  | GlobalSet i -> Ast.GlobalSet i :: rest
   | Load op -> Ast.Load op :: rest
   | Store op -> Ast.Store op :: rest
   | MemorySize -> Ast.MemorySize :: rest
@@ -58,34 +41,32 @@ let rec translate_body body =
   | Binary op -> Ast.Binary op :: rest
   | Convert op -> Ast.Convert op :: rest) body []
 
-let cleanup_locals (types : Ast.type_ list) {ftype; locals; num_swaps} =
-  if !(Compilerflags.no_gc) then [] else
+(* use prog.num_globals *)
+let shadow_stack_locals (types : Ast.type_ list) {ftype; locals; num_swaps; body} =
+  if !(Compilerflags.no_gc) then body else
   let arity = match List.nth types (Int32.to_int ftype.it) with
     {it=Wasm.Types.FuncType (args, _)} -> List.length args in
-  List.map add_dummy_edges
-  (List.flatten
-  (* cleanup args. Max needed for MAIN function, which has no args *)
-  ((List.init (max 0 (arity - 1))
-    (fun i -> (Compilewasm.call_decref
-    [LocalGet (add_dummy_loc (Int32.of_int (i + 1)))]) @ [Drop])) @
-  (* cleanup locals, but not swap variables *)
-  (List.init ((List.length locals) - num_swaps)
-    (fun i -> (Compilewasm.call_decref
-    [LocalGet (add_dummy_loc (Int32.of_int (i + num_swaps + arity)))]) @ [Drop]))))
+  let num_stack_spaces = arity + (List.length locals) - num_swaps in
+  (List.map add_dummy_edges (Compilewasm.call_create_fun num_stack_spaces)) @
+    body @ (List.map add_dummy_edges (Compilewasm.call_exit_fun num_stack_spaces))
 
-let translate_funcs types funcs =
-  List.map (fun ({ftype; locals; body} as f) ->
-    add_dummy_loc {ftype; locals;
-    Ast.body= List.map add_dummy_loc (translate_body (body @ (cleanup_locals types f)))}) funcs
-
-(*    List.map translate_instr (body @ (cleanup_locals types f))}) funcs *)
+let translate_funcs types globals funcs =
+  let other_funcs, main = Utils.split_last [] funcs in
+  (* As well as leaving stack space for the locals of main, it first leaves some space for globals.
+     Could merge both of the create_fun calls at start into 1, but overhead is minimal and makes purpose clearer *)
+  let new_main = (List.map add_dummy_edges (Compilewasm.call_create_fun (List.length globals)))
+    @ (shadow_stack_locals types main) in
+  (List.map (fun ({ftype; locals; body} as f) ->
+      add_dummy_loc {ftype; locals;
+      Ast.body= List.map add_dummy_loc (translate_body (shadow_stack_locals types f))}) other_funcs) @
+    [add_dummy_loc {ftype=main.ftype; locals=main.locals; Ast.body = List.map add_dummy_loc (translate_body new_main)}]
 
 let translate_to_wasm {types; globals; tables; funcs; elems; data; imports; exports} =
   add_dummy_loc {
   types;
   globals = translate_globals globals;
   tables; memories=[];
-  funcs = translate_funcs types funcs;
+  funcs = translate_funcs types globals funcs;
   Ast.start=None;
   elems; data; imports; exports;
   }

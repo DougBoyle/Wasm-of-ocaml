@@ -13,7 +13,7 @@ const readFile = util.promisify(fs.readFile);
     var f = process.argv[2];
     const simple_name = f.substring(f.indexOf('/') + 1, f.indexOf('.'));
 
-    var memory = 	new WebAssembly.Memory({ initial: 1 });
+    var memory = 	new WebAssembly.Memory({ initial: 2 });
     var memoryManager = new ManagedMemory(memory);
     var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
             incRef : memoryManager.incRef,
@@ -24,6 +24,7 @@ const readFile = util.promisify(fs.readFile);
     var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
     var module = await WebAssembly.compile(buffer);
     var runtime = await WebAssembly.instantiate(module, rtimports);
+    memoryManager.setRuntime(runtime);
 
     var imports = {ocamlRuntime: runtime.exports};
     var buffer = await readFile(f);

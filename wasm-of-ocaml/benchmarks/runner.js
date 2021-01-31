@@ -35,7 +35,7 @@ const filesize = fs.statSync(filename).size;
         var heap_top = "sbrk" in instance.exports ? instance.exports.sbrk() : 0;
         console.log(simple_name, millis, heap_top, filesize);
     } else {
-        var memory = new WebAssembly.Memory({ initial: 1 });
+        var memory = new WebAssembly.Memory({ initial: 2 });
         var memoryManager = new ManagedMemory(memory);
         var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
                 incRef : memoryManager.incRef,
@@ -46,6 +46,7 @@ const filesize = fs.statSync(filename).size;
         var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
         var module = await WebAssembly.compile(buffer);
         var runtime = await WebAssembly.instantiate(module, rtimports);
+        memoryManager.setRuntime(runtime);
 
         var buffer = await readFile(filename);
         var module = await WebAssembly.compile(buffer);

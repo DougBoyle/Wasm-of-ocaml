@@ -13,6 +13,8 @@ let logHeaderSize = 3; // rather than doing integer division as (x/headerSize)>>
 // TODO: Make this less confusing
 // store NEXT and SIZE both in terms of i32s (4 byte words)
 
+const STACK_LIMIT = 16384;
+
 let i32size = 4;
 class Allocator {
     constructor(memoryManager) {
@@ -27,10 +29,11 @@ class Allocator {
         // TODO: Remove after, just for debugging
         this.memory_used = 0; // easier than trying to work out by inspecting memory manually
 
+        // Start of heap is now at STACK_LIMIT, bottom page reserved for stack
         // initialises first block the very first time
-        this.memoryManager.uview[0] = 0; // only element of cyclic list points to itself
-        this.memoryManager.uview[1] =  this.memoryManager.uview.byteLength >> 2;
-        this.freep = 0; // point to first (and only) block
+        this.memoryManager.uview[STACK_LIMIT] = STACK_LIMIT; // only element of cyclic list points to itself
+        this.memoryManager.uview[STACK_LIMIT + 1] =  (this.memoryManager.uview.byteLength >> 2) - STACK_LIMIT;
+        this.freep = STACK_LIMIT; // point to first (and only) block
 
         this.growHeap = this.growHeap.bind(this);
         this.malloc = this.malloc.bind(this);

@@ -44,15 +44,17 @@ let max_ident = Ident.create_persistent "max"
 let append_ident = Ident.create_persistent "@"
 let make_float_ident = Ident.create_persistent "make_float"
 (* For garbage collection *)
-let incref_ident = Ident.create_persistent "incRef"
-let decref_ident = Ident.create_persistent "decRef"
+let create_fun_ident = Ident.create_persistent "create_fun"
+let exit_fun_ident = Ident.create_persistent "exit_fun"
+let update_local_ident = Ident.create_persistent "update_local"
 
 (* Runtime should only import functions, no globals, so only need to track offset due to functions *)
 (* Function needed to delay evaluation of no_gc *)
 let runtime_imports _ =
   (if !no_gc then [] else
-   [{ mimp_name=incref_ident; mimp_type=([I32Type], [I32Type]); };
-    { mimp_name=decref_ident; mimp_type=([I32Type], [I32Type]); };])
+   [{ mimp_name=create_fun_ident; mimp_type=([I32Type], []); };
+    { mimp_name=exit_fun_ident; mimp_type=([I32Type], []); };
+    { mimp_name=update_local_ident; mimp_type=([I32Type; I32Type], [I32Type]); };])
   @
   [{ mimp_name=malloc_ident; mimp_type=([I32Type], [I32Type]); };
   { mimp_name=compare_ident; mimp_type=([I32Type; I32Type], [I32Type]); };
@@ -84,15 +86,6 @@ let call_min env = Call(var_of_runtime_func min_ident)
 let call_max env = Call(var_of_runtime_func max_ident)
 let call_append env = Call(var_of_runtime_func append_ident)
 let make_float env = Call(var_of_runtime_func make_float_ident)
-
-(* Note, just puts the call as a suffix, so can pass arg=[] if already on stack *)
-let call_incref arg =
-  if !no_gc then arg else arg @ [Call(var_of_runtime_func incref_ident)]
-let call_decref arg =
-  if !no_gc then arg else arg @ [Call(var_of_runtime_func decref_ident)]
-
-let decref_drop _ =
-  if !no_gc then [Drop] else [Call(var_of_runtime_func decref_ident); Drop]
 
 (* TODO: Support strings *)
 
@@ -142,6 +135,20 @@ let load
   let open Graph in
   Load({ty; align; sz; offset;})
 
+(* mark/sweep garbage collection and maintaining shadow stack *)
+let call_create_fun num_args =
+  if !(Compilerflags.no_gc) then [] else [Const(const_int32 (num_args * 4)); Call(var_of_runtime_func create_fun_ident)]
+let call_exit_fun num_args =
+  if !(Compilerflags.no_gc) then [] else [Const(const_int32 (num_args * 4)); Call(var_of_runtime_func exit_fun_ident)]
+let update_local index =
+  if !(Compilerflags.no_gc) then []
+  else [Const(wrap_int32 (Int32.mul (Int32.add index 1l) 4l)); Call(var_of_runtime_func update_local_ident)]
+
+(* Called after a new value is set in a global slot *)
+let update_global index =
+  if !(Compilerflags.no_gc) then []
+  else [Const(wrap_int32 (Int32.mul index 4l)); GlobalGet(add_dummy_loc index); store ()]
+
 (* Offset of 8, floats have a tag of 01, so +7 overall without untagging *)
 let load_float = load ~ty:Wasm.Types.F64Type ~offset:7l ()
 
@@ -182,8 +189,7 @@ let toggle_tag tag = [
 ]
 
 (* Locals in a function are ordered as [arguments (first is closure), swap locals, locals] *)
-let compile_bind ~is_get ?(incref=true) ?(decref=true)
-  (env : env) (b : binding) : instr' list =
+let compile_bind ~is_get (env : env) (b : binding) : instr' list =
   let (++) a b = Int32.(add (of_int a) b) in
   match b with
   | MArgBind(i) ->
@@ -192,22 +198,23 @@ let compile_bind ~is_get ?(incref=true) ?(decref=true)
     if is_get then
       [LocalGet(slot)]
     else
-    (* Update reference count by incrementing the value being set and decrementing the old value *)
-      [LocalSet(slot, incref, decref)]
+      (* May be used once LVA register colouring added,
+         but don't need to initialise in advance on shadow-stack at start of function call *)
+      (update_local i) @ [LocalSet(slot)]
   | MLocalBind(i) ->
     (* Local bindings need to be offset to account for arguments and swap variables *)
     let slot = add_dummy_loc ((env.num_args + (List.length swap_slots)) ++ i) in
     if is_get then
      [LocalGet(slot)]
     else
-     [LocalSet(slot, incref, decref)]
+     (update_local (env.num_args ++ i)) @ [LocalSet(slot)]
  | MSwapBind(i) ->
     (* Swap bindings need to be offset to account for arguments *)
     let slot = add_dummy_loc (env.num_args ++ i) in
     if is_get then
       [LocalGet(slot)]
     else
-     [LocalSet(slot, incref, decref)]
+     [LocalSet(slot)]
   | MGlobalBind(i) ->
     (* Global bindings need to be offset to account for any imports *)
     let slot = add_dummy_loc i in
@@ -215,7 +222,7 @@ let compile_bind ~is_get ?(incref=true) ?(decref=true)
       [GlobalGet(slot)]
     else
       (* Used to initialise globals, and tracking shared mutable varaibles next/continue/result for TCO *)
-     [GlobalSet(slot, incref, decref)]
+     [GlobalSet(slot)] @ (update_global i)
   | MClosureBind(i) ->
     (* Closure bindings need to be calculated *)
     begin
@@ -239,23 +246,20 @@ let set_swap ?ty:(typ=Types.I32Type) env idx =
   | Types.I32Type ->
     if idx > (List.length swap_slots) then
       raise Not_found;
-    compile_bind ~is_get:false ~incref:false ~decref:false env (MSwapBind(Int32.of_int idx))
+    compile_bind ~is_get:false env (MSwapBind(Int32.of_int idx))
   | _ -> raise Not_found
 
 let tee_swap ?ty:(typ=Types.I32Type) env idx =
  match typ with
   | Types.I32Type ->
     if idx > (List.length swap_slots) then raise Not_found else
-    [LocalTee(add_dummy_loc (Int32.of_int (env.num_args + idx)), false, false)]
+    [LocalTee(add_dummy_loc (Int32.of_int (env.num_args + idx)))]
   | _ -> raise Not_found
 
 let compile_imm (env : env) (i : immediate) : instr' list =
   match i with
   | MImmConst c -> compile_const env c
   | MImmBinding b -> compile_bind ~is_get:true env b
-
-(* call_error_handler left out - not doing proper exceptions (makes a call to runtime_throw_error) *)
-(* Don't think error_if_true or check_overflow needed either - OCaml allows slient overflows *)
 
 let compile_unary env op arg : instr' list =
   let compiled_arg = compile_imm env arg in
@@ -393,7 +397,7 @@ let allocate_data env vtag elts =
   let tee_swap = tee_swap env 0 in
   let compile_elt idx elt =
     get_swap @
-    (call_incref (compile_imm env elt)) @ [
+    (compile_imm env elt) @ [
       store ~offset:(Int32.of_int(4 * (idx + 2))) ();
     ] in
   (heap_allocate env (num_elts + 2)) @ tee_swap @
@@ -470,7 +474,7 @@ let do_backpatches env backpatches =
     let preamble = lam @ (toggle_tag Closure) @ set_swap in
     (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store each free variable in the closure *)
-      get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 2))) ();] in
+      get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 2))) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
   (List.flatten (List.map do_backpatch backpatches))
 
@@ -478,12 +482,7 @@ let do_backpatches env backpatches =
 let rec compile_store env binds =
   let process_binds env =
     let process_bind (b, instr) acc =
-      (* If instruction is an alloc/call, reference count will have already been incremented so
-         store_bind needs to not increment again *)
-      let store_bind = match instr with
-       | MAllocate _ | MCallKnown _ | MCallIndirect _ ->
-         compile_bind ~is_get:false ~incref:false env b
-       | _ -> compile_bind ~is_get:false env b in
+      let store_bind = compile_bind ~is_get:false env b in
       let get_bind = compile_bind ~is_get:true env b in
       let compiled_instr = match instr with
         | MAllocate(MClosure(cdata)) ->
@@ -528,7 +527,7 @@ and compile_block env block =
 and compile_instr env instr =
   match instr with
   (* TODO: Remove ignore_zero *)
-  | MDrop -> decref_drop ()
+  | MDrop -> [Drop]
   | MImmediate(imm) -> compile_imm env imm
   | MFail j -> (match j with
       | -1l -> [Unreachable] (* trap *)
@@ -545,7 +544,7 @@ and compile_instr env instr =
       let set_swap = set_swap env 0 in
       let tee_swap = tee_swap env 0 in
       let backpatch_var idx var =
-        get_swap @ (call_incref (compile_imm env var)) @ [store ~offset:(Int32.of_int(4 * (idx + 2))) ();] in
+        get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 2))) ();] in
       tee_swap @ get_swap @ (toggle_tag Closure) @ set_swap @ (List.flatten (List.mapi backpatch_var variables)) in
     (* Inefficient - at most one thing allocated so could use a case split rather than List map/flatten *)
     instrs @ (List.flatten (List.map do_backpatch (!new_backpatches)))
@@ -559,7 +558,7 @@ and compile_instr env instr =
     let compiled_func = compile_imm env func in
     let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env
       (if tupled then ((List.length args) + 1) else 2))) in
-    let compiled_args = List.map (fun arg -> call_incref (compile_imm env arg)) args in
+    let compiled_args = List.map (compile_imm env) args in
     let get_closure = get_swap env 0 in
     let tee_closure = tee_swap env 0 in
     if tupled
@@ -635,43 +634,19 @@ and compile_instr env instr =
 
   (* Not actually used? *)
   | MCallKnown(func_idx, args) ->
-    let compiled_args = List.flatten (List.map (fun arg -> call_incref (compile_imm env arg)) args) in
+    let compiled_args = List.flatten (List.map (compile_imm env) args) in
     compiled_args @ [
        Call(add_dummy_loc
          (Int32.(add func_idx (of_int env.func_offset))));
     ]
-  | MIncrement -> call_incref [] (* Used as necessary before function returns *)
+  | MIncrement -> failwith "no longer need MIncrement"
 
 let rec get_last = function
   | [] -> failwith "No last element for an empty list"
   | [x] -> x
   | x::xs -> get_last xs
 
-(* After a function terminates, we must decrement each arg and local variable.
-   If the result is one of the args or local variables, that must first be incremented so
-   that it isn't freed when decremented. Therefore, we add an increment to the end of the function.
-   (Not an issue if argument given to a function call, as it will be incremented when function called) *)
-let rec add_increment body =
-  match Utils.split_last [] body with
-    (* Increment needed *)
-    | rest, (MImmediate (MImmBinding _) |  MDataOp ((MGet _ | MArrayGet _), _)) ->
-      body @ [MIncrement]
-    (* Can't tell if result needs incrementing or not, may cause a memory leak.
-      'return' is moved within each loop and handled recursively.
-      Slight breaking of layers, need an Increment instruction in bindstree to make this work nicely *)
-    | rest, MIf (cond, body1, body2) ->
-      rest @ [MIf(cond, add_increment body1, add_increment body2)]
-    | rest, MTry (i, body1, body2) ->
-      rest @ [MTry(i, add_increment body1, add_increment body2)]
-    | rest, MSwitch (i, cases, default) ->
-      rest @ [MSwitch(i,
-       List.map (fun (i, body) -> (i, add_increment body)) cases,
-      add_increment default)]
-    (* Increment not needed *)
-    | _ -> body
-
 let compile_function env {index; arity; stack_size; body=body_instrs} =
-  let body_instrs = add_increment body_instrs in
   let arity_int = Int32.to_int arity in
   let body_env = {env with num_args=arity_int} in
   let body = compile_block body_env body_instrs in

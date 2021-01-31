@@ -30,15 +30,11 @@ and instr' =
   | CallIndirect of Ast.var
   | LocalGet of Ast.var
 
-  (* For reference counting garbage collection, the booleans here indicate needing to call
-     incref/decref on that local slot. These are left until after optimisations are done so that
-     removing dead assignments to local variables is much easier. Some incref/decrefs are explicitly
-     inserted at compilewasm stage, where they are guarenteed to be needed in final code. *)
-  | LocalSet of Ast.var * bool * bool (* var * insert_incref * insert_decref *)
-  | LocalTee of Ast.var * bool * bool
+  | LocalSet of Ast.var
+  | LocalTee of Ast.var
 
   | GlobalGet of Ast.var
-  | GlobalSet of Ast.var * bool * bool
+  | GlobalSet of Ast.var
   | Load of Ast.loadop
   | Store of Ast.storeop
   | MemorySize
