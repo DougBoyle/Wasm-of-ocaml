@@ -46,10 +46,11 @@ class ManagedMemory {
     this.references = this.references.bind(this);
 
     this.allocator = new Allocator(this);
+
+    this.marked = 0;
   }
 
   _refreshViews() {
-    this._view = new Int32Array(this._memory.buffer);
     this._uview = new Uint32Array(this._memory.buffer);
   }
 
@@ -66,6 +67,7 @@ class ManagedMemory {
     return v;
   }
 
+  // TODO: Merging both files will make mixed malloc/gc calls much neater
   malloc(bytes){
     let ptr = this.allocator.malloc(bytes + headerSize);
     // Enforce property that every block is unmarked unless current gc pass has marked it. But do indicate allocated
@@ -76,40 +78,43 @@ class ManagedMemory {
 
   // passed a pointer to this level's header.
   // i.e. ptr + 3 is the arity field
+  // ONLY EVER GIVEN OBJECTS THAT ARE ACTUALLY MEMORY POINTERS
   *references(rawPtr) {
     // closures, data and floats have the same structure as far as garbage collection cares
     // identified by the pointer ending in a 1 rather than 0 (immediate integer)
-    if (rawPtr) {
-      let arity = this._view[rawPtr + 3];
+      let arity = this._uview[rawPtr + 3];
   //    console.log("arity is:", arity);
       for (let i = 0; i < arity; i++){
         // TODO: Inline whole function so that we don't need 'yield'
-        yield this._view[rawPtr + i + 4];
+        yield this._uview[rawPtr + i + 4];
       }
-    }
+
   }
 
   markReference(ptr){
-    if (ptr & 1){
+    if (ptr & 1 && ptr > 0){ // > 0 avoids treating a negative integer as a pointer
       let raw_ptr = (ptr>>2) - 2; // headersize/4 = 2
       if (!(this.uview[raw_ptr] & 1)){ // not yet marked
-        this.uview[raw_ptr] = 1;
+     //   console.log("marking:", raw_ptr);
+        this.uview[raw_ptr] = 3; // both allocated and marked
         this.markedSet.push(raw_ptr);
+    //    console.log("followed ptr", ptr, "pushed:", raw_ptr);
+      //  this.marked++;
       }
     }
   }
 
   // go through stack and set marked flag on all memory objects accessible from the stack.
   // can use sp to avoid searching further than necessary up stack
+  // TODO: Root elements aren't padded with headers etc. so need to ensure they never get treated as such
   mark(){
-    let stack_top = this.runtime.exports.sp >> 2 // shift to get in terms of i32s
+    let stack_top = this.runtime.exports.sp.value >> 2 // shift to get in terms of i32s
     for (let i = 0; i < stack_top; i++){
       this.markReference(this.uview[i]);
     }
-
     // After identifying root set, do DFS until all reachable objects marked
     // TODO: May want to make it so DFS done alongside marking the root objects, or not?
-    while (!this.markedSet.isEmpty()){
+    while (this.markedSet.length > 0){
       let rawPtr = this.markedSet.pop();
       // mark all of its referenced objects
       for (let element of this.references(rawPtr)){
@@ -131,14 +136,27 @@ class ManagedMemory {
       if (this.uview[blockPtr + 2] == 2){
         // allocated but not marked
         // TODO: Rewrite allocator.free to take a pointer of the correct form
+        // TODO: Merging allocator/memory.js will avoid needing to separate variables between here an allocator.
+        // Can also improve link between sweep, free and malloc, so we don't repeat searching after large enough block freed
+        this.uview[blockPtr + 2] = 0; // mark as unallocated
+        this.marked++;
         this.allocator.free((blockPtr + 2) << 2);
+      } else {
+        this.uview[blockPtr + 2] = this.uview[blockPtr + 2] & 2; // unset marked bit, no effect if free
       }
+      blockPtr += size;
     }
   }
 
   doGC(){
+  //  this.marked = 0;
     this.mark(); // well isn't this simple, could probably just write them as a single function instead
+   // console.log("live set:", this.marked);
     this.sweep();
+  }
+
+  stackLimitExceeded(){
+    throw "Maximum stack size exceeded";
   }
 }
 

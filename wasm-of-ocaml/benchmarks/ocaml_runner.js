@@ -16,9 +16,7 @@ const readFile = util.promisify(fs.readFile);
     var memory = 	new WebAssembly.Memory({ initial: 2 });
     var memoryManager = new ManagedMemory(memory);
     var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
-            incRef : memoryManager.incRef,
-            decRef : memoryManager.decRef,
-            decRefIgnoreZeros : memoryManager.decRefIgnoreZeros,
+            stackOverflow : memoryManager.stackLimitExceeded,
             mem : memory}};
 
     var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');

@@ -48,6 +48,14 @@ let shadow_stack_locals (types : Ast.type_ list) {ftype; locals; num_swaps; body
     {it=Wasm.Types.FuncType (args, _)} -> List.length args in
   let num_stack_spaces = arity + (List.length locals) - num_swaps in
   (List.map add_dummy_edges (Compilewasm.call_create_fun num_stack_spaces)) @
+    (* Because intermediate closures of curried function calls (function applied many times in one place)
+       aren't stored anywhere other than a swap variable, the closure needs to be explicitly put on the stack
+       at the start of a function. (Check args > 0 to avoid case of MAIN, which has no args/closures) *)
+    (* TODO: Tidy to make more efficient, insert only between curried calls and avoid needing to re-tag *)
+    (if arity = 0 then []
+      else List.map add_dummy_edges (
+      [LocalGet (add_dummy_loc 0l); ] @ (Compilewasm.toggle_tag Bindstree.Closure)
+       @ (Compilewasm.update_local 0l) @ [Drop] )) @
     body @ (List.map add_dummy_edges (Compilewasm.call_exit_fun num_stack_spaces))
 
 let translate_funcs types globals funcs =

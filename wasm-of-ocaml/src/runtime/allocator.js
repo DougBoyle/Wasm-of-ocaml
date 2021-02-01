@@ -35,6 +35,11 @@ class Allocator {
         this.memoryManager.uview[STACK_LIMIT + 1] =  (this.memoryManager.uview.byteLength >> 2) - STACK_LIMIT;
         this.freep = STACK_LIMIT; // point to first (and only) block
 
+        // Garbage collection happens whenever memory would otherwise need to grow to allocate a block.
+        // Store the size of block needed and set back to 0 if a block of that size is found by freeing.
+        // If a block is found, know we don't need to grow memory (but may waste time looping round list to it again)
+        this.requiredSize = 0;
+
         this.growHeap = this.growHeap.bind(this);
         this.malloc = this.malloc.bind(this);
         this.free = this.free.bind(this);
@@ -44,6 +49,8 @@ class Allocator {
     // TODO: Gets the number of header units to grow memory by, not pages
     // also needs to update the free list so the last block has more space
     growHeap(units) {
+        console.log("freep before growing", this.freep, "size", this.getSize(this.freep), "next:", this.getNext(this.freep));
+        console.log("GROWING MEMORY");
         // convert to number of pages to allocate, rounded up
         let pages = (units*i32size + 65535)>>16;
         const ptr = this.memory.buffer.byteLength >> 2;
@@ -57,7 +64,7 @@ class Allocator {
         // TODO: Disable when not debugging
         this.memory_used += pages << 16;
         this.free((ptr + 2)*i32size); // turns this into a block and merges it into adjacent cell if possible
-        return this.freep;
+     //   return this.freep;
     }
 
     // Remember uview is 32-bit cells, not bytes.
@@ -91,15 +98,11 @@ class Allocator {
         // last block allocated exactly used up the last cell of the free list.
         // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
         if (this.freep == null){
-            let pages = (units*i32size + 65535)>>16;
-            const ptr = this.memory.buffer.byteLength >> 2;
-            this.memory.grow(pages);
-            // TODO: Throw an error if memory can't grow any more
-            this.refresh();
-            // only block so we know both of these
-            this.setNext(ptr, ptr)
-            this.setSize(ptr, pages << 14);
-            this.freep = ptr;
+            this.requiredSize = units;
+            this.memoryManager.doGC();
+            if (this.requiredSize > 0) { // still not enough memory
+                this.growHeap(units);
+            }
         }
         // p is the block we are considering allocating in,
         // prev is its predecessor in the free list
@@ -110,7 +113,7 @@ class Allocator {
                 if (size === units) {
                     // exact fit, remove from list
                     if (this.getNext(p) === p){
-                        this.freep = null; // list empty
+                        prev = null; // was only element of list, will now set freep = null on line 127
                     } else {
                         this.setNext(prev, this.getNext(p));
                     }
@@ -123,36 +126,55 @@ class Allocator {
                 }
                 this.freep = prev;
                 // return a pointer in terms of bytes to the data, not the header
-       //         console.log("Allocating: ",i32size * (p+2), units * 4);
+        //        console.log("Allocated:", i32size * p, "size: ", this.getSize(p)*4);
                 return i32size * (p+2);
-
             }
             if (p === this.freep){
-                // have searched the whole list, need to grow memory
-                // returns freep after growHeap updates memory (freep may have changed)
-                p = this.growHeap(units);
+                // have searched the whole list
+                // do GC and, if that doesn't free up a suitable block, grow memory
+                this.requiredSize = units;
+                this.memoryManager.doGC();
+                if (this.requiredSize > 0) { // still not enough memory
+                    this.growHeap(units);
+                }
+            //    p = this.growHeap(units);
+                // freep may have changed, so update it and search list again
+                p = this.freep;
             }
         }
     }
 
     // takes a byte pointer
     free(ptr){
-   //     console.log("ALLOC free");
+      //  console.log("ALLOC free");
         let blockPtr = (ptr>>2) - 2;
-   //     console.log("Lower Freeing: ", ptr, this.getSize(blockPtr)*4);
+        let sizeFreed = this.getSize(blockPtr);
         // TODO: Remove when not debugging
         this.memory_used -= this.getSize(blockPtr)*4;
+
+        // special case when freep is null. Indicates that the block being freed is only free block in memory
+        if (this.freep == null){
+            // single element circular list
+            this.setNext(blockPtr, blockPtr);
+            this.freep = blockPtr;
+            if (sizeFreed >= this.requiredSize){
+                this.requiredSize = 0;
+            }
+            return;
+        }
         let p;
-        // find the free block
+        // find the free block closest behind the block being freed
         for (p = this.freep; blockPtr < p || blockPtr > this.getNext(p); p = this.getNext(p)){
             if (p >= this.getNext(p) && (blockPtr > p || blockPtr < this.getNext(p))){
                 // block to free is at one end of list
                 break;
             }
         }
+        // TODO: Does all this work if p = block (i.e. when memory grows and nothing else available?)
         // join upper block
         // works even if memory has been extended since block was allocated, now pointed to by p
         if (blockPtr + this.getSize(blockPtr) === this.getNext(p)){
+            sizeFreed += this.getSize(this.getNext(p));
             this.setSize(blockPtr, this.getSize(blockPtr) + this.getSize(this.getNext(p)));
             this.setNext(blockPtr, this.getNext(this.getNext(p)));
         } else {
@@ -160,6 +182,7 @@ class Allocator {
         }
         // join lower block
         if (p + this.getSize(p) === blockPtr){
+            sizeFreed += this.getSize(p);
             this.setSize(p, this.getSize(p) + this.getSize(blockPtr));
             this.setNext(p, this.getNext(blockPtr));
         } else {
@@ -167,7 +190,11 @@ class Allocator {
         }
         // in case freep was the upper block, so freep would otherwise point to the middle of a block
         this.freep = p;
+        if (sizeFreed >= this.requiredSize){
+            this.requiredSize = 0;
+        }
     }
 }
 
 exports.Allocator = Allocator;
+exports.STACK_LIMIT = STACK_LIMIT;

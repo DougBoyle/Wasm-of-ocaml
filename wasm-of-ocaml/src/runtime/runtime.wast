@@ -2,23 +2,20 @@
   (type $0 (func (result i32)))
   (type $1 (func (param i32) (result i32)))
 
-
-
   (import "jsRuntime" "malloc" (func $malloc (type 1)))
+  (import "jsRuntime" "stackOverflow" (func $stackOverflow (type 0)))
   ;; for debugging sp
-;;  (import "jsRuntime" "log" (func $log (type 1)))
+ ;; (import "jsRuntime" "log" (func $log (type 1)))
  ;; (export "log" (func $log))
   ;; memory now imported and re-exported so it gets linked to js functions
   (memory $mem (export "mem") (import "jsRuntime" "mem") 2) ;; now require minimum of 2 pages, 1st just for stack
 
   ;; for manipulating stack. 1st page is used purely for stack so limit is 2^16 = 65536 bytes
-  (global $sp (mut i32) (i32.const 0))
+  (global $sp (export "sp") (mut i32) (i32.const 0))
   (func $create_fun (export "create_fun") (param $size i32)
     global.get $sp
     local.get $size
     i32.add
-
-  ;;  call $log
     global.set $sp
 
     ;; check for overflow
@@ -26,15 +23,37 @@
     i32.const 65536
     i32.gt_u
     if ;; overflow, trap
+      call $stackOverflow ;; report overflow error
       unreachable
     else ;; no overflow, do nothing
     end
   )
-  (func $exit_fun (export "exit_fun") (param $size i32)
+  (func $exit_fun (export "exit_fun") (param $size i32) ;; TODO: FIND A BETTER SOLUTION
+  ;; Because gc will assume every pointer in stack is live, an outdated stack pointer that hasn't yet been
+  ;; overwritten causes problems as it could now point to the middle of a freshly allocated data block,
+  ;; and attempting to tag that would modify actual values in memory
+    (local $old i32) (local $new i32)
     global.get $sp
+    local.tee $old
     local.get $size
     i32.sub
+    local.tee $new
     global.set $sp
+
+    ;; now wipe stack from old down to new
+    loop
+      local.get $old
+      i32.const 4
+      i32.sub
+      local.tee $old
+      i32.const 0
+      i32.store
+
+      local.get $old
+      local.get $new
+      i32.gt_u
+      br_if 0
+    end
   )
  ;; takes adjusted index, so first argument is 4, and swap slots aren't included  (x4 to get i32 index)
  (func $update_local (export "update_local") (param $value i32) (param $index i32) (result i32)

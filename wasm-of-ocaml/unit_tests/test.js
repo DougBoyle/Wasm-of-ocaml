@@ -15,8 +15,8 @@ if (process.argv.length > 2){
   var memory = 	new WebAssembly.Memory({ initial: 2});
   var memoryManager = new ManagedMemory(memory);
   var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
-//	overflow : memoryManager.overflow,
-//	log : memoryManager.log,
+	stackOverflow : memoryManager.stackLimitExceeded,
+	//log : memoryManager.log,
     mem : memory}};
 
   var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
@@ -41,7 +41,6 @@ if (process.argv.length > 2){
 //	  console.log(memoryManager.uview.slice(instance.exports.x.value >> 2));
 //	  console.log(memoryManager.uview.byteLength);
 //	  console.log(instance.exports.x.value);
-
   } catch (err) {
     console.log(err);
     console.log(err.message);
@@ -62,7 +61,7 @@ if (process.argv.length > 2){
 		  var memory = 	new WebAssembly.Memory({ initial: 2});
 		  var memoryManager = new ManagedMemory(memory);
 		  var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
-		    overflow : memoryManager.overflow,
+			stackOverflow : memoryManager.stackLimitExceeded,
 		    mem : memory}};
 
 		  var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
