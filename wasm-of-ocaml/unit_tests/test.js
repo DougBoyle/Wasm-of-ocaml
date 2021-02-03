@@ -37,7 +37,7 @@ if (process.argv.length > 2){
 
 	  // TODO: Just for checking garbage collecting working
 	  console.log("pages allocated:", memory.buffer.byteLength >> 16 );
-	  console.log("remaining memory allocated at end:", memoryManager.allocator.memory_used);
+	  console.log("remaining memory allocated at end:", memoryManager.memory_used);
 //	  console.log(memoryManager.uview.slice(instance.exports.x.value >> 2));
 //	  console.log(memoryManager.uview.byteLength);
 //	  console.log(instance.exports.x.value);
