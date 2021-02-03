@@ -111,7 +111,9 @@ class ManagedMemory {
     //      console.log("ALLC malloc");
     // round up to align block
     // *2 to put in terms of 32-bit words rather than 64-bit headers
-    const units = (((bytes + 16 - 1) >> 3) + 1)*2;
+    // TODO: New change, enforce one large 128 bit (16 byte header) so that alignment always works.
+    //   Merges the 2 old headers i.e. [next ptr, size, allocation flag, unused] = 4 words
+    const units = (((bytes + 16 - 1) >> 4) + 1)*4;
     this.memory_used += units * 4;
     // last block allocated exactly used up the last cell of the free list.
     // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
@@ -275,7 +277,6 @@ class ManagedMemory {
   }
 
   doGC(){
-    console.log("GC called");
   //  this.marked = 0;
     this.mark(); // well isn't this simple, could probably just write them as a single function instead
    // console.log("live set:", this.marked);

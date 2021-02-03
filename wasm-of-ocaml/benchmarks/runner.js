@@ -1,6 +1,7 @@
 const { performance } = require('perf_hooks');
 const util = require('util');
 const fs = require("fs");
+const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory");
 const readFile = util.promisify(fs.readFile);
 const filename = process.argv[2];
 const simple_name = filename.substring(filename.indexOf('/') + 1, filename.indexOf('.'));
@@ -52,7 +53,9 @@ const filesize = fs.statSync(filename).size;
         const t0 = performance.now();
         instance.exports["OCAML$MAIN"]();
         const millis = performance.now() - t0;
-        const heap_top = runtime.exports["alloc"](0);
-        console.log(simple_name, millis, heap_top, filesize);
+        // TODO: Include a way to select between the memory management methods
+        const remaining_memory = memoryManager.memory_used;
+      //  const remaining_memory = runtime.exports["alloc"](0);
+        console.log(simple_name, millis, remaining_memory, filesize);
     }
 })();

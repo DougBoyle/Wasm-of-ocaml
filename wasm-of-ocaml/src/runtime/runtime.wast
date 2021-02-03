@@ -222,42 +222,130 @@
       local.get $y
     end
   )
+
+  ;; doesn't map exactly to an OCaml program. Instead written to allow doing append as a loop.
+  ;; since caller has a pointer to l1 and l2, only need to put 'result' on the shadow stack.
+  ;; Equivalent C program:
+;;  if (l1 = []) {return l2}    // no need for a new list
+;;
+;;  result = malloc(2)    // create a variable to hold the result
+;;  result.0 = l1.0
+;;  l1 = l1.1             // store the first element of l1 in a new cell, next ptr of cell undefined
+;;  tail = result
+;;  while (l1 != []){
+;;    tail.1 = malloc(2)  // point next to a new cell
+;;    tail = tail.1       // advance tail
+;;    tail.0 = l1.0       // set value in that cell, next ptr of cell undefined
+;;    l1 = l1.1           // advance l1
+;;  }
+;;  tail.1 = l2           // connect up the remaining undefined next ptr to point to l2
+;;  return result
+
+;;  In reality, need to initialise the next ptr to 0 in each case so it doesn't get followed during GC
+
   (func $append (export "@") (param $l1 i32) (param $l2 i32) (result i32)
-    (local $l1decoded i32) (local $result i32)
+    (local $result i32) (local $tail i32) (local $cell i32)
     local.get $l1
     i32.const 1
     i32.xor
-    local.tee $l1decoded
-    i32.load ;; tag - either 0 = [] or 2 (encoded) = x::xs
-    if (result i32)
-      ;; list non-empty
+    local.tee $l1  ;; untag l1
+
+    i32.load ;; get tag, 0 = [], 2 = x::xs
+    if (result i32) ;; list not empty
+      i32.const 4
+      call $create_fun  ;; allocate stack space to remember 'result'
+
+      global.get $sp  ;; update_local for result list
+      i32.const 4  ;; negative offsets not supported
+      i32.sub
+
       i32.const 16
       call $malloc
-
       local.tee $result
-      i32.const 2 ;; Dependent on runtime encoding of tags
+      local.tee $tail ;; take the opportunity to also save in tail
+      i32.const 1
+      i32.xor
+
       i32.store
 
+      ;; set the fields of result
       local.get $result
-      i32.const 2
-      i32.store offset=4 ;; arity=2
-
+      i32.const 2 ;; tag - based on runtime encoding
+      i32.store
       local.get $result
-      local.get $l1decoded
-      i32.load offset=8 ;; head of l1
+      i32.const 2 ;; arity
+      i32.store offset=4
+      local.get $result
+      local.get $l1
+      i32.load offset=8
       i32.store offset=8
-
-      local.get $result
-      local.get $l1decoded
-      i32.load offset=12 ;; tail of l1
-      local.get $l2
-      call $append ;; recursive result of appending tail to l2
+      local.get $result ;; next ptr set to 0 for now
+      i32.const 0
       i32.store offset=12
 
-      local.get $result
+      ;; advance l1
+      local.get $l1
+      i32.load offset=12
       i32.const 1
-      i32.xor ;; tag result as data block
-    else
+      i32.xor
+      local.set $l1
+
+      ;; while loop
+      block
+        loop
+          ;; test condition
+          local.get $l1
+          i32.load
+          i32.eqz
+          br_if 1
+
+          local.get $tail
+          ;; allocate new cell
+          i32.const 16
+          call $malloc
+          local.tee $tail
+          i32.const 1
+          i32.xor
+          i32.store offset=12
+
+          local.get $tail
+          i32.const 2 ;; tag - based on runtime encoding
+          i32.store
+          local.get $tail
+          i32.const 2 ;; arity
+          i32.store offset=4
+          local.get $tail
+          local.get $l1
+          i32.load offset=8  ;; store next element of l1
+          i32.store offset=8
+          local.get $tail
+          i32.const 0
+          i32.store offset=12
+
+          ;; advance l1
+          local.get $l1
+          i32.load offset=12
+          i32.const 1
+          i32.xor
+          local.set $l1
+
+          br 0 ;; loop
+        end
+      end
+
+      local.get $tail    ;; connect remaining pointer to l2
+      local.get $l2
+      i32.store offset=12
+
+      local.get $result ;; put tag on final result
+      i32.const 1
+      i32.xor
+
+      ;; free stack space
+      i32.const 4
+      call $exit_fun
+
+    else ;; list empty, just return l2
       local.get $l2
     end
   )

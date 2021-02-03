@@ -24,6 +24,8 @@ safe_curry a=6 b=6
 refs y=11 z=19
 tailcall a=120
 tailcall2 a=0 b=0 c=1 d=0
+// an empty line means the program will be executed but no values checked (just tests GC)
+trees
 inlining x=9 z=12 a=5
 ../samples/arith x=26 y=4
 ../samples/trees x=15
