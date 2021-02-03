@@ -135,20 +135,6 @@ let load
   let open Graph in
   Load({ty; align; sz; offset;})
 
-(* mark/sweep garbage collection and maintaining shadow stack *)
-let call_create_fun num_args =
-  if !(Compilerflags.no_gc) then [] else [Const(const_int32 (num_args * 4)); Call(var_of_runtime_func create_fun_ident)]
-let call_exit_fun num_args =
-  if !(Compilerflags.no_gc) then [] else [Const(const_int32 (num_args * 4)); Call(var_of_runtime_func exit_fun_ident)]
-let update_local index =
-  if !(Compilerflags.no_gc) then []
-  else [Const(wrap_int32 (Int32.mul (Int32.add index 1l) 4l)); Call(var_of_runtime_func update_local_ident)]
-
-(* Called after a new value is set in a global slot *)
-let update_global index =
-  if !(Compilerflags.no_gc) then []
-  else [Const(wrap_int32 (Int32.mul index 4l)); GlobalGet(add_dummy_loc index); store ()]
-
 (* Offset of 8, floats have a tag of 01, so +7 overall without untagging *)
 let load_float = load ~ty:Wasm.Types.F64Type ~offset:7l ()
 
@@ -196,18 +182,18 @@ let compile_bind ~is_get (env : env) (b : binding) : instr' list =
     (* No adjustments are needed for argument bindings *)
     let slot = add_dummy_loc i in
     if is_get then
-      [LocalGet(slot)]
+     [LocalGet(slot)]
     else
       (* May be used once LVA register colouring added,
          but don't need to initialise in advance on shadow-stack at start of function call *)
-      (update_local i) @ [LocalSet(slot)]
+     [LocalSet(slot)]
   | MLocalBind(i) ->
     (* Local bindings need to be offset to account for arguments and swap variables *)
     let slot = add_dummy_loc ((env.num_args + (List.length swap_slots)) ++ i) in
     if is_get then
      [LocalGet(slot)]
     else
-     (update_local (env.num_args ++ i)) @ [LocalSet(slot)]
+     [LocalSet(slot)]
  | MSwapBind(i) ->
     (* Swap bindings need to be offset to account for arguments *)
     let slot = add_dummy_loc (env.num_args ++ i) in
@@ -222,7 +208,7 @@ let compile_bind ~is_get (env : env) (b : binding) : instr' list =
       [GlobalGet(slot)]
     else
       (* Used to initialise globals, and tracking shared mutable varaibles next/continue/result for TCO *)
-     [GlobalSet(slot)] @ (update_global i)
+     [GlobalSet(slot)]
   | MClosureBind(i) ->
     (* Closure bindings need to be calculated *)
     begin

@@ -67,10 +67,7 @@ let rec split_stack n instrs = if n = 0 then ([], instrs)
     (* Doesn't actually occur - need to look up type of func (i is the func index) *)
     (* Easy to calculate since we know imports only contains functions *)
     | ({it=Call {it}} as instr)::rest ->
-      let new_n = match List.nth (!func_types) ((Int32.to_int it) (* - (List.length Compilewasm.runtime_imports) *)) with
-   (*   let func = List.nth (!mod_tbls).funcs ((Int32.to_int it) - (List.length Compilewasm.runtime_imports)) in
-      Printf.printf "functype\n";
-      let new_n = match List.nth (!mod_tbls).types (Int32.to_int func.ftype.it) with *)
+      let new_n = match List.nth (!func_types) (Int32.to_int it) with
         {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results)
       in let above, rest = split_stack new_n rest in (instr::above, rest)
     (* Need to look up type in types (i is the type index) *)
@@ -109,8 +106,8 @@ let rec propagate_drop drop_instr = function
   (* Can't optimise 'Call' without knowing that function is immutable (future optimisation) *)
   | ({it=LocalGet _ | GlobalGet _ | MemorySize | Const _} as instr)::rest ->
     remove_instr drop_instr; remove_instr instr; rest
-  | ({it=LocalTee (x, incr, decr)} as instr)::rest ->
-    remove_instr drop_instr; {instr with it=LocalSet (x, incr, decr)}::rest
+  | ({it=LocalTee x} as instr)::rest ->
+    remove_instr drop_instr; {instr with it=LocalSet x}::rest
   (* Assumes no out of bounds memory accesses, should be true for compiled Wasm.
      Also assumes conversions always succeed (not used anyway). *)
   | ({it=Load _ | Test _ | Unary _ | Convert _} as instr)::rest ->

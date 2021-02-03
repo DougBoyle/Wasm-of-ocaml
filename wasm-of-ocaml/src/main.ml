@@ -32,9 +32,9 @@ let ir_passes = [
   ("inline", OptInline.optimise);
   (* Where functions can't be inlined, see if they are always fully applied so can remove currying *)
   ("tuples", OptTuple.optimise);
- (* ("deadassign", OptDeadAssignments.optimise); *) (* Without dead assignment elimination, getting an error *)
+  ("deadassign", OptDeadAssignments.optimise); (* Without dead assignment elimination, getting an error *)
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
- (* ("tail calls", OptTailCalls.optimise); *)
+  ("tail calls", OptTailCalls.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
 ]
 
@@ -51,10 +51,10 @@ let optimise_ir program =
   else program
 
 let graph_passes = [
-  (* OptGlobals.optimise;
-   OptWasmPeephole.optimise;  -- for now, disable all optimisations. Will need adjusting for shadow stack
+   OptGlobals.optimise;
+   OptWasmPeephole.optimise;
    Deadlocals.optimise;
-   OptWasmDrop.optimise *)
+   OptWasmDrop.optimise
 ]
 let optimise_graph program =
   if !opt_graph then

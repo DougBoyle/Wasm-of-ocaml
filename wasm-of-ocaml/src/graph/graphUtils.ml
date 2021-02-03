@@ -48,4 +48,9 @@ let merge_instrs first second =
   List.iter
   (fun instr ->
     instr.pred := first::(List.filter (fun i -> not(instr_eq i second)) (!(instr.pred))))
-  (!(second.succ));
+  (!(second.succ))
+
+(* Needed in several places and slightly awkward to calculate *)
+let func_arity (types : Wasm.Ast.type_ list) fidx =
+  match List.nth types (Int32.to_int fidx) with
+    {it=Wasm.Types.FuncType (args, _)} -> List.length args
