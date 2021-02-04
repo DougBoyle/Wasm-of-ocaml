@@ -6,6 +6,12 @@ open Bindstree
 open Linast
 open LinastUtils
 
+(* Compilerflags.use_colouring swaps between naive local allocation and using clash graph colouring.
+   Hence functionality for both methods is included here.
+   With colouring, use stack_counter and ignore stack_idx
+   Without colouring: use stack_idx and ignore stack_counter
+
+   For simplicity, stack_idx is still updated in many places even when colouring enabled *)
 type compile_env = {
     binds : binding Ident.tbl;
     stack_idx : int;
@@ -15,6 +21,13 @@ let initial_env = {
     binds = Ident.empty;
     stack_idx = 0;
 }
+
+(* Unlike above, stack_counter uses separate locals wherever possible and leaves minimising this
+   up to clash graph colouring. *)
+let stack_counter = ref 0
+let new_local _ =
+  let v = !stack_counter in
+  incr stack_counter; v
 
 (* Function index for doing lambda lifting *)
 let lift_index = ref 0
@@ -63,16 +76,11 @@ let find_id id env =
 
     raise Not_found
 
-type work_body =
-  | Lin of linast_expr
-  | Compiled of block
-
 type work_element = {
-    body : work_body;
+    body : linast_expr;
     env : compile_env;
     arity : int;
     idx : int;
-    stack_size : int;
 }
 
 let worklist = ref ([] : work_element list)
@@ -127,17 +135,15 @@ let compile_function env args body tupled : closure_data =
   (* Number of vars declared in body hence number of locals added.
      ASSERTION: At least as large as final stack_idx when compiling.
                 If larger, just get unused slots. If too small, get out of bounds local accesses. *)
-  let stack_size = count_vars body in
   let func_env = {
     binds=arg_binds;
     stack_idx=0;
   } in
   let worklist_item = {
-    body=Lin (match rest with [] -> body | _ -> LinastExpr.compound (Compound.mkfun rest body));
+    body=(match rest with [] -> body | _ -> LinastExpr.compound (Compound.mkfun rest body));
     env=func_env;
     arity=List.length new_args;
     idx;
-    stack_size;
   } in
   worklist_add worklist_item;
   {
@@ -164,10 +170,16 @@ let rec compile_comp env c =
   | CWhile(cond, body) ->
     MWhile(compile_linast false env cond, compile_linast false env body)
   | CFor(id, start, finish, dir, body) ->
-    let start_bind = MLocalBind(Int32.of_int (env.stack_idx)) in
-    let end_bind = MLocalBind(Int32.of_int (env.stack_idx + 1)) in (* Don't re-evaluate limits of loop *)
+
+   (* start_bind is for the ident used in the loop, end_bind just remembers the end point of loop *)
+    let start_bind = MLocalBind(Int32.of_int
+      (if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx)) in
+    let end_bind = MLocalBind(Int32.of_int
+      (if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx + 1)) in
+    (* end_bind doesn't need adding to environment as it only holds the loop limit, not a variable in body *)
     let new_env = {binds=Ident.add id start_bind env.binds; stack_idx=env.stack_idx + 2} in
-    MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish, compile_linast false new_env body)
+    MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish,
+      compile_linast false new_env body)
   | CUnary(op, arg) ->
     MUnary(op, compile_imm env arg)
   | CBinary(op, arg1, arg2) ->
@@ -213,12 +225,16 @@ and compile_linast toplevel env expr =
        match global with
        | Export -> MGlobalBind(next_export id)
        | Local | Mut -> MGlobalBind(next_global id)
-     else MLocalBind(Int32.of_int (env.stack_idx + idx))), bind in (* Should never see 'Global' if not toplevel *)
+    (* Should never see 'Global' if not toplevel *)
+     else MLocalBind(Int32.of_int (
+       if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx + idx))),
+     bind in
    let binds_with_locs = List.mapi get_loc binds in
-   let new_env = List.fold_left (fun acc (new_loc, (id, _, _)) -> (* - Should use global field?? *)
+   let new_env = List.fold_left (fun acc (new_loc, (id, global, _)) -> (* - Should use global field?? *)
        (* Cautious/simple approach - may end up using more stack variables than necessary.
           This is unrelated to free vars. Determines the number of local slots to include in a function *)
-       {binds=Ident.add id new_loc acc.binds; stack_idx=acc.stack_idx + 1})
+       {binds=Ident.add id new_loc acc.binds; stack_idx=acc.stack_idx +
+         match global with Export -> 0 | _ -> 1})
        env binds_with_locs in
        let wasm_binds = List.fold_left (fun acc (loc, (_, _, rhs)) ->
            (loc, (compile_comp new_env rhs)) :: acc)
@@ -230,19 +246,18 @@ and compile_linast toplevel env expr =
    let location = if toplevel then (match global with (* As above but only 1 element *)
      | Export -> MGlobalBind(next_export id)
      | Local | Mut -> MGlobalBind(next_global id))
-     else MLocalBind(Int32.of_int (env.stack_idx)) in (* Should never see 'Global' if not toplevel *)
+     (* Should never see 'Global' if not toplevel *)
+     else MLocalBind(Int32.of_int (
+       if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx)) in
    (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
    let new_env = {binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
-    match global with Local | Mut -> 1 | Export -> 0} in
+    match global with Export -> 0 | _ -> 1} in
    let wasm_binds = [(location, (compile_comp env bind))] in
    MStore(wasm_binds) :: (compile_linast toplevel new_env body)
  | LCompound c -> [compile_comp env c]
 
 let compile_work_element({body; env} : work_element) =
-  match body with (* Piece together any bits of work remaining *)
-  | Lin body ->
-    compile_linast false env body
-  | Compiled block -> block
+  compile_linast false env body
 
 (* Fold left but on reference to a list, where list may be updated by function being applied *)
 let fold_left_worklist f base =
@@ -252,9 +267,12 @@ let fold_left_worklist f base =
   help base
 
 let compile_remaining_worklist () =
-  let compile_one funcs ((({idx=index; arity; stack_size}) as cur) : work_element) =
-    let body = compile_work_element cur in
-    {index=Int32.of_int index; arity=Int32.of_int arity; body; stack_size;}::funcs in
+  let compile_one funcs ((({idx=index; arity; body}) as cur) : work_element) =
+    (* Have to reset the local counter for each function *)
+    stack_counter := 0;
+    let compiled_body = compile_work_element cur in
+    {index=Int32.of_int index; arity=Int32.of_int arity; body = compiled_body;
+    stack_size = if (!(Compilerflags.use_colouring)) then (!stack_counter) else count_vars body;}::funcs in
   List.rev (fold_left_worklist compile_one [])
 
 let transl_program (program : linast_expr) : binds_program =

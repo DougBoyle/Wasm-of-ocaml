@@ -24,6 +24,15 @@ let rec analyse_instr = function
     let new_live = get_live_at_succ instr in
     if Set32.equal new_live (!(instr.live)) then () else (liveness_changing := true; instr.live := new_live)
 
+(* Needed when register allocation done, since
+   no longer present variables could still appear live due to loops in the flow graph. *)
+let rec reset_liveness = function
+  | {it=(Block(_, body)|Loop(_, body))} ->
+    List.iter reset_liveness body
+  | {it=If(_, body1, body2)} ->
+    List.iter reset_liveness body1; List.iter reset_liveness body2
+  | instr -> instr.live := Set32.empty
+
 let rec analyse_liveness rev_body =
   List.iter analyse_instr rev_body;
   if (!liveness_changing) then ( liveness_changing := false; analyse_liveness rev_body)
@@ -67,6 +76,18 @@ let rec count_remaining_swaps num_args used = function
     then 1 + (count_remaining_swaps num_args used (n-1))
     else count_remaining_swaps num_args used (n-1)
 
+let rec apply_local_mapping mapping instr =
+  {instr with it = match instr.it with
+    | LocalGet ({it=i} as var) -> LocalGet{var with it = List.assoc i mapping}
+    | LocalSet ({it=i} as var) -> LocalSet ({var with it = List.assoc i mapping})
+    | LocalTee ({it=i} as var) -> LocalTee ({var with it = List.assoc i mapping})
+    | Block(typ, body) -> Block(typ, List.map (apply_local_mapping mapping) body)
+    | Loop(typ, body) -> Loop(typ, List.map (apply_local_mapping mapping) body)
+    | If(typ, body1, body2) -> If(typ, List.map (apply_local_mapping mapping) body1,
+      List.map (apply_local_mapping mapping) body2)
+    | x -> x
+  }
+
 (* This will invalidate all liveness information for remapped locals.
    Not tracked since it will be recalculated anyway on the next pass. *)
 let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; num_swaps; body} =
@@ -76,20 +97,11 @@ let map_remaining_locals (types : Wasm.Ast.type_ list) {ftype; locals; num_swaps
   let new_swaps = count_remaining_swaps num_args used num_swaps in
   (* Set.elements is guarenteed to return elements in sorted order *)
   let mapping = List.mapi (fun i x -> (x, Int32.of_int i)) (Set32.elements used) in
-  let rec map instr = {instr with it = match instr.it with
-    | LocalGet ({it=i} as var) -> LocalGet{var with it = List.assoc i mapping}
-    | LocalSet ({it=i} as var) -> LocalSet ({var with it = List.assoc i mapping})
-    | LocalTee ({it=i} as var) -> LocalTee ({var with it = List.assoc i mapping})
-    | Block(typ, body) -> Block(typ, List.map map body)
-    | Loop(typ, body) -> Loop(typ, List.map map body)
-    | If(typ, body1, body2) -> If(typ, List.map map body1, List.map map body2)
-    | x -> x
-    } in
   (* types of locals filtered to keep the ones that have mappings i.e. just remove the unused ones *)
   {ftype; locals=List.filteri (fun i _ -> List.mem_assoc (Int32.of_int i) mapping) locals;
-   num_swaps=new_swaps; body=List.map map body}
+   num_swaps=new_swaps; body=List.map (apply_local_mapping mapping) body}
 
 let optimise ({funcs; types} as module_) =
-  (List.iter (fun {body} -> analyse_liveness (List.rev body)) funcs;
+  List.iter (fun {body} -> analyse_liveness (List.rev body)) funcs;
   let new_funcs = List.map (fun ({body} as f) -> {f with body=optimise_instrs body}) funcs in
-  {module_ with funcs=List.map (map_remaining_locals types) new_funcs})
+  {module_ with funcs=List.map (map_remaining_locals types) new_funcs}

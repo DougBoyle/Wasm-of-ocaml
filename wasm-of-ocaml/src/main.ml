@@ -29,12 +29,12 @@ let ir_passes = [
   ("const", OptConstants.optimise);
   ("fails", OptFails.optimise);
   ("cse",  OptCSE.optimise);
- (* ("inline", OptInline.optimise); *)
+  ("inline", OptInline.optimise);
   (* Where functions can't be inlined, see if they are always fully applied so can remove currying *)
   ("tuples", OptTuple.optimise);
   ("deadassign", OptDeadAssignments.optimise); (* Without dead assignment elimination, getting an error *)
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
- (* ("tail calls", OptTailCalls.optimise); *)
+  ("tail calls", OptTailCalls.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
 ]
 
@@ -86,6 +86,9 @@ let main () =
 
   (* Wasm level optimisations *)
   let graph = optimise_graph graph in
+
+  (* Reduce the number of locals used *)
+  let graph = if (!(Compilerflags.use_colouring)) then Colouring.colour_registers graph else graph in
 
   let wasm = OutputWasm.translate_to_wasm graph in
   Compilewasm.validate_module wasm;
