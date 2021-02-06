@@ -3,7 +3,8 @@ clang --target=wasm32 -O3 -nostdlib -Wl,--no-entry -Wl,--export-all -o out/arith
 clang --target=wasm32 -O3 -nostdlib -Wl,--no-entry -Wl,--export-all -o out/funcrec.wasm funcrec.c
 
 When stdlib needed:
-clang --target=wasm32-unknown-wasi --sysroot ../../../../wasi-libc/sysroot -nostartfiles -Wl,--no-entry -Wl,--export-all -o out/alltrees.wasm alltrees.c
+clang --target=wasm32-unknown-wasi --sysroot ../../../../wasi-libc/sysroot -nostartfiles  \
+  -Wl,--no-entry -Wl,--export-all -o out/alltrees.wasm alltrees.c
 
 -Wl,--import-memory allows memory to be passed in rather than internally produced. minimum 2 pages.
 nostartfiles avoids trying to use regular stdlib not suitable for wasm. Without this, get a

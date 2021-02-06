@@ -45,6 +45,10 @@ let rec add_all_edges arity num_swaps body graph =
   | Block (_, body) | Loop (_, body) -> add_all_edges arity num_swaps body graph
   | If (_, body1, body2) ->
     add_all_edges arity num_swaps body2 (add_all_edges arity num_swaps body1 graph)
+  (* 'Tee i' is effectively [Set i; Get i] so i is generated then immediately killed (in reverse).
+      As such, just treat the same as 'Set i' in live analysis, but need a special case here since
+      internally it can still generate clashes between other live variables and i *)
+  | LocalTee i -> add_edges arity num_swaps (Set32.add i.it (!(instr.live))) graph
   | _ -> add_edges arity num_swaps (!(instr.live)) graph) body graph
 
 

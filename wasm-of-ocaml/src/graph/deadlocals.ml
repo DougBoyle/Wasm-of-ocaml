@@ -39,9 +39,17 @@ let rec analyse_liveness rev_body =
 
 (* No need to reset liveness analysis. Any which aren't valid on next pass will be removed, while rest remain correct *)
 let rec optimise_instrs = function
+ (*  Value could still be passed to a function call, so must keep a shadow stack update if doing GC *)
   | ({it=LocalTee {it=i}} as instr)::rest ->
     if Set32.mem i (get_live_at_succ instr) then instr::(optimise_instrs rest)
-    else (remove_instr instr; optimise_instrs rest)
+    else if !(Compilerflags.no_gc) then (remove_instr instr; optimise_instrs rest)
+    else (* Made complex by garbage collection. Functions rely on their caller saving
+      memory location arguments on the stack already. If a value is allocated and immediately used,
+      we see a 'set i; get i' across the two instructions which gets changed to 'tee i'.
+      If this is then removed, no call to save the value on the stack will exist and it could get GC'd.
+      For now we just avoid optimising. If we still wanted to optimise this, would need to happen
+      after register colouring (this 'tee i' needed so we have a free stack slot to update when we get here) *)
+      instr::(optimise_instrs rest)
   | ({it=LocalSet {it=i}} as instr)::rest ->
     if Set32.mem i (get_live_at_succ instr) then instr::(optimise_instrs rest)
     else {instr with it=Drop}::(optimise_instrs rest)

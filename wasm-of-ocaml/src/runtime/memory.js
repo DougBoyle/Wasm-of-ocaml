@@ -1,38 +1,23 @@
 /*
-  Same as for reference counting, still keep a 64-bit header for now to track MARKED.
-  Very wasteful, could pack into the 'arity' field of objects as long as that bit always cleared
-    before making use of it, and mark bit always cleared from all objects after gc pass complete.
-  Another improvement, can track the marked/fringe/free list all in the same 64-bit header, then
-    possibly just 1 extra block so that we have all of [list ptr, type of list flag, size of block].
-  During GC, should set a flag if a block is ever freed/coalesced of the size required.
-*/
-
-/*
 Stack layout:
 [...][number of cells = locals used by function]                                | End of stack
                                                ^ sp global exported by runtime
 For one function, locals are stored as [ln, ..., l0]
-Hence subtract (index + 1) from sp to get slot to update (must skip over swap slots, not kept on stack)
+Hence subtract 4*(index + 1) from sp to get slot to update (skip over swap slots, not kept on stack)
 
-TODO: For now keep sp just in runtime and export an 'update variable' function taking an index and i32 value.
-  May later want to export sp so functions can do this themselves. Then exporting a GLOBAL not a function, so
-  will need to change lots of how compilewasm works with assumptions about offsets etc.
+Memory block layout:
+[32-bit next ptr, 32-bit size field, 30-bits padding, 2-bit allocated/marked flag, 32-bits padding][data]
 
-  Functions used by compilewasm: create_fun(num slots), update_local(slot, value), exit_fun(num slots)
-
-  TODO: Update_local should really be done by function, not runtime, since offset can be statically calculated
-
-  TODO: Memory and allocator are now much more interlinked, should probably just make into 1 file.
-    Since both enforce 8-byte alignment, can ALWAYS MOVE SWEEP TO STACK_LIMIT AS START OF LOWEST BLOCK.
+Can compress to just 2 words in the future:
+[32-bit next ptr, 32-bit size field][data]
+Both fields are in terms of 32-bit words, and the size of the data allocated is also padded
+to be a multiple of 2 words (8 bytes).
+Therefore, last bit of both next and size is 0, can use for allocated/marked flags respectively.
+Also, since everything is in terms of 32-bit words rather than bytes, top 2 bits of each field are free too.
 */
 
-// So that I don't need to look at the free list directly, but can still traverse the heap and avoid freeing
-// already free blocks. Use the header for bit 1 = marked and bit 10 = allocated.
-// (again, should merge this with other layer)
 
-const headerSize = 8;// just for 64 bit alignment, actually just 1 bit used for now [31 unused, 1 bit, 32 unused]
-
-const STACK_LIMIT = 16384;
+const STACK_LIMIT = 16384 ;
 
 class ManagedMemory {
   constructor(memory) {
@@ -104,15 +89,14 @@ class ManagedMemory {
     this.setSize(ptr, pages << 14);
     // TODO: Disable when not debugging
     this.memory_used += pages << 16;
-    this.free(ptr );
+    this.free(ptr);
   }
 
   malloc(bytes){
     //      console.log("ALLC malloc");
     // round up to align block
     // *2 to put in terms of 32-bit words rather than 64-bit headers
-    // TODO: New change, enforce one large 128 bit (16 byte header) so that alignment always works.
-    //   Merges the 2 old headers i.e. [next ptr, size, allocation flag, unused] = 4 words
+    // TODO: Change to just 2 word header with careful placement of flag bits
     const units = (((bytes + 16 - 1) >> 4) + 1)*4;
     this.memory_used += units * 4;
     // last block allocated exactly used up the last cell of the free list.
@@ -197,6 +181,7 @@ class ManagedMemory {
     }
     // join upper block
     // works even if memory has been extended since block was allocated, now pointed to by p
+    // can't happen after grow_memory since getNext(p) must be within old memory
     if (blockPtr + this.getSize(blockPtr) === this.getNext(p)){
       sizeFreed += this.getSize(this.getNext(p));
       this.setSize(blockPtr, this.getSize(blockPtr) + this.getSize(this.getNext(p)));
@@ -208,7 +193,13 @@ class ManagedMemory {
     if (p + this.getSize(p) === blockPtr){
       sizeFreed += this.getSize(p);
       this.setSize(p, this.getSize(p) + this.getSize(blockPtr));
-      this.setNext(p, this.getNext(blockPtr));
+      let next = this.getNext(blockPtr);
+      // If the block being freed is from growing memory, its next pointer is 0.
+      // If the very end of memory happens to be free, the block will merge with
+      // the freshly allocated memory, but the next pointer should not be modified.
+      if (next >= STACK_LIMIT){
+        this.setNext(p, this.getNext(blockPtr));
+      }
     } else {
       this.setNext(p, blockPtr);
     }
@@ -218,7 +209,6 @@ class ManagedMemory {
       this.requiredSize = 0;
     }
   }
-
 
   markReference(ptr){
     if (ptr & 1 && ptr > 0){ // > 0 avoids treating a negative integer as a pointer
@@ -263,20 +253,22 @@ class ManagedMemory {
     // TODO: Merge layers, using knowledge of lower levels header structure here, so no abstraction achieved
     while (blockPtr < heapLimit){
       let size = this.getSize(blockPtr);
-      if (this.uview[blockPtr + 2] === 2){
+      let mark = this.getMark(blockPtr);
+      if (mark === 2){
         // allocated but not marked
         // Can also improve link between sweep, free and malloc, so we don't repeat searching after large enough block freed
         this.setMark(blockPtr, 0); // mark as unallocated
       //  this.marked++;
         this.free(blockPtr);
-      } else {
-        this.setMark(blockPtr, this.getMark(blockPtr) & 2); // unset marked bit, no effect if free
+      } else if (mark === 3) {
+        this.setMark(blockPtr, 2); // unset marked bit, no effect if free
       }
       blockPtr += size;
     }
   }
 
   doGC(){
+  //  console.log("GC start");
   //  this.marked = 0;
     this.mark(); // well isn't this simple, could probably just write them as a single function instead
    // console.log("live set:", this.marked);

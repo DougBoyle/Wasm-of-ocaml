@@ -7,6 +7,7 @@
   ;; for debugging sp
  ;; (import "jsRuntime" "log" (func $log (type 1)))
  ;; (export "log" (func $log))
+
   ;; memory now imported and re-exported so it gets linked to js functions
   (memory $mem (export "mem") (import "jsRuntime" "mem") 2) ;; now require minimum of 2 pages, 1st just for stack
 
@@ -228,12 +229,12 @@
   ;; Equivalent C program:
 ;;  if (l1 = []) {return l2}    // no need for a new list
 ;;
-;;  result = malloc(2)    // create a variable to hold the result
+;;  result = malloc(4)    // create a variable to hold the result
 ;;  result.0 = l1.0
 ;;  l1 = l1.1             // store the first element of l1 in a new cell, next ptr of cell undefined
 ;;  tail = result
 ;;  while (l1 != []){
-;;    tail.1 = malloc(2)  // point next to a new cell
+;;    tail.1 = malloc(4)  // point next to a new cell
 ;;    tail = tail.1       // advance tail
 ;;    tail.0 = l1.0       // set value in that cell, next ptr of cell undefined
 ;;    l1 = l1.1           // advance l1
