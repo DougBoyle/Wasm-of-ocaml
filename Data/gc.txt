@@ -1,0 +1,16 @@
+Needs @ rewritten to only take up 1 stack slot.
+alltrees_7 45.893099999055266 731808 2100
+dougboyle:benchmarks$ls out
+alltrees_7.wasm  alltrees_test.wasm  arith_75.wasm  composition.wasm  funcrec.wasm  mergesort_500.wasm
+dougboyle:benchmarks$node runner.js out/arith_75.wasm
+arith_75 8.10160000063479 50160 1469
+dougboyle:benchmarks$node runner.js out/composition.wasm
+composition 21.80430000089109 129888 5237
+dougboyle:benchmarks$node runner.js out/funcrec.wasm
+funcrec 1.8882999997586012 2640 2076
+dougboyle:benchmarks$node runner.js out/mergesort_500.wasm
+mergesort_500 13.123199999332428 321376 2307
+
+
+
+Other changes have also been made, but for now just compare file sizes

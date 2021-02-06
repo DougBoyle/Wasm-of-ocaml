@@ -301,7 +301,24 @@ def compareTuple():
     
 
 #means, errors, tests = processAndPlotAll("opts_01_13_12_46.txt", "None")
-compareTuple()
+#compareAgainstCompetitors()
+
+def compareGC():
+    data = readFile("v1.txt")
+    gcData = readFile("gcdata.txt")
+    data["GC"] = gcData["GC"]
+    
+    data = filterWhereAll(data)
+    data = {lang: data[lang] for lang in data}
+    tests = get_all_tests(data)
+    means = collect_means(data, tests)
+    errors = collect_deviations(data, tests)
+    reference = "JS"
+    tests, means, errors = normalise(means, errors, reference, True)
+    plotAll(means, errors, tests)
+    return means, errors, tests
+
+compareGC()
 
 # Exporting data to plot to matlab:
 # tests = ["alltrees_7", "arith_75", "composition", "funcrec", "mergesort_500"]
