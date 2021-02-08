@@ -14,6 +14,9 @@ Both fields are in terms of 32-bit words, and the size of the data allocated is 
 to be a multiple of 2 words (8 bytes).
 Therefore, last bit of both next and size is 0, can use for allocated/marked flags respectively.
 Also, since everything is in terms of 32-bit words rather than bytes, top 2 bits of each field are free too.
+
+Last bit of next ptr = 1 indicates block is allocated
+Last bit of size ptr = 1 indicates block is marked
 */
 
 
@@ -25,7 +28,10 @@ class ManagedMemory {
     this.uview = new Uint32Array(memory.buffer); // In i32 view, stack top is 2^14 = 16384
     // TODO: Initialise this when runtime instantiated, for calling functions moved into Wasm
     this.runtime = null;
-    this.markedSet = []; // fringe left to explore
+
+    // fringe left to explore
+    // 0 indicates empty list, since bottom of memory is reserved for stack
+    this.markedSet = 0;
 
     // points to a free block at all times, unless the free list is empty
     this.freep = STACK_LIMIT;
@@ -58,22 +64,34 @@ class ManagedMemory {
   }
 
   getNext(ptr){
-    return this.uview[ptr];
+    return this.uview[ptr] & (~1);
+  }
+  isAllocated(ptr){
+    return this.uview[ptr] & 1;
   }
   getSize(ptr){
-    return this.uview[ptr + 1];
+    return this.uview[ptr + 1] & (~1);
   }
-  getMark(ptr){
-    return this.uview[ptr + 2];
+  isMarked(ptr){
+    return this.uview[ptr + 1] & 1;
   }
-  setNext(ptr, val){
-    this.uview[ptr] = val;
+
+  setNext(ptr, val, allocated){
+    this.uview[ptr] = val | allocated; // sets allocated bit
   }
+
+  // setSize assumes the block is not marked, we never modify the size once allocated
   setSize(ptr, val){
     this.uview[ptr + 1] = val;
   }
-  setMark(ptr, val){
-    this.uview[ptr + 2] = val;
+  setMarked(ptr){
+    this.uview[ptr + 1] |= 1;
+  }
+  clearMarked(ptr){
+    this.uview[ptr + 1] &= (~1);
+  }
+  setAllocated(ptr){
+    this.uview[ptr] |= 1;
   }
 
   growHeap(units) {
@@ -97,7 +115,7 @@ class ManagedMemory {
     // round up to align block
     // *2 to put in terms of 32-bit words rather than 64-bit headers
     // TODO: Change to just 2 word header with careful placement of flag bits
-    const units = (((bytes + 16 - 1) >> 4) + 1)*4;
+    const units = (((bytes + 8 - 1) >> 3) + 1)*2;
     this.memory_used += units * 4;
     // last block allocated exactly used up the last cell of the free list.
     // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
@@ -121,7 +139,7 @@ class ManagedMemory {
           if (this.getNext(p) === p){
             prev = null; // was only element of list, will now set freep = null on line 127
           } else {
-            this.setNext(prev, this.getNext(p));
+            this.setNext(prev, this.getNext(p), false);
           }
         } else {
           // allocate tail end of free block
@@ -149,8 +167,8 @@ class ManagedMemory {
       }
     }
 
-    this.setMark(p, 2);
-    return (p + 4)<<2;
+    this.setAllocated(p);
+    return (p + 2)<<2;
   }
 
   // takes a byte pointer
@@ -164,7 +182,7 @@ class ManagedMemory {
     // special case when freep is null. Indicates that the block being freed is only free block in memory
     if (this.freep == null){
       // single element circular list
-      this.setNext(blockPtr, blockPtr);
+      this.setNext(blockPtr, blockPtr, false);
       this.freep = blockPtr;
       if (sizeFreed >= this.requiredSize){
         this.requiredSize = 0;
@@ -185,23 +203,16 @@ class ManagedMemory {
     if (blockPtr + this.getSize(blockPtr) === this.getNext(p)){
       sizeFreed += this.getSize(this.getNext(p));
       this.setSize(blockPtr, this.getSize(blockPtr) + this.getSize(this.getNext(p)));
-      this.setNext(blockPtr, this.getNext(this.getNext(p)));
+      this.setNext(blockPtr, this.getNext(this.getNext(p)), false);
     } else {
-      this.setNext(blockPtr, this.getNext(p));
+      this.setNext(blockPtr, this.getNext(p), false);
     }
     // join lower block
     if (p + this.getSize(p) === blockPtr){
       sizeFreed += this.getSize(p);
       this.setSize(p, this.getSize(p) + this.getSize(blockPtr));
-      let next = this.getNext(blockPtr);
-      // If the block being freed is from growing memory, its next pointer is 0.
-      // If the very end of memory happens to be free, the block will merge with
-      // the freshly allocated memory, but the next pointer should not be modified.
-      if (next >= STACK_LIMIT){
-        this.setNext(p, this.getNext(blockPtr));
-      }
     } else {
-      this.setNext(p, blockPtr);
+      this.setNext(p, blockPtr, false);
     }
     // in case freep was the upper block, so freep would otherwise point to the middle of a block
     this.freep = p;
@@ -210,14 +221,33 @@ class ManagedMemory {
     }
   }
 
+  // Will only be called at most once per block, since marked flag gets set.
+  // pushes onto front of list, so marking phase does DFS
+  // TODO: Pointer currently to flag block. Will need to change to point to size when header squashed
+  pushMarkedSet(rawPtr){
+    // TODO: Use SetNext and SetMark instead
+    // both allocated and marked
+    this.setMarked(rawPtr);
+   // this.uview[rawPtr] = 3;
+    // update Next pointer to point to old head of marked list
+    this.setNext(rawPtr, this.markedSet, true);
+ //   this.uview[rawPtr - 2] = this.markedSet;
+    this.markedSet = rawPtr;
+  }
+
+  popMarkedSet(){
+    let ptr = this.markedSet;
+    // follow pointer to next element
+ //   this.markedSet = this.uview[ptr - 2];
+    this.markedSet = this.getNext(ptr);
+    return ptr;
+  }
+
   markReference(ptr){
-    if (ptr & 1 && ptr > 0){ // > 0 avoids treating a negative integer as a pointer
-      let raw_ptr = (ptr>>2) - 2; // headersize/4 = 2
-      if (!(this.uview[raw_ptr] & 1)){ // not yet marked
-     //   console.log("marking:", raw_ptr);
-        this.uview[raw_ptr] = 3; // both allocated and marked
-        this.markedSet.push(raw_ptr);
-    //    console.log("followed ptr", ptr, "pushed:", raw_ptr);
+    if (ptr & 1){
+      let rawPtr = (ptr>>2) - 2; // headersize/4 = 2
+      if (!this.isMarked(rawPtr)){ // not yet marked
+        this.pushMarkedSet(rawPtr);
       //  this.marked++;
       }
     }
@@ -225,15 +255,14 @@ class ManagedMemory {
 
   // go through stack and set marked flag on all memory objects accessible from the stack.
   // can use sp to avoid searching further than necessary up stack
-  // TODO: Root elements aren't padded with headers etc. so need to ensure they never get treated as such
   mark(){
     let stack_top = this.runtime.exports.sp.value >> 2 // shift to get in terms of i32s
     for (let i = 0; i < stack_top; i++){
       this.markReference(this.uview[i]);
     }
     // After identifying root set, do DFS until all reachable objects marked
-    while (this.markedSet.length > 0){
-      let rawPtr = this.markedSet.pop();
+    while (this.markedSet > 1){
+      let rawPtr = this.popMarkedSet();
       // mark all of its referenced objects
       let arity = this.uview[rawPtr + 3];
       for (let i = 0; i < arity; i++){
@@ -253,7 +282,14 @@ class ManagedMemory {
     // TODO: Merge layers, using knowledge of lower levels header structure here, so no abstraction achieved
     while (blockPtr < heapLimit){
       let size = this.getSize(blockPtr);
-      let mark = this.getMark(blockPtr);
+      if (this.isAllocated(blockPtr)){
+        if (this.isMarked(blockPtr)){
+          this.setMarked(blockPtr, 0);
+        } else {
+          this.free(blockPtr);
+        }
+      }
+   /*   let mark = this.getMark(blockPtr);
       if (mark === 2){
         // allocated but not marked
         // Can also improve link between sweep, free and malloc, so we don't repeat searching after large enough block freed
@@ -262,7 +298,7 @@ class ManagedMemory {
         this.free(blockPtr);
       } else if (mark === 3) {
         this.setMark(blockPtr, 2); // unset marked bit, no effect if free
-      }
+      }*/
       blockPtr += size;
     }
   }
