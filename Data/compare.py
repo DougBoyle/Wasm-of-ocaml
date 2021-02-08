@@ -318,7 +318,7 @@ def compareGC():
     plotAll(means, errors, tests)
     return means, errors, tests
 
-compareGC()
+#compareGC()
 
 # Exporting data to plot to matlab:
 # tests = ["alltrees_7", "arith_75", "composition", "funcrec", "mergesort_500"]
@@ -327,3 +327,9 @@ compareGC()
 #  "; ".join([" ".join([str(means[lang][test]["times"])
 #             for lang in langs]) for test in tests]) + "]"
 
+# data = ....
+# bar(data)
+# then manually edit figure to add axes/legend/etc (updates interactively)
+# legend("OCaml", "JS", "Grain", "C")
+# xticklabels({'trees','coprimes','composition','records','mergesort'})
+# xlim([0 5])

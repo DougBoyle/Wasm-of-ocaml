@@ -87,7 +87,6 @@
 \title[]{Optimising compiler from OCaml to WebAssembly} % The short title appears at the bottom of every slide, the full title is only on the title page
 
 \author{Douglas Boyle} % Your name
-\newdate{date}{16}{10}{2019}
 \date{\formatdate{11}{2}{2021}} % Date, can be changed to a custom date
 
 \begin{document}
@@ -112,14 +111,14 @@
 
 \begin{frame}[fragile]  \frametitle{Intermediate Representation}
 \begin{itemize}
-\item Compiles patterns into code that performs pattern matching and variable binding
+\item Compiles patterns into IR code that performs pattern matching and variable binding
 
 \begin{columns}[c] % The "c" option specifies centered vertical alignment while the "t" option is used for top vertical alignment
 \column{.4\textwidth} % Left column and width
 \begin{verbatim}
 match x with
-   (1, y) -> y
-
+   | (1, y) -> y
+   | _ -> 0
 
 \end{verbatim}
 
@@ -128,13 +127,13 @@ match x with
 let v0 = x.(0) in
   if v0 = 1
   then x.(1)
-  else fail
+  else 0
 \end{verbatim}
 \end{columns} % If there were other cases, these would be checked instead at this point
 \text{} \\
 \text{} \\
 
-\item Output linearised to simplify compilation % A-normal form
+\item Linearises code to simplify later stages % A-normal form
 
 \begin{columns}[c] 
 \column{.4\textwidth} 
@@ -167,33 +166,72 @@ let v0 = g(x) in
 % Also outperforms both Grain and Js_of_ocaml in terms of execution speed. In each benchmark, Grain was about an order of magnitude slower than the output from Js_of_ocaml. This is not so surprising since my compiler does not implement garbage collection, whereas both the Grain and Js_of_ocaml programs will be garbage collected
 %\end{frame}
 
-\begin{frame}\frametitle{Data Collected}
+\begin{frame}\frametitle{Evaluation}
 \vspace{-1cm}
 \begin{figure}
-    \hspace*{-0.5in}
-    \includegraphics[scale=0.6]{filesize}
+    \hspace*{-0.3in}
+    \includegraphics[scale=0.6]{filesize2}
 \end{figure}
+\vspace{-0.5cm}
 \begin{itemize}
-\item Measured execution time, heap usage and output file size.
-\item Compiled code runs faster than both Grain and Js\_of\_ocaml output, likely due to there being no garbage collection.
+\item Execution time
+\item Filesize
+\item Heap usage
+%\item Measured execution time, heap usage and output file size.
+%\item Compiled code runs faster than both Grain and Js\_of\_ocaml output, likely due to there being no garbage collection.
 \end{itemize}
 \end{frame}
 
-\begin{frame}\frametitle{Optimisations} 
+\begin{frame}\frametitle{Extensions} 
+Language Extensions
 \begin{itemize}
+\item Floating point and reference operations
+\end{itemize}
+\text{} \\
+Optimisations
+\begin{itemize}
+\item Inlining % With some heuristics based on other compilers, allows further optimisations to be detected
 \item Tail Call Optimisation % For both functions recursive on their own and mutually recursive
 \item Common Subexpression Elimination % Avoid recalculating immutable values that already exist
 \item Dead Assignment Elimination % Allows compilation of pattern matching to introduce unnecessary assignments that are later removed
 \end{itemize}
 \text{}\\
-
-Next task is to research garbage collection for WebAssembly.
+Garbage Collection
+\begin{itemize}
+\item Initially by reference counting and later changed to tracing
+\end{itemize}
 \end{frame}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\iffalse 
 
+Slide 1: My project was to write a compiler from OCaml to WebAssembly and evaluate its performance compared to alternative compilers to WebAssembly.
+Here we have an overview of the structure of my compiler. I took the parser and type-checker from the front end of the OCaml compiler, then compiled the output of this into my own intermediate representation. % Describe IR in more detail on next slide
+From this I generate WebAssembly code, and I have also written a runtime system primarily in WebAssembly, but with garbage collection implemented in JavaScript.
+Rather than supporting the full OCaml language, I decided to leave out the object and module layer, as well as many of the standard library operations except for integer and some floating point operations. This has given me more time to focus on optimisations.
+After writing the compiler, I wrote a set of benchmark programs in OCaml, Grain and C and compiled each of these to WebAssembly to compare the performance of my compiler. 
+% Mention in slide 3: I also compiled the OCaml programs to JavaScript using the Js\_of\_ocaml tool as another comparison for executing code in a browser.
 
+Slide 2: My intermediate representation is based on the Lambda representation the OCaml compiler uses in later stages and the intermediate representation used by Grain. As with the Lambda language, it compiles OCaml's patterns into simpler code which matches those patterns, however many of the primitive operations in Lambda were not necessary due to the subset of OCaml being supported. Another difference to the Lambda representation is that code is linearised, so that each operation is just on constants or other variables, with the exception of control flow structures such as loops or function definitions. This simplifies analysis and later compilation, similar to using Continuation Passing Style, but is generally easier to translate to than the CPS terms.
+
+Slide 3: I compared my compiler against Clang and LLVM for C code and also the Grain compiler,  two ways of compiling to WebAssembly. Additionally, I compiled each OCaml benchmark with Js_of_ocaml to get a JavaScript file that could also be run in the browser.
+I have compared each of these methods in terms of the execution time, file size and heap usage of the resulting programs. Here we have the output filesizes for 5 different benchmarks. As you can see, the output of my compiler is consistently smaller than that of Grain and significantly smaller than converting the OCaml program to JavaScript. 
+It is also smaller than the same program implemented in C and compiled with Clang, in the cases where the standard library is needed for memory allocation.
+% Worth mentioning next bit or not?
+Currently, there appears to be very limited support for importing the C library functions at runtime using WebAssembly's module interface, hence the disparity in filesize for the C examples.
+
+Slide 4: Lastly, I have had time to implement several extensions to my project. First, I extended the operations and types supported by my compiler to allow floats and references. This was relatively straightforward but allows me to test a much wider range of benchmark programs focused on floating point calculations or imperative style code.
+I have also added several optimisations, primarily at the intermediate representation. This includes the inlining of function calls and optimising both recursive and mutually recursive tail calls to help reduce the stack size used by function calls.
+Within each procedure, there are optimisations to detect and avoid recomputing the same expression in multiple places, as well as removing variables which are never used. Inlining one function body inside another increases the number of opportunities found for doing this.
+Finally, over the last few weeks I have implemented a garbage collector. In order to efficiently collect cyclic data structures, this uses a simple mark and sweep algorithm. In WebAssembly, stack frames and local variables aren't accessible through the linear memory, so this requires designating a region of memory to keep a shadow stack of all local variables in use, which is scanned to identify all reachable objects during garbage collection.
+
+Over the next few weeks I intend to optimise parts of my Garbage Collector and collect additional data on the impact my optimisations have before I start writing the dissertation.
+
+\fi
 %----------------------------------------------------------------------------------------
+
+
+
 
 \end{document} 
