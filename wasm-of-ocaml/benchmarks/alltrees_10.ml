@@ -23,4 +23,4 @@ let rec all_trees = function
     | n -> (trees_i n)@(getall (n-1)) in
   getall (n-1)
 
-let _ = all_trees 10 (* 16796 trees *)
+let a = all_trees 10 (* 16796 trees *)
