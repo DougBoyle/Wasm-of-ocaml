@@ -8,12 +8,11 @@ let fileList = __dirname + "/results.txt";
 
 // process.argv is a list of the command line arguments
 
-const memory = new WebAssembly.Memory({ initial: 2 });
-
 //const check_mem = require("./checkmemory");
 
 if (process.argv.length > 2){
 (async () => {
+  const memory = new WebAssembly.Memory({ initial: 2 }); // TODO: Change back to 2
   var memoryManager = new ManagedMemory(memory);
   var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
 	stackOverflow : memoryManager.stackLimitExceeded,
@@ -59,7 +58,7 @@ if (process.argv.length > 2){
 	  try {
 		  await exec(__dirname + "/../main.byte -d " + __dirname + "/out " + __dirname + "/" + filename + ".ml");
 		  var output = line.slice(1);
-
+		  const memory = new WebAssembly.Memory({ initial: 2 });
 		  var memoryManager = new ManagedMemory(memory);
 		  var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
 			stackOverflow : memoryManager.stackLimitExceeded,
