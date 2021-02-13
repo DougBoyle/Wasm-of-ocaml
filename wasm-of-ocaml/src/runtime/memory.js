@@ -40,6 +40,8 @@ When moving to out of order list, pointers will no longer just point over the al
   between blocks, but WON'T NEED TO MODIFY DOUBLE SUCCESSORS etc. still.
 */
 
+// Moving to unordered list means no longer need to keep list circular (in fact is extra effort to do that)
+
 
 const STACK_LIMIT = 16384 ;
 
@@ -54,9 +56,6 @@ class ManagedMemory {
     // 0 indicates empty list, since bottom of memory is reserved for stack
     this.markedSet = 0;
 
-    // points to a free block at all times, unless the free list is empty
-    this.freep = STACK_LIMIT;
-
     this.memory_used = 0;
     // size of block we are looking for when we decide to run GC
     // TODO: Come up with better conditions for when to run GC
@@ -70,12 +69,12 @@ class ManagedMemory {
     // TODO: Update initialisation to set block correctly.
     //   When changed to O(1) malloc/free, will no longer need to initialise as circular list
     let mem_top = this.uview.byteLength >> 2;
-    // set prev/next/size fields to construct a single block (TODO: Could just call the corresponding functions?)
-    //this.uview[STACK_LIMIT] = STACK_LIMIT; // only element of cyclic list points to itself
-    //this.uview[STACK_LIMIT + 1] =  (this.uview.byteLength >> 2) - STACK_LIMIT;
+    // points to a free block at all times, unless the free list is empty
+    this.freep = STACK_LIMIT;
     this.setSize(STACK_LIMIT, mem_top - STACK_LIMIT);
-    this.setNextTail(mem_top, STACK_LIMIT, false);
-    this.setPrev(STACK_LIMIT, mem_top);
+    // next and prev will both initially be 0 when fresh memory allocated (no predecessor/successor)
+  //  this.setNextTail(mem_top, STACK_LIMIT, false);
+  //  this.setPrev(STACK_LIMIT, mem_top);
 
 
     // TODO: Just for debugging
@@ -95,6 +94,40 @@ class ManagedMemory {
   log(v){
     console.log("log:", v);
     return v;
+  }
+
+  checkFreeList(){
+    let failed = false;
+    let head = this.freep;
+    if (this.getPrev(head) !== 0){
+      console.log("Freep has circular link");
+      failed = true;
+    }
+    let lst = [];
+    while (head !== 0){
+
+      //   process.stdout.write(head + ", ");
+      if (lst.includes(head)){
+        console.log("CIRCULAR:", head);
+        failed = true;
+        break;
+      }
+      lst.push(head);
+
+      let size = this.getSize(head);
+      let next = this.getNextTail(head + size);
+      if (next !== 0 && this.getPrev(next) !== head + size){
+        console.log("Bad reverse link: head", head, "expected", head + size, "got", this.getPrev(next));
+        failed = true;
+      }
+
+      head = next;
+    }
+    console.log(lst);
+    if (failed){
+      console.log(lst);
+      throw "Bad free list";
+    }
   }
 
 
@@ -154,6 +187,16 @@ class ManagedMemory {
     this.uview[ptr + 1] &= (~1);
   }
 
+  // joins trailer of one block to header of other (or reverse)
+  // checks that 'to' field isn't 0 (end of list) before modifying it
+  // both assumed to be free blocks
+  linkAfter(fromTrailer, toHeader){
+    this.uview[fromTrailer - 1] = toHeader;
+    if (toHeader !== 0){
+      this.uview[toHeader] = fromTrailer;
+    }
+  }
+
   // TODO: Also needs to set Prev pointer to work correctly now?
   growHeap(units) {
     // convert to number of pages to allocate, rounded up
@@ -171,18 +214,22 @@ class ManagedMemory {
     this.free(ptr);
   }
 
+  // TODO: Needs rewriting once list no longer circular!!
+  //   Now require that freep always points to start of free list, else lose track of some free blocks
+  //   Will remove some inefficiency of always scanning from freep when binning added
+  //   Must update freep if that is the block that gets removed
+
+  // TODO: Inefficient completely repeating after heap grows, should be able to get ptr directly by GC/growHeap/Free
   malloc(bytes){
     this.mallocsDone++;
 
-    //      console.log("ALLC malloc");
     // round up to align block
     // Now also allocating a trailer
-    // TODO: Change back to be just + 2
     const units = (((bytes + 8 - 1) >> 3) + 2)*2;
     this.memory_used += units * 4;
-    // last block allocated exactly used up the last cell of the free list.
-    // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
-    if (this.freep == null){
+
+    // last block allocated exactly used up the last cell of the free list
+    if (this.freep == 0){
       this.requiredSize = units;
       this.doGC();
       if (this.requiredSize > 0) { // still not enough memory
@@ -190,88 +237,91 @@ class ManagedMemory {
       }
     }
 
-    // p is the block we are considering allocating in,
-    // prev is its predecessor in the free list
-    // TODO: As next pointer now at end of list, must also track size on each iteration too
-    let prev = this.freep;
-    let prevSize = this.getSize(prev);
-    // TODO: Put initalisation back into for loop?
-    let p = this.getNextTail(prev + prevSize);
-    let pSize = this.getSize(p);
-    for ( ; ; prev = p, prevSize = pSize, p = this.getNextTail(p + pSize)){
-      // first thing done is to update sizes
+    // Case where very first block can be allocated is handled specially
+    // TODO: Will need to generalise this when multiple 'freep' pointers for different size blocks exist
+    let current = this.freep;
+    let currentSize = this.getSize(current);
 
-      pSize = this.getSize(p);
-
-      if (pSize >= units) {
-        if (pSize <= units + 4) {
-          // close enough fit that only space for header/trailer would be left, alloc whole  block
-          // TODO: Later logic must account for possibility that size != units
-          if (this.getNextTail(p + pSize) === p){
-            prev = null; // was only element of list, will now set freep = null on line 127
-          } else {
-            // removing from doubly linked list
-            let successor = this.getNextTail(p + pSize);
-            this.setNextTail(prev + prevSize, successor, false);
-            this.setPrev(successor, prev + prevSize);
-          }
-        } else {
-          // TODO: Now I have trailers, may be easier just to allocate at head?
-
-          let successor = this.getNextTail(p + pSize);
-          // allocate tail end of free block, update various fields (have to move trailer)
-          let new_size = pSize - units;
-          this.setSize(p, new_size);
-          // TODO: Generally these should always be seen in pairs,
-          //   suggests I should just have a single function to link two points?
-          this.setNextTail(p + new_size, successor, false); // creates new trailer
-          this.setPrev(successor, p + new_size);
-          // new block (next/prev pointers are useless on freshly allocated block)
-          p += new_size;
-          this.setSize(p, units);
-          pSize = units; // use 'pSize' below as the amount allocated
+    if (currentSize >= units){
+      let successor = this.getNextTail(current + currentSize);
+      if (currentSize <= units + 4){
+        // allocate the whole block
+        // successor is the new top of list
+        if (successor !== 0){
+          this.setPrev(successor, 0); // remove ptr to now allocated block
         }
-        this.freep = prev;
+        this.freep = successor;
+      } else {
+        // allocate in tail end of this block (TODO: Head would be more efficient?)
+        let newSize = currentSize - units;
+        this.setSize(current, newSize);
+        this.linkAfter(current + newSize, successor); // update trailer location
 
-        // setting next/prev ptrs on allocated block isn't useful here, but do need to set allocated bit
-        this.setAllocated(p, pSize);
-        // return a pointer in terms of bytes to the data, not the header
-        return (p + 2)<<2;
+        // block to return
+        current += newSize;
+        currentSize = units; // used below
+        this.setSize(current, units);
       }
-      if (p === this.freep){
-        // have searched the whole list
-        // do GC and, if that doesn't free up a suitable block, grow memory
-        this.requiredSize = units;
-        this.doGC();
-        if (this.requiredSize > 0) { // still not enough memory
-          this.growHeap(units);
-        }
-        // freep may have changed, so update it and search list again
-        // TODO: Also have to update the size here now p may have changed
-        p = this.freep;
-        pSize = this.getSize(this.freep);
-      }
-
-
+      this.setAllocated(current, currentSize);
+      return (current + 2) << 2;
     }
+
+    let prev = current;
+    let prevSize = currentSize;
+
+    current = this.getNextTail(prev + prevSize);
+    while (current !== 0){ // still some cells to explore
+
+
+      currentSize = this.getSize(current);
+      let successor = this.getNextTail(current + currentSize);
+      if (currentSize >= units){
+        if (currentSize <= units + 4){
+          // allocate whole block, need to cut out of free list
+          this.linkAfter(prev + prevSize, successor);
+        } else {
+          // allocate in tail end of block, must update trailer
+          let newSize = currentSize - units;
+          this.setSize(current, newSize);
+          this.linkAfter(current + newSize, successor); // update trailer location
+
+          // block to return
+          current += newSize;
+          currentSize = units; // used below
+          this.setSize(current, units);
+
+        }
+        this.setAllocated(current, currentSize);
+        return (current + 2) << 2;
+      }
+      prev = current; // TODO: MOVE INTO A LOOP
+      prevSize = currentSize;
+      current = successor;
+    }
+
+    // all cells searched, call GC then either grow memory or retry search
+    this.requiredSize = units;
+    this.doGC();
+    if (this.requiredSize > 0) { // still not enough memory
+      this.growHeap(units);
+    }
+    // now that either a sufficient block has been freed up or memory increased to make space, retry
+    this.mallocsDone--;
+    return this.malloc(bytes);
   }
 
-  // takes a block pointer
-  // TODO: Rewrite to no longer scan list (Once changed to out-of-order list just using adjacent pointers)
-  // Needs to clear 'allocated' bit in 'prev' ptr when freed
   free(blockPtr){
-    // Just for debugging
     this.freesDone++;
     let sizeFreed = this.getSize(blockPtr);
 
     // TODO: Remove when not debugging
     this.memory_used -= sizeFreed*4;
 
-    // special case when freep is null. Indicates that the block being freed is only free block in memory
-    if (this.freep == null){
-      // single element circular list
-      this.setNextTail(blockPtr + sizeFreed, blockPtr, false);
-      this.setPrev(blockPtr, blockPtr + sizeFreed); // TODO: Remove and make non-circular
+    // special case when freep is 0. Indicates that the block being freed is only free block in memory
+    if (this.freep === 0){
+      // single element, both next and prev are 0
+      this.setNextTail(blockPtr + sizeFreed, 0, false);
+      this.setPrev(blockPtr, 0);
       this.freep = blockPtr;
       if (sizeFreed >= this.requiredSize){
         this.requiredSize = 0;
@@ -279,49 +329,55 @@ class ManagedMemory {
       return;
     }
 
-    let p, pSize;
-    // find the free block closest behind the block being freed
-    for (p = this.freep, pSize = this.getSize(this.freep); // TODO: Can rewrite to avoid finding Next many times?
-         blockPtr < p || blockPtr > this.getNextTail(p + pSize); p = this.getNextTail(p + pSize)){
+    // see if possible to merge with block above (must check for hitting top of heap)
+    // if yes, will temporarily disappear from free list until added back in below
+    if (blockPtr + sizeFreed < (this.uview.byteLength >> 2) && !this.isAllocated(blockPtr + sizeFreed)){
+      // can merge adjacent block above. Take it out of free list
+      let succ = blockPtr + sizeFreed;
 
-      pSize = this.getSize(p) // TODO: Slightly inefficient calculating twice at start of loop
-      if (p >= this.getNextTail(p + pSize) && (blockPtr > p || blockPtr < this.getNextTail(p + pSize))){
-        // block to free is at one end of list
-        break;
+      let succSize = this.getSize(succ);
+
+      // blocks either side in free list of block being removed
+      let successor = this.getNextTail(succ + succSize);
+      let predeccessor = this.getPrev(succ); // if 0, removing front of list so need to update freep
+
+      if (predeccessor === 0){
+        this.freep = successor;
+        if (successor != 0) { // still something left in list
+          this.setPrev(successor, 0);
+        }
+      } else {
+        this.linkAfter(predeccessor, successor);
       }
-    }
 
-    // TODO: Cleanup and put in loop somewhere
-    pSize = this.getSize(p);
-
-    // Merging upper/lower blocks is now trivial due to arrangement of pointers.
-    // Effect of merging isn't visible outside successor/predecessor blocks.
-
-
-    // TODO: Yet another place Next is recalculated
-    let successor = this.getNextTail(p + pSize);
-    if (blockPtr + sizeFreed === successor){
-      // join upper block
-      sizeFreed += this.getSize(successor);
+      sizeFreed += succSize;
       this.setSize(blockPtr, sizeFreed);
-    } else {
-      // update trailer on block if not merged
-      this.setNextTail(blockPtr + sizeFreed, successor, false);
-      this.setPrev(successor, blockPtr + sizeFreed);
     }
 
-    if (p + pSize === blockPtr){
-      // join lower block
-      sizeFreed += pSize;
-      this.setSize(p, sizeFreed);
+    // see if possible to merge with block below (must check for hitting bottom of heap)
+    // this section ensures block just freed now becomes part of the free list
+    if (blockPtr > STACK_LIMIT && !this.isAllocatedTail(blockPtr)){
+
+      // can merge with adjacent block below
+      // blockPtr = start of original block OR tail of block below
+      let prevSize = this.getSizeTail(blockPtr);
+
+      let prev = blockPtr - prevSize;
+
+      // need to update successor of prev to point to new trailer position
+      let successor = this.getNextTail(blockPtr); // could be 0
+      this.linkAfter(blockPtr + sizeFreed, successor);
+
+      sizeFreed += prevSize;
+      this.setSize(prev, sizeFreed);
     } else {
-      // update header on block if not merged
-      this.setNextTail(p + pSize, blockPtr, false);
-      this.setPrev(blockPtr, p + pSize);
+      // can't merge into existing block below, so create a new element on the list
+      // setting next/prev pointers also marks block as unallocated
+      this.setPrev(blockPtr, 0); // front of list
+      this.linkAfter(blockPtr + sizeFreed, this.freep);
+      this.freep = blockPtr; // new head of list
     }
 
-    // in case freep was the upper block, so freep would otherwise point to the middle of a block
-    this.freep = p;
     if (sizeFreed >= this.requiredSize){
       this.requiredSize = 0;
     }
@@ -329,30 +385,18 @@ class ManagedMemory {
 
   // Will only be called at most once per block, since marked flag gets set.
   // pushes onto front of list, so marking phase does DFS
-  // TODO: Pointer currently to flag block. Will need to change to point to size when header squashed
   pushMarkedSet(rawPtr){
     // TODO: Use SetNext and SetMark instead
     // both allocated and marked
     this.setMarked(rawPtr);
-   // this.uview[rawPtr] = 3;
-    // update Next pointer to point to old head of marked list
-    // TODO: Unfortunate inefficiency that we must now get the size to do marking
-  //  this.setNextTail(rawPtr + this.getSize(rawPtr), this.markedSet, true);
-
     // TODO: Switch 'allocated' option to be on setPrev rather than setNext
-    this.setPrev(rawPtr, this.markedSet);
-    this.uview[rawPtr] |= 1;
-
- //   this.uview[rawPtr - 2] = this.markedSet;
+    // Once allocated, no use for a doubly-linked list so just use header to build single-linked list
+    this.setPrev(rawPtr, this.markedSet | 1); // keep marked as allocated
     this.markedSet = rawPtr;
   }
 
   popMarkedSet(){
     let ptr = this.markedSet;
-    // follow pointer to next element
- //   this.markedSet = this.uview[ptr - 2];
-    // TODO: Unfortunate inefficiency that we must now get the size to do marking
-  //  this.markedSet = this.getNextTail(ptr + this.getSize(ptr));
     this.markedSet = this.getPrev(ptr);
     return ptr;
   }
@@ -362,7 +406,7 @@ class ManagedMemory {
       let rawPtr = (ptr>>2) - 2; // headersize/4 = 2
       if (!this.isMarked(rawPtr)){ // not yet marked
         this.pushMarkedSet(rawPtr);
-      //  this.marked++;
+        this.marked++;
       }
     }
   }
@@ -389,11 +433,11 @@ class ManagedMemory {
   // Uses fact that every block allocated has 0b10 in its header, and blocks are always
   // allocated in aligned chunks so can always read the header from the correct position
   sweep(){
-    // TODO: Would be better to chain together allocated objects in a list, then free that list
+    // TODO: Would be better to chain together allocated objects in a list, then free from just that list?
+    //   Could just use the header field. Would add a slight overhead to malloc, but make sweep faster
     //   if mark process doesn't move them to a new list
     const heapLimit = this.memory.buffer.byteLength >> 2;
     let blockPtr = STACK_LIMIT; // starting point of scanning heap
-    // TODO: Merge layers, using knowledge of lower levels header structure here, so no abstraction achieved
     while (blockPtr < heapLimit){
       let size = this.getSize(blockPtr);
       if (this.isAllocated(blockPtr)){
@@ -408,11 +452,10 @@ class ManagedMemory {
   }
 
   doGC(){
-  //  console.log("Running GC");
     this.gcsDone++;
-  //  this.marked = 0;
-    this.mark(); // well isn't this simple, could probably just write them as a single function instead
-   // console.log("live set:", this.marked);
+ //   this.marked = 0;
+    this.mark();
+ //   console.log("live set:", this.marked);
     this.sweep();
  //   console.log("GC ran. freed:", this.freesDone, "total mallocs", this.mallocsDone);
     this.freesDone = 0;

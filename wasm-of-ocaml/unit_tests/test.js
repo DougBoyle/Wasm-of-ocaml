@@ -12,7 +12,7 @@ let fileList = __dirname + "/results.txt";
 
 if (process.argv.length > 2){
 (async () => {
-  const memory = new WebAssembly.Memory({ initial: 2 }); // TODO: Change back to 2
+  const memory = new WebAssembly.Memory({ initial: 2 });
   var memoryManager = new ManagedMemory(memory);
   var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
 	stackOverflow : memoryManager.stackLimitExceeded,
