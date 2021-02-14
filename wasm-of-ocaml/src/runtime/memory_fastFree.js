@@ -76,15 +76,8 @@ class ManagedMemory {
     //   When changed to O(1) malloc/free, will no longer need to initialise as circular list
     let mem_top = this.uview.byteLength >> 2;
 
-    // stores a list of pointers to free lists of certain sizes.
-    // initially, just one pointer
-    // malloc will check EACH LIST IN TURN starting from one of appropriate size, growMemory if none found
-    // TODO: Find a good GC benchmark that results in heavily fragmented memory/different sizes allocated?
-    this.freeLists = [STACK_LIMIT];
-    this.numFreeLists = 1;
-
     // points to a free block at all times, unless the free list is empty
-  //  this.freep = STACK_LIMIT;
+    this.freep = STACK_LIMIT;
     this.setSize(STACK_LIMIT, mem_top - STACK_LIMIT);
     // next and prev will both initially be 0 when fresh memory allocated (no predecessor/successor)
   //  this.setNextTail(mem_top, STACK_LIMIT, false);
@@ -193,50 +186,73 @@ class ManagedMemory {
     this.free(ptr);
   }
 
+  // TODO: Needs rewriting once list no longer circular!!
+  //   Now require that freep always points to start of free list, else lose track of some free blocks
+  //   Will remove some inefficiency of always scanning from freep when binning added
+  //   Must update freep if that is the block that gets removed
 
-  // TODO: Inefficient completely repeating after heap grows, should be able to tell it to try last block first?
-  //  can probably also optimise when GC finds a potential block to allocate, got next/prev pointers so can allocate it
+  // TODO: Inefficient completely repeating after heap grows, should be able to get ptr directly by GC/growHeap/Free
   malloc(bytes){
     this.mallocsDone++;
 
     // round up to align block
     // Now also allocating a trailer
-    const units = (((bytes + 8 - 1) >> 3) + 2) * 2;
+    const units = (((bytes + 8 - 1) >> 3) + 2)*2;
     this.memory_used += units * 4;
 
-    // try each free list in turn TODO: Start at correct size
-    for (let freepIdx = 0; freepIdx < this.numFreeLists; freepIdx++) {
-      let freep = this.freeLists[freepIdx];
-
-      // list empty
-      if (freep == 0) {
-        continue;
-        /* Now need to wait until all lists tried, can't grow pre-emptively
-
-        this.requiredSize = units;
-        this.doGC();
-        if (this.requiredSize > 0) { // still not enough memory
-          this.growHeap(units);
-        }*/
+    // last block allocated exactly used up the last cell of the free list
+    if (this.freep == 0){
+      this.requiredSize = units;
+      this.doGC();
+      if (this.requiredSize > 0) { // still not enough memory
+        this.growHeap(units);
       }
+    }
 
-      // Case where very first block can be allocated is handled specially
-      // TODO: Can move within loop? Or is that less efficient?
-      let current = freep;
-      let currentSize = this.getSize(current);
+    // Case where very first block can be allocated is handled specially
+    // TODO: Will need to generalise this when multiple 'freep' pointers for different size blocks exist
+    let current = this.freep;
+    let currentSize = this.getSize(current);
 
-      if (currentSize >= units) {
-        let successor = this.getNextTail(current + currentSize);
-        if (currentSize <= units + 4) {
-          // allocate the whole block
-          // successor is the new top of list
-          if (successor !== 0) {
-            this.setPrev(successor, 0); // remove ptr to now allocated block
-          }
-          this.freeLists[freepIdx] = successor;
+    if (currentSize >= units){
+      let successor = this.getNextTail(current + currentSize);
+      if (currentSize <= units + 4){
+        // allocate the whole block
+        // successor is the new top of list
+        if (successor !== 0){
+          this.setPrev(successor, 0); // remove ptr to now allocated block
+        }
+        this.freep = successor;
+      } else {
+        // allocate in tail end of this block (TODO: Head would be more efficient?)
+        let newSize = currentSize - units;
+        this.setSize(current, newSize);
+        this.linkAfter(current + newSize, successor); // update trailer location
+
+        // block to return
+        current += newSize;
+        currentSize = units; // used below
+        this.setSize(current, units);
+      }
+      this.setAllocated(current, currentSize);
+      return (current + 2) << 2;
+    }
+
+    let prev = current;
+    let prevSize = currentSize;
+
+    current = this.getNextTail(prev + prevSize);
+    while (current !== 0){ // still some cells to explore
+
+
+      currentSize = this.getSize(current);
+      let successor = this.getNextTail(current + currentSize);
+      if (currentSize >= units){
+        if (currentSize <= units + 4){
+          // allocate whole block, need to cut out of free list
+          this.linkAfter(prev + prevSize, successor);
         } else {
-          // allocate in tail end of this block (TODO: Head would be more efficient?)
-          // TODO: May now need to move block to a different list
+          // allocate in tail end of block, must update trailer
           let newSize = currentSize - units;
           this.setSize(current, newSize);
           this.linkAfter(current + newSize, successor); // update trailer location
@@ -245,46 +261,15 @@ class ManagedMemory {
           current += newSize;
           currentSize = units; // used below
           this.setSize(current, units);
+
         }
         this.setAllocated(current, currentSize);
         return (current + 2) << 2;
       }
-
-      let prev = current;
-      let prevSize = currentSize;
-
-      current = this.getNextTail(prev + prevSize);
-      while (current !== 0) { // still some cells to explore
-
-
-        currentSize = this.getSize(current);
-        let successor = this.getNextTail(current + currentSize);
-        if (currentSize >= units) {
-          if (currentSize <= units + 4) {
-            // allocate whole block, need to cut out of free list
-            this.linkAfter(prev + prevSize, successor);
-          } else {
-            // allocate in tail end of block, must update trailer
-            // TODO: May now need to move to a different list
-            let newSize = currentSize - units;
-            this.setSize(current, newSize);
-            this.linkAfter(current + newSize, successor); // update trailer location
-
-            // block to return
-            current += newSize;
-            currentSize = units; // used below
-            this.setSize(current, units);
-
-          }
-          this.setAllocated(current, currentSize);
-          return (current + 2) << 2;
-        }
-        prev = current; // TODO: MOVE INTO A LOOP
-        prevSize = currentSize;
-        current = successor;
-      }
+      prev = current; // TODO: MOVE INTO A LOOP
+      prevSize = currentSize;
+      current = successor;
     }
-
 
     // all cells searched, call GC then either grow memory or retry search
     this.requiredSize = units;
@@ -297,29 +282,12 @@ class ManagedMemory {
     return this.malloc(bytes);
   }
 
-  // TODO: Check the list of the correct size and update ptr if it is pointing to block being freed
-  //   could use this at start of malloc?
-  // TODO: Can also be done by checking if prev = 0 on blockPtr?
-  // updating the prev pointer on the successor is left to the caller
-  // update the pointers to the heads of each size free list when a block is removed
-  // TODO: Actually worth having or not?
-  removeFromList(size, successor){
-    let index = 0; // TODO: Determine based on size
- //   if (this.freeLists[index] === blockPtr){
-      this.freeLists[index] = successor;
- //   }
-  }
-
-  // Since there are multiple lists now, must free/merge blocks before working out list to add to based on size
   free(blockPtr){
     this.freesDone++;
     let sizeFreed = this.getSize(blockPtr);
 
     // TODO: Remove when not debugging
     this.memory_used -= sizeFreed*4;
-
-    /*
-      Not possible now there are multiple lists, need to cut out/merge blocks first, then find where to store
 
     // special case when freep is 0. Indicates that the block being freed is only free block in memory
     if (this.freep === 0){
@@ -333,8 +301,6 @@ class ManagedMemory {
       return;
     }
 
-     */
-
     // see if possible to merge with block above (must check for hitting top of heap)
     // if yes, will temporarily disappear from free list until added back in below
     if (blockPtr + sizeFreed < (this.uview.byteLength >> 2) && !this.isAllocated(blockPtr + sizeFreed)){
@@ -347,12 +313,8 @@ class ManagedMemory {
       let successor = this.getNextTail(succ + succSize);
       let predeccessor = this.getPrev(succ); // if 0, removing front of list so need to update freep
 
-
-
-      if (predeccessor === 0){ // removing from head of list, update pointer to free list
-        this.removeFromList(succSize, successor);
-
-       // this.freep = successor;
+      if (predeccessor === 0){
+        this.freep = successor;
         if (successor != 0) { // still something left in list
           this.setPrev(successor, 0);
         }
@@ -380,19 +342,12 @@ class ManagedMemory {
 
       sizeFreed += prevSize;
       this.setSize(prev, sizeFreed);
-
-      // TODO: Move to different free list if large enough
-
     } else {
       // can't merge into existing block below, so create a new element on the list
       // setting next/prev pointers also marks block as unallocated
-
-      // TODO: Determine which list to add onto
-      let freepIdx = 0;
-
       this.setPrev(blockPtr, 0); // front of list
-      this.linkAfter(blockPtr + sizeFreed, this.freeLists[freepIdx]);
-      this.freeLists[freepIdx] = blockPtr; // new head of list
+      this.linkAfter(blockPtr + sizeFreed, this.freep);
+      this.freep = blockPtr; // new head of list
     }
 
     if (sizeFreed >= this.requiredSize){
