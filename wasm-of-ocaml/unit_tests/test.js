@@ -41,7 +41,6 @@ if (process.argv.length > 2){
 //	  console.log(memoryManager.uview.slice(instance.exports.x.value >> 2));
 //	  console.log(memoryManager.uview.byteLength);
 //	  console.log(instance.exports.x.value);
-	  console.log(memoryManager.gcsDone, memoryManager.mallocsDone);
   } catch (err) {
     console.log(err);
     console.log(err.message);
