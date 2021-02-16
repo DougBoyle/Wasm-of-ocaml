@@ -99,6 +99,9 @@ let main () =
   if !print_wat then Printf.fprintf stdout "%s\n" (Wasm.Sexpr.to_string 80 (Wasm.Arrange.module_ wasm))
 
 let _ = Arg.parse [
+    (* Taken from driver/main_args.ml in OCaml compiler *)
+    ("-I", Arg.String (fun dir -> Clflags.include_dirs := (dir :: (!(Clflags.include_dirs)))),
+      "<dir>  Add <dir> to the list of include directories");
     ("-d", Arg.Set_string output, "Specify output directory");
     ("-ir", Arg.Set print_ir, "Print Linast IR program produced");
     ("-bindstree", Arg.Set print_bindstree, "Print Bindstree produced");
