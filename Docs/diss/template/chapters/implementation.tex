@@ -182,10 +182,62 @@ Above we were able to include the body of the function in the new function. For 
 
 % Describe graphs
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Garbage Collection}
+One of the last extensions I made to my project was to implement a garbage collector as part of the runtime system. Due to the relative complexity compared to the other runtime functions and going through several iterations of its implementation, this was written in JavaScript and imported into the WebAssembly runtime program however the final version could have been mapped down to WebAssembly too.
+
+% TODO: Talk about Wasm proposal for reference types/garbage collection?
+
+% TODO: Move to preparation chapter!
+\subsection{WebAssembly Stack Structure}
+Function activation records are part of WebAssembly's implicit stack, which distinguishes stack entries as values, labels of control flow blocks, and activation records.% https://webassembly.github.io/spec/core/exec/runtime.html 
+While most operations can only interact with the top of the stack and WebAssembly's type checking prevents a function from being able to access values on the stack below the last activation record or label, function arguments and local variables are accessed with the \verb|LocalGet|, \verb|LocalSet| and \verb|LocalTee| (equivalent to a set followed by a get) instructions. 
+
+I chose to implement a mark and sweep algorithm since reference counting alone is insufficient to collect unused cyclic structures. Although these features are very convenient for producing WebAssembly code, they pose an issue for garbage collection as the garbage collector has no way to directly access the local variables of all function calls currently active, which along with the global variables determine the root set of reachable objects for a mark and seep algorithm. The solution to this is to implement a shadow stack in the linear memory, reserving a region at the start of memory to store copies of stack values as they are updated in functions. Besides a pointer to the top of the shadow stack, no other bookkeeping is needed since, besides the garbage collector, values are only every written there not read. The start function of a program therefore allocates space for the global variables, then each function just increases the stack pointer on entry and decreases it on exit. 
+
+Although only reference values need to be written to the shadow stack, determining this usually requires testing the last bit of a value (since only pointer values have to last bit set) so instead all local variable assignments are written to the stack and this check is left for when garbage collection runs. These memory stores therefore introduces an overhead compared to compiling programs to not use garbage collection. % TODO: Optimise this for obvious cases as peephole optimisation e.g. i32.const n ; local.set i -- clearly don't need to update shadow stack
 
 
+% TODO: Massively cut down details, don't need such low level information, especially as it is described in K&R
+\subsection{Basic Structure}
+The implementation can be divided into two parts, the \verb|malloc| and \verb|free| functions used for explicit memory management as in a language such as C, and the mark and sweep algorithm with determines when it is safe to call \verb|free|.
+
+The initial implementation of \verb|malloc| and \verb|free| was taken from K\&R, although inefficiencies in this were resolved later. % https://kremlin.cc/k&r.pdf - The C Programming Language, Kernighan and Ritchie
+The runtime maintains a free list where each cell is an unallocated block of memory, with its size and a pointer to the next block in an 8 byte header. All memory allocations are kept aligned to the header size so not all bits of the size and pointer fields are required, leaving space for an allocated and marked flag. The list is circular and initially contains just one large block for the whole of memory. \\
+When a block is allocated, the free list is scanned until the first large enough block is found then either that whole block is allocated if it is a perfect fit, else the block is shrunk and just the tail end of it is allocated. If no large enough block can be found, the runtime attempts to grow the WebAssembly memory and treats that as a new free block.
+
+When a block is freed, we again scan down the free list until the last unallocated block before the block being freed is found (if the block being freed is at the start of memory, this unallocated block will be the free block at the highest address). The block being freed is then inserted into the list and merged with the block on either side of it if those are also free. This helps to reduce fragmentation and ensures that the free list is always kept in memory order.\\
 
 
+% Idea about using a list for the allocated blocks and then 'copy collecting' to a separate list in mark phase and not even needing a marked bit, just freeing the old list at the end?? Would even work with binning but requires checking sizes
+The marking algorithm makes use of the pointer to the next free block in the header, which is still present on allocated blocks (since the size field is needed on allocated blocks) but otherwise unused as the block is no longer on the free list. Starting by marking all references from the shadow stack, it uses these pointers to maintain a stack of unexplored objects and does a depth first search of the reachable objects, setting the marked bit on all of them. \\
+The sweep algorithm then walks over all blocks in memory using the size field of each block. Whenever a block is marked it clears the flag, and if a block is allocated but not marked then it is freed.
+
+
+\subsection{Optimised malloc and free}
+After implementing and testing the previously described approach, there were two inefficiencies to address. For both allocating and freeing a block of memory, the runtime first walks down the free list until it finds a block of the right size for allocating or the adjacent free block for freeing. With some additional information attached to each block, both of these traversals can be avoided to get \verb|malloc| and \verb|free| to run in constant time. 
+
+Rather than just a header, an extra 8 bytes is allocated as a trailer for each block and the free list is changed to be a doubly linked list. The trailer contains the size and the pointer to the next block is moved to the trailer, with the header now instead holding a pointer back to the previous trailer. This means that, when the free list is in memory order, the forwards and backwards pointers just skip over regions of allocated memory. The size is also present in the trailers of allocated blocks, although the pointers in allocated blocks are still just used to keep a stack for marking, so the pointer in the trailer is meaningless. As in the original implementation, the last bit of the pointers in the header and trailer indicate if a block is allocated, and the last bit of the header size field is used to indicate a block is marked during garbage collection.
+
+  \begin{tabular}{c|c|c|c|c|c|} \cline{2-6}
+Allocated block: &   next header ptr  & size & $\dots$ & size & unused \\ \cline{2-6} \multicolumn{1}{c}{}  \\ \cline{2-6}
+Unallocated block: &  previous trailer ptr & size & $\dots$ & size & next header ptr \\ \cline{2-6}
+\end{tabular}
+
+% Justifying why all of these new fields/flags are needed
+Now, when a block is freed, from just the freed block's address we can determine its size and check the allocated flags of the blocks either side of it, which determines if either block should be merged with the one being freed. Also, since we now have a doubly linked list, each adjacent free block has a pointer to its successor and predecessor block so can be removed from the middle of the free list, still without needing to traverse the whole list. If neither block is merged, we just insert the newly freed block on the top of the free list and update the pointer kept to the free list. Because of this, the free list no longer keeps blocks in memory order.
+% TODO: Include diagrams of the various (non-edge) cases
+
+
+% Give reference for binning? And suggestion of sizes to use?
+The expensive part of \verb|malloc| is needing to scan down the free list until a large enough block is found. 
+This can be avoided by splitting the free list into several lists, each for a specific range of sizes, and then having an array of pointers to the start of each list. 
+% TODO: Be specific about sizes chosen and justification e.g. http://gee.cs.oswego.edu/dl/html/malloc.html
+Freed blocks are therefore put into a bin based on their size. The first several bins fit blocks of exact sizes, starting from the minimum possible block size. There are then a few bins which fit ranges that double in size with each bin, then one last bin for any larger sizes. 
+As my compiler supports very limited array operations, the size of blocks allocated by a program is primarily determined by the complexity of datatypes defined and the number of free variables in functions. In many cases, these are relatively small so the fixed size bins make up most of the allocations. \\
+With these bins, allocation scans from the earliest bin of large enough size until it finds a non-empty bin, and allocates the first large enough block in that list. In cases where the block found is significantly larger than required, an extra check is introduced that the remaining block has not shrunk to a size where it needs to move bin. \\
+The only change to the \verb|free| function for this optimisation is the determine which bin a block needs to be placed in based on its size after possibly merging with free blocks adjacent to it.
+% TODO: Include the 'list of lists' diagram!
 
 
 

@@ -1,4 +1,4 @@
-import Array from 'array'
+import Array from "array"
 
 let pi = 3.141592653589793
 let solar_mass = 4. * pi * pi

@@ -37,6 +37,7 @@ class ManagedMemory {
     this.freep = STACK_LIMIT;
 
     this.memory_used = 0;
+    this.maxMemory = 0;
     // size of block we are looking for when we decide to run GC
     // TODO: Come up with better conditions for when to run GC
     //   e.g. don't run again if stack pointer has barely moved or very few new objects allocated?
@@ -117,6 +118,7 @@ class ManagedMemory {
     // TODO: Change to just 2 word header with careful placement of flag bits
     const units = (((bytes + 8 - 1) >> 3) + 1)*2;
     this.memory_used += units * 4;
+    this.maxMemory = Math.max(this.maxMemory, this.memory_used);
     // last block allocated exactly used up the last cell of the free list.
     // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
     if (this.freep == null){

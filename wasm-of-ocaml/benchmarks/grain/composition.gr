@@ -1,4 +1,4 @@
-import List from 'list'
+import List from "list"
 let a = 214013
 let c = 2531011
 let m = 65536

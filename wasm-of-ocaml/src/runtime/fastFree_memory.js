@@ -63,6 +63,7 @@ class ManagedMemory {
     this.markedSet = 0;
 
     this.memory_used = 0;
+    this.maxMemory = 0;
     // size of block we are looking for when we decide to run GC
     // TODO: Come up with better conditions for when to run GC
     //   e.g. don't run again if stack pointer has barely moved or very few new objects allocated?
@@ -199,6 +200,7 @@ class ManagedMemory {
     // Now also allocating a trailer
     const units = (((bytes + 8 - 1) >> 3) + 2)*2;
     this.memory_used += units * 4;
+    this.maxMemory = Math.max( this.maxMemory, this.memory_used);
 
     // last block allocated exactly used up the last cell of the free list
     if (this.freep == 0){
@@ -279,6 +281,7 @@ class ManagedMemory {
     }
     // now that either a sufficient block has been freed up or memory increased to make space, retry
     this.mallocsDone--;
+    this.memory_used -= units * 4;
     return this.malloc(bytes);
   }
 

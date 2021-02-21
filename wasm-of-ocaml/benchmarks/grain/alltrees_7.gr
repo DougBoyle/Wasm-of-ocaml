@@ -1,4 +1,4 @@
-import List from 'list'
+import List from "list"
 enum Tree {Leaf, Node(Tree, Tree)}
 
 let rec all_trees = (n) => if (n == 0) {[Leaf]} else {
@@ -17,7 +17,6 @@ let rec all_trees = (n) => if (n == 0) {[Leaf]} else {
   getall(n - 1)
 }
 
-// Again, less than in C or OCaml case
 let a = all_trees(7)
 
 export a

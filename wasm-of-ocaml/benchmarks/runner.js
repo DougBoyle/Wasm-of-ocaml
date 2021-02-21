@@ -54,7 +54,8 @@ const filesize = fs.statSync(filename).size;
         instance.exports["OCAML$MAIN"]();
         const millis = performance.now() - t0;
         // TODO: Include a way to select between the memory management methods
-        const remaining_memory = memoryManager.memory_used;
+       // const remaining_memory = memoryManager.memory_used;
+        const remaining_memory = memoryManager.maxMemory;
       //  const remaining_memory = runtime.exports["alloc"](0);
         console.log(simple_name, millis, remaining_memory, filesize);
     }
