@@ -49,6 +49,15 @@ class ManagedMemory {
     // initialise free list to a single block starting after the shadow stack
     this.uview[STACK_LIMIT] = STACK_LIMIT; // only element of cyclic list points to itself
     this.uview[STACK_LIMIT + 1] =  (this.uview.byteLength >> 2) - STACK_LIMIT;
+
+    // TODO: Remove all these
+    this.numScans = 0;
+    this.exact = 0;
+    this.fromLarge = 0
+    // Shouldn't vary largely between old/new approach
+    this.freesDone = 0;
+    this.mallocsDone = 0;
+
   }
 
   _refreshViews() {
@@ -96,6 +105,7 @@ class ManagedMemory {
   }
 
   growHeap(units) {
+  //  console.log("Grow", this.mallocsDone, this.freesDone);
     // convert to number of pages to allocate, rounded up
     let pages = (units*4 + 65535)>>16;
     const ptr = this.memory.buffer.byteLength >> 2;
@@ -112,10 +122,10 @@ class ManagedMemory {
   }
 
   malloc(bytes){
+    this.mallocsDone++;
     //      console.log("ALLC malloc");
     // round up to align block
     // *2 to put in terms of 32-bit words rather than 64-bit headers
-    // TODO: Change to just 2 word header with careful placement of flag bits
     const units = (((bytes + 8 - 1) >> 3) + 1)*2;
     this.memory_used += units * 4;
     this.maxMemory = Math.max(this.maxMemory, this.memory_used);
@@ -134,9 +144,11 @@ class ManagedMemory {
     let prev = this.freep;
     let p;
     for (p = this.getNext(prev); ; prev = p, p = this.getNext(p)){
+      this.numScans++;
       let size = this.getSize(p);
       if (size >= units) {
         if (size === units) {
+          this.exact++;
           // exact fit, remove from list
           if (this.getNext(p) === p){
             prev = null; // was only element of list, will now set freep = null on line 127
@@ -144,6 +156,7 @@ class ManagedMemory {
             this.setNext(prev, this.getNext(p), false);
           }
         } else {
+          this.fromLarge++;
           // allocate tail end of free block
           this.setSize(p, this.getSize(p) - units);
           // new block
@@ -151,9 +164,6 @@ class ManagedMemory {
           this.setSize(p, units);
         }
         this.freep = prev;
-        // return a pointer in terms of bytes to the data, not the header
-        //        console.log("Allocated:", i32size * p, "size: ", this.getSize(p)*4);
-      //  return 4 * (p+2);
         break;
       }
       if (p === this.freep){
@@ -166,17 +176,24 @@ class ManagedMemory {
         }
         // freep may have changed, so update it and search list again
         p = this.freep;
+  //      console.log("Updated freep to:", p, "next is:", this.getNext(p));
       }
     }
 
+ //   console.log("malloc:", units, p, "freep is:", this.freep, "after is:", this.getNext(this.freep));
     this.setAllocated(p);
     return (p + 2)<<2;
   }
 
   // takes a byte pointer
   free(blockPtr){
+
+
+    this.freesDone++;
     //  console.log("ALLOC free");
     let sizeFreed = this.getSize(blockPtr);
+
+  //  console.log("free:", blockPtr, "size is", sizeFreed);
 
     // TODO: Remove when not debugging
     this.memory_used -= this.getSize(blockPtr)*4;
@@ -198,19 +215,25 @@ class ManagedMemory {
         // block to free is at one end of list
         break;
       }
+      this.numScans++;
     }
     // join upper block
     // works even if memory has been extended since block was allocated, now pointed to by p
     // can't happen after grow_memory since getNext(p) must be within old memory
     if (blockPtr + this.getSize(blockPtr) === this.getNext(p)){
+  //    console.log("merged above with:", this.getNext(p));
+      this.merged++;
       sizeFreed += this.getSize(this.getNext(p));
       this.setSize(blockPtr, this.getSize(blockPtr) + this.getSize(this.getNext(p)));
       this.setNext(blockPtr, this.getNext(this.getNext(p)), false);
     } else {
       this.setNext(blockPtr, this.getNext(p), false);
     }
+//    console.log("next set to:", this.getNext(blockPtr));
     // join lower block
     if (p + this.getSize(p) === blockPtr){
+ //     console.log("merged below with:", p);
+      this.merged++;
       sizeFreed += this.getSize(p);
       this.setSize(p, this.getSize(p) + this.getSize(blockPtr));
     } else {
@@ -240,7 +263,6 @@ class ManagedMemory {
   popMarkedSet(){
     let ptr = this.markedSet;
     // follow pointer to next element
- //   this.markedSet = this.uview[ptr - 2];
     this.markedSet = this.getNext(ptr);
     return ptr;
   }
@@ -249,6 +271,7 @@ class ManagedMemory {
     if (ptr & 1){
       let rawPtr = (ptr>>2) - 2; // headersize/4 = 2
       if (!this.isMarked(rawPtr)){ // not yet marked
+  //      console.log("marking:", rawPtr, "userptr", ptr);
         this.pushMarkedSet(rawPtr);
       //  this.marked++;
       }
@@ -259,6 +282,7 @@ class ManagedMemory {
   // can use sp to avoid searching further than necessary up stack
   mark(){
     let stack_top = this.runtime.exports.sp.value >> 2 // shift to get in terms of i32s
+  //  console.log("Stack top is:", stack_top);
     for (let i = 0; i < stack_top; i++){
       this.markReference(this.uview[i]);
     }
@@ -277,6 +301,7 @@ class ManagedMemory {
   // Uses fact that every block allocated has 0b10 in its header, and blocks are always
   // allocated in aligned chunks so can always read the header from the correct position
   sweep(){
+    this.merged = 0;
     // TODO: Would be better to chain together allocated objects in a list, then free that list
     //   if mark process doesn't move them to a new list
     const heapLimit = this.memory.buffer.byteLength >> 2;
@@ -286,31 +311,24 @@ class ManagedMemory {
       let size = this.getSize(blockPtr);
       if (this.isAllocated(blockPtr)){
         if (this.isMarked(blockPtr)){
-          this.setMarked(blockPtr, 0);
+          this.clearMarked(blockPtr);
         } else {
           this.free(blockPtr);
         }
       }
-   /*   let mark = this.getMark(blockPtr);
-      if (mark === 2){
-        // allocated but not marked
-        // Can also improve link between sweep, free and malloc, so we don't repeat searching after large enough block freed
-        this.setMark(blockPtr, 0); // mark as unallocated
-      //  this.marked++;
-        this.free(blockPtr);
-      } else if (mark === 3) {
-        this.setMark(blockPtr, 2); // unset marked bit, no effect if free
-      }*/
       blockPtr += size;
     }
+  //  console.log("Merged:", this.merged);
   }
 
   doGC(){
-  //  console.log("GC start");
+  //   console.log("GC start");
   //  this.marked = 0;
     this.mark(); // well isn't this simple, could probably just write them as a single function instead
    // console.log("live set:", this.marked);
+   // this.freesDone = 0;
     this.sweep();
+  //  console.log("Blocks freed:", this.freesDone);
   }
 
   stackLimitExceeded(){

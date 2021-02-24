@@ -24,7 +24,7 @@ let ir_analysis = [
   AnalyseBlocks.analyse;
   AnalysePurity.analyse;
 ]
-(* TODO: Enable inlining/tail calls again. Currently disabled to simplify identifying error *)
+
 let ir_passes = [
   ("const", OptConstants.optimise);
   ("fails", OptFails.optimise);
@@ -34,7 +34,7 @@ let ir_passes = [
   ("tuples", OptTuple.optimise);
   ("deadassign", OptDeadAssignments.optimise); (* Without dead assignment elimination, getting an error *)
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
-  ("tail calls", OptTailCalls.optimise);
+(*  ("tail calls", OptTailCalls.optimise);  TODO: Enable again *)
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
 ]
 

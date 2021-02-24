@@ -120,6 +120,10 @@ class ManagedMemory {
     this.freeSequence = []; // updated each time gc called
     this.mallocSequence = [];
     this.gcSequence = []; // record if each GC found a block to free or not
+
+    this.numScans = 0;
+    this.fromLarge = 0;
+    this.exact = 0;
   }
 
   _refreshViews() {
@@ -276,9 +280,11 @@ class ManagedMemory {
 
     // round up to align block
     // Now also allocating a trailer
+    // TODO: Checking 4-byte alignment unnecessary due to how malloc gets called?
+    // TODO: Can just be +4 >> 2 rather than 8,
+    //   ONLY NOW THAT MORE THAN 1 HEADER MUST BE FREE TO SPLIT. Else breaks checks for free blocks?
     const units = (((bytes + 8 - 1) >> 3) + 2) * 2;
     this.memory_used += units * 4;
-    this.maxMemory = Math.max(this.maxMemory, this.memory_used);
 
     // try each free list in turn TODO: Start at correct size
     // size limits are 6 and 8, so this calculates correct list to consider first
@@ -288,9 +294,12 @@ class ManagedMemory {
       //  continue; // skip to next largest list, no blocks large enough in this list
       //}
 
+      this.numScans++;
+
       let freep = this.freeLists[freepIdx];
       // list empty
       if (freep == 0) {continue;}
+
 
       // if a block goes below this size, need to move it to a smaller list
       let lowerLimit = (freepIdx > 0) ? this.sizeLimits[freepIdx - 1] : 0;
@@ -301,8 +310,11 @@ class ManagedMemory {
       let currentSize = this.getSize(current);
 
       if (currentSize >= units) {
+        // update now we know we aren't going to call GC
+        this.maxMemory = Math.max(this.maxMemory, this.memory_used);
         let successor = this.getNextTail(current + currentSize);
         if (currentSize <= units + 4) {
+          this.exact++;
           // allocate the whole block
           // successor is the new top of list
           if (successor !== 0) {
@@ -310,6 +322,7 @@ class ManagedMemory {
           }
           this.freeLists[freepIdx] = successor;
         } else {
+          this.fromLarge++;
           // allocate in tail end of this block (TODO: Head would be more efficient?)
           let newSize = currentSize - units;
           this.setSize(current, newSize);
@@ -335,14 +348,19 @@ class ManagedMemory {
 
       current = this.getNextTail(prev + prevSize);
       while (current !== 0) { // still some cells to explore
+        this.numScans++;
         // indicates the number of times the required element wasn't found immediately
         currentSize = this.getSize(current);
         let successor = this.getNextTail(current + currentSize);
         if (currentSize >= units) {
+          // update now we know we aren't going to call GC
+          this.maxMemory = Math.max(this.maxMemory, this.memory_used);
           if (currentSize <= units + 4) {
+            this.exact++;
             // allocate whole block, need to cut out of free list
             this.linkAfter(prev + prevSize, successor);
           } else {
+            this.fromLarge++;
             // allocate in tail end of block, must update trailer
             let newSize = currentSize - units;
             this.setSize(current, newSize);
@@ -388,6 +406,7 @@ class ManagedMemory {
 
   // Since there are multiple lists now, must free/merge blocks before working out list to add to based on size
   free(blockPtr){
+    this.numScans++;
     this.freesDone++;
     let sizeFreed = this.getSize(blockPtr);
 
@@ -491,7 +510,7 @@ class ManagedMemory {
       let rawPtr = (ptr>>2) - 2; // headersize/4 = 2
       if (!this.isMarked(rawPtr)){ // not yet marked
         this.pushMarkedSet(rawPtr);
-        this.marked++;
+     //   this.marked++;
       }
     }
   }
@@ -538,15 +557,15 @@ class ManagedMemory {
 
   doGC(){
     this.gcsDone++;
-    this.mallocSequence.push(this.mallocsDone);
-    this.mallocsDone = 0;
+  //  this.mallocSequence.push(this.mallocsDone);
+ //   this.mallocsDone = 0;
  //   this.marked = 0;
     this.mark();
  //   console.log("live set:", this.marked);
     this.sweep();
  //   console.log("GC ran. freed:", this.freesDone, "total mallocs", this.mallocsDone);
-    this.freeSequence.push(this.freesDone);
-    this.freesDone = 0;
+//    this.freeSequence.push(this.freesDone);
+ //   this.freesDone = 0;
   }
 
   stackLimitExceeded(){

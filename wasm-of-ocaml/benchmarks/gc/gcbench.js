@@ -41,14 +41,16 @@ if (process.argv.length > 2){
 	  console.log("mem allocated at end:", memoryManager.memory_used);
 	  console.log("peak memory used was:", memoryManager.maxMemory);
 	  console.log("GC called ", memoryManager.gcsDone, "times");
-	  console.log("Frees found:", memoryManager.freeSequence);
-	  console.log("Mallocs managed:", memoryManager.mallocSequence);
-      console.log("Successful GC passes:", memoryManager.gcSequence);
+	//  console.log("Frees found:", memoryManager.freeSequence);
+	//  console.log("Mallocs managed:", memoryManager.mallocSequence);
+    //  console.log("Successful GC passes:", memoryManager.gcSequence);
 //	  console.log(memoryManager.uview.slice(instance.exports.x.value >> 2));
 //	  console.log(memoryManager.uview.byteLength);
 //	  console.log(instance.exports.x.value);
+
+
       fs.writeFile(
-          __dirname + '/mallocLog.txt',
+          __dirname + '/mal.txt',
 
           JSON.stringify(memoryManager.mallocSequence) + "\n" +
           JSON.stringify(memoryManager.freeSequence)  + "\n" +
@@ -60,6 +62,8 @@ if (process.argv.length > 2){
               }
           }
       );
+
+
   } catch (err) {
     console.log(err);
     console.log(err.message);

@@ -5,8 +5,8 @@
   (import "jsRuntime" "malloc" (func $malloc (type 1)))
   (import "jsRuntime" "stackOverflow" (func $stackOverflow (type 0)))
   ;; for debugging sp
- ;; (import "jsRuntime" "log" (func $log (type 1)))
- ;; (export "log" (func $log))
+  (import "jsRuntime" "log" (func $log (type 1)))
+  (export "log" (func $log))
 
   ;; memory now imported and re-exported so it gets linked to js functions
   (memory $mem (export "mem") (import "jsRuntime" "mem") 2) ;; now require minimum of 2 pages, 1st just for stack

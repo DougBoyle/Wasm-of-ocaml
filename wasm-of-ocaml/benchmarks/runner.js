@@ -1,7 +1,7 @@
 const { performance } = require('perf_hooks');
 const util = require('util');
 const fs = require("fs");
-const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory");
+const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/old_memory");
 const readFile = util.promisify(fs.readFile);
 const filename = process.argv[2];
 const simple_name = filename.substring(filename.indexOf('/') + 1, filename.indexOf('.'));
@@ -58,5 +58,11 @@ const filesize = fs.statSync(filename).size;
         const remaining_memory = memoryManager.maxMemory;
       //  const remaining_memory = runtime.exports["alloc"](0);
         console.log(simple_name, millis, remaining_memory, filesize);
+
+        // TODO: Remove all this
+        console.log(memoryManager.numScans);
+       console.log("From large block:", memoryManager.fromLarge, "exact:", memoryManager.exact);
+        console.log("pages allocated:", memory.buffer.byteLength >> 16 );
+        console.log("Total frees:", memoryManager.freesDone);
     }
 })();
