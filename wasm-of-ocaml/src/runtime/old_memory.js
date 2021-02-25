@@ -57,6 +57,7 @@ class ManagedMemory {
     // Shouldn't vary largely between old/new approach
     this.freesDone = 0;
     this.mallocsDone = 0;
+    this.gcsDone = 0;
 
   }
 
@@ -105,7 +106,7 @@ class ManagedMemory {
   }
 
   growHeap(units) {
-  //  console.log("Grow", this.mallocsDone, this.freesDone);
+    console.log("Grow", this.mallocsDone, this.freesDone);
     // convert to number of pages to allocate, rounded up
     let pages = (units*4 + 65535)>>16;
     const ptr = this.memory.buffer.byteLength >> 2;
@@ -126,6 +127,8 @@ class ManagedMemory {
     //      console.log("ALLC malloc");
     // round up to align block
     // *2 to put in terms of 32-bit words rather than 64-bit headers
+    // TODO: Change back to 1
+    //   alltrees 5, 12 headers, 1100 mallocs
     const units = (((bytes + 8 - 1) >> 3) + 1)*2;
     this.memory_used += units * 4;
     this.maxMemory = Math.max(this.maxMemory, this.memory_used);
@@ -146,6 +149,7 @@ class ManagedMemory {
     for (p = this.getNext(prev); ; prev = p, p = this.getNext(p)){
       this.numScans++;
       let size = this.getSize(p);
+     // console.log("trying prev =", prev, "p =", p, "p size =", size, "p next =", this.getNext(p));
       if (size >= units) {
         if (size === units) {
           this.exact++;
@@ -180,14 +184,14 @@ class ManagedMemory {
       }
     }
 
- //   console.log("malloc:", units, p, "freep is:", this.freep, "after is:", this.getNext(this.freep));
+  //  console.log("malloc:", units, p, "freep is:", this.freep, "after is:", this.getNext(this.freep));
     this.setAllocated(p);
     return (p + 2)<<2;
   }
 
   // takes a byte pointer
   free(blockPtr){
-
+ //   console.log("freed:", blockPtr);
 
     this.freesDone++;
     //  console.log("ALLOC free");
@@ -221,10 +225,9 @@ class ManagedMemory {
     // works even if memory has been extended since block was allocated, now pointed to by p
     // can't happen after grow_memory since getNext(p) must be within old memory
     if (blockPtr + this.getSize(blockPtr) === this.getNext(p)){
-  //    console.log("merged above with:", this.getNext(p));
       this.merged++;
       sizeFreed += this.getSize(this.getNext(p));
-      this.setSize(blockPtr, this.getSize(blockPtr) + this.getSize(this.getNext(p)));
+      this.setSize(blockPtr, sizeFreed);
       this.setNext(blockPtr, this.getNext(this.getNext(p)), false);
     } else {
       this.setNext(blockPtr, this.getNext(p), false);
@@ -232,10 +235,11 @@ class ManagedMemory {
 //    console.log("next set to:", this.getNext(blockPtr));
     // join lower block
     if (p + this.getSize(p) === blockPtr){
- //     console.log("merged below with:", p);
       this.merged++;
       sizeFreed += this.getSize(p);
-      this.setSize(p, this.getSize(p) + this.getSize(blockPtr));
+      this.setSize(p, sizeFreed);
+      // update next in case both sides merged, need a new next ptr
+      this.setNext(p, this.getNext(blockPtr), false);
     } else {
       this.setNext(p, blockPtr, false);
     }
@@ -322,13 +326,14 @@ class ManagedMemory {
   }
 
   doGC(){
-  //   console.log("GC start");
+    this.gcsDone++;
+ //    console.log("GC start");
   //  this.marked = 0;
     this.mark(); // well isn't this simple, could probably just write them as a single function instead
    // console.log("live set:", this.marked);
-   // this.freesDone = 0;
+    this.freesDone = 0;
     this.sweep();
-  //  console.log("Blocks freed:", this.freesDone);
+//    console.log("GC blocks freed:", this.freesDone);
   }
 
   stackLimitExceeded(){

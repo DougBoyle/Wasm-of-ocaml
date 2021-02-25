@@ -34,7 +34,7 @@ let ir_passes = [
   ("tuples", OptTuple.optimise);
   ("deadassign", OptDeadAssignments.optimise); (* Without dead assignment elimination, getting an error *)
   (* CSE makes tail calls obvious, deadassign removes pointless functions *)
-(*  ("tail calls", OptTailCalls.optimise);  TODO: Enable again *)
+  ("tail calls", OptTailCalls.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
 ]
 

@@ -6,8 +6,6 @@ const readFile = util.promisify(fs.readFile);
 const filename = process.argv[2];
 const simple_name = filename.substring(filename.indexOf('/') + 1, filename.indexOf('.'));
 const filesize = fs.statSync(filename).size;
-// Handle all files (except memory for grain)
-// TODO: Update to use memory manager JavaScript file
 (async () => {
     var memory = new WebAssembly.Memory({initial: 2});
     var memoryManager = new ManagedMemory(memory);
@@ -49,5 +47,6 @@ const filesize = fs.statSync(filename).size;
        console.log("mallocs total:", memoryManager.mallocsDone);
        console.log("max memory:", memoryManager.uview.byteLength);
        console.log(memoryManager.uview.length);
+       console.log(memoryManager.gcsDone);
    }
 })();

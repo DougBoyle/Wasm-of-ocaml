@@ -392,7 +392,10 @@ class ManagedMemory {
     // all cells searched, call GC then either grow memory or retry search
     this.requiredSize = units;
     this.doGC();
-    if (this.requiredSize > 0) { // still not enough memory
+    // 1 page = 2^14 words. If GC only frees up <256 words, less than 2% of a page free
+    // so will probably end up growing heap in the next couple calls anyway.
+    // If heap going to grow anyway, better to do immediately than many very small collections
+    if (this.requiredSize > 0){// || this.dataFreed < 256) { // still not enough memory
       this.gcSequence.push(1);
       this.growHeap(units);
     } else {
@@ -409,6 +412,9 @@ class ManagedMemory {
     this.numScans++;
     this.freesDone++;
     let sizeFreed = this.getSize(blockPtr);
+
+    // part of optimisation to avoid long tails
+    this.dataFreed += sizeFreed;
 
     // TODO: Remove when not debugging
     this.memory_used -= sizeFreed*4;
@@ -556,16 +562,21 @@ class ManagedMemory {
   }
 
   doGC(){
+    // TODO: Determine good choice for this
+    // If only a small fraction of memory freed, increase heap as will likely need to anyway
+    this.dataFreed = 0;
+
+
     this.gcsDone++;
-  //  this.mallocSequence.push(this.mallocsDone);
- //   this.mallocsDone = 0;
+    this.mallocSequence.push(this.mallocsDone);
+    this.mallocsDone = 0;
  //   this.marked = 0;
     this.mark();
  //   console.log("live set:", this.marked);
     this.sweep();
  //   console.log("GC ran. freed:", this.freesDone, "total mallocs", this.mallocsDone);
-//    this.freeSequence.push(this.freesDone);
- //   this.freesDone = 0;
+    this.freeSequence.push(this.freesDone);
+    this.freesDone = 0;
   }
 
   stackLimitExceeded(){

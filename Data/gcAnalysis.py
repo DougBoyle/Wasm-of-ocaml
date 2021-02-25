@@ -5,13 +5,24 @@ mallocs = []
 frees = []
 memgrows = []
 #with open("../wasm-of-ocaml/benchmarks/gc/mallocLog.json") as f:
-with open("../wasm-of-ocaml/benchmarks/gc/mal.txt") as f:
+with open("../wasm-of-ocaml/benchmarks/gc/trees9.txt") as f:
     mallocs = eval(f.readline())
     frees = eval(f.readline())
     memgrows = eval(f.readline())
 plt.plot(mallocs, label="mallocs")
 plt.plot(frees, label="frees")
 plt.vlines(np.where(memgrows), -300, -50, colors='k')
+
+# Updated version with lower threshold for GC uses same number of total pages
+##with open("../wasm-of-ocaml/benchmarks/gc/newTrees9.txt") as f:
+##    mallocs = eval(f.readline())
+##    frees = eval(f.readline())
+##    memgrows = eval(f.readline())
+##plt.plot(mallocs, label="mallocs2")
+##plt.plot(frees, label="frees2")
+##plt.vlines(np.where(memgrows), -300, -50, colors='k')
+
+
 plt.legend()
 plt.show()
 

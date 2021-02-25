@@ -50,7 +50,7 @@ if (process.argv.length > 2){
 
 
       fs.writeFile(
-          __dirname + '/mal.txt',
+          __dirname + '/newTrees9.txt',
 
           JSON.stringify(memoryManager.mallocSequence) + "\n" +
           JSON.stringify(memoryManager.freeSequence)  + "\n" +
