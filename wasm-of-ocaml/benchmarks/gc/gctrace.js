@@ -4,11 +4,7 @@ const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory.js");
 const readFile = util.promisify(fs.readFile);
 const exec = util.promisify(require('child_process').exec);
 
-let fileList = __dirname + "/results.txt";
-
 // process.argv is a list of the command line arguments
-
-//const check_mem = require("./checkmemory");
 
 if (process.argv.length > 2){
 (async () => {

@@ -36,8 +36,8 @@ class ManagedMemory {
     // points to a free block at all times, unless the free list is empty
     this.freep = STACK_LIMIT;
 
-    this.memory_used = 0;
-    this.maxMemory = 0;
+   // this.memory_used = 0;
+   // this.maxMemory = 0;
     // size of block we are looking for when we decide to run GC
     // TODO: Come up with better conditions for when to run GC
     //   e.g. don't run again if stack pointer has barely moved or very few new objects allocated?
@@ -51,13 +51,13 @@ class ManagedMemory {
     this.uview[STACK_LIMIT + 1] =  (this.uview.byteLength >> 2) - STACK_LIMIT;
 
     // TODO: Remove all these
-    this.numScans = 0;
+  /*  this.numScans = 0;
     this.exact = 0;
     this.fromLarge = 0
     // Shouldn't vary largely between old/new approach
     this.freesDone = 0;
     this.mallocsDone = 0;
-    this.gcsDone = 0;
+    this.gcsDone = 0;*/
 
   }
 
@@ -106,7 +106,6 @@ class ManagedMemory {
   }
 
   growHeap(units) {
-    console.log("Grow", this.mallocsDone, this.freesDone);
     // convert to number of pages to allocate, rounded up
     let pages = (units*4 + 65535)>>16;
     const ptr = this.memory.buffer.byteLength >> 2;
@@ -118,20 +117,20 @@ class ManagedMemory {
     this._refreshViews();
     this.setSize(ptr, pages << 14);
     // TODO: Disable when not debugging
-    this.memory_used += pages << 16;
+  //  this.memory_used += pages << 16;
     this.free(ptr);
   }
 
   malloc(bytes){
-    this.mallocsDone++;
+  //  this.mallocsDone++;
     //      console.log("ALLC malloc");
     // round up to align block
     // *2 to put in terms of 32-bit words rather than 64-bit headers
     // TODO: Change back to 1
     //   alltrees 5, 12 headers, 1100 mallocs
     const units = (((bytes + 8 - 1) >> 3) + 1)*2;
-    this.memory_used += units * 4;
-    this.maxMemory = Math.max(this.maxMemory, this.memory_used);
+ //   this.memory_used += units * 4;
+ //   this.maxMemory = Math.max(this.maxMemory, this.memory_used);
     // last block allocated exactly used up the last cell of the free list.
     // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
     if (this.freep == null){
@@ -147,12 +146,11 @@ class ManagedMemory {
     let prev = this.freep;
     let p;
     for (p = this.getNext(prev); ; prev = p, p = this.getNext(p)){
-      this.numScans++;
+   //   this.numScans++;
       let size = this.getSize(p);
      // console.log("trying prev =", prev, "p =", p, "p size =", size, "p next =", this.getNext(p));
       if (size >= units) {
         if (size === units) {
-          this.exact++;
           // exact fit, remove from list
           if (this.getNext(p) === p){
             prev = null; // was only element of list, will now set freep = null on line 127
@@ -160,7 +158,6 @@ class ManagedMemory {
             this.setNext(prev, this.getNext(p), false);
           }
         } else {
-          this.fromLarge++;
           // allocate tail end of free block
           this.setSize(p, this.getSize(p) - units);
           // new block
@@ -193,14 +190,13 @@ class ManagedMemory {
   free(blockPtr){
  //   console.log("freed:", blockPtr);
 
-    this.freesDone++;
+   // this.freesDone++;
     //  console.log("ALLOC free");
     let sizeFreed = this.getSize(blockPtr);
 
   //  console.log("free:", blockPtr, "size is", sizeFreed);
 
-    // TODO: Remove when not debugging
-    this.memory_used -= this.getSize(blockPtr)*4;
+  //  this.memory_used -= this.getSize(blockPtr)*4;
 
     // special case when freep is null. Indicates that the block being freed is only free block in memory
     if (this.freep == null){
@@ -219,13 +215,13 @@ class ManagedMemory {
         // block to free is at one end of list
         break;
       }
-      this.numScans++;
+  //    this.numScans++;
     }
     // join upper block
     // works even if memory has been extended since block was allocated, now pointed to by p
     // can't happen after grow_memory since getNext(p) must be within old memory
     if (blockPtr + this.getSize(blockPtr) === this.getNext(p)){
-      this.merged++;
+   //   this.merged++;
       sizeFreed += this.getSize(this.getNext(p));
       this.setSize(blockPtr, sizeFreed);
       this.setNext(blockPtr, this.getNext(this.getNext(p)), false);
@@ -235,7 +231,7 @@ class ManagedMemory {
 //    console.log("next set to:", this.getNext(blockPtr));
     // join lower block
     if (p + this.getSize(p) === blockPtr){
-      this.merged++;
+  //    this.merged++;
       sizeFreed += this.getSize(p);
       this.setSize(p, sizeFreed);
       // update next in case both sides merged, need a new next ptr
@@ -254,13 +250,10 @@ class ManagedMemory {
   // pushes onto front of list, so marking phase does DFS
   // TODO: Pointer currently to flag block. Will need to change to point to size when header squashed
   pushMarkedSet(rawPtr){
-    // TODO: Use SetNext and SetMark instead
     // both allocated and marked
     this.setMarked(rawPtr);
-   // this.uview[rawPtr] = 3;
     // update Next pointer to point to old head of marked list
     this.setNext(rawPtr, this.markedSet, true);
- //   this.uview[rawPtr - 2] = this.markedSet;
     this.markedSet = rawPtr;
   }
 
@@ -305,7 +298,7 @@ class ManagedMemory {
   // Uses fact that every block allocated has 0b10 in its header, and blocks are always
   // allocated in aligned chunks so can always read the header from the correct position
   sweep(){
-    this.merged = 0;
+ //   this.merged = 0;
     // TODO: Would be better to chain together allocated objects in a list, then free that list
     //   if mark process doesn't move them to a new list
     const heapLimit = this.memory.buffer.byteLength >> 2;
@@ -326,12 +319,12 @@ class ManagedMemory {
   }
 
   doGC(){
-    this.gcsDone++;
+ //   this.gcsDone++;
  //    console.log("GC start");
   //  this.marked = 0;
     this.mark(); // well isn't this simple, could probably just write them as a single function instead
    // console.log("live set:", this.marked);
-    this.freesDone = 0;
+ //   this.freesDone = 0;
     this.sweep();
 //    console.log("GC blocks freed:", this.freesDone);
   }

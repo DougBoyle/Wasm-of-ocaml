@@ -50,7 +50,7 @@ let _ =
   shortFreedList := Nil; (* Lots of fragmented small blocks to scan over now *)
   (* As number of repetitions increases, new version faster despite more mem overall *)
   (* TODO: Collect data for various limits *)
-  for i = 0 to 1000 do
+  for i = 0 to iters do
     longFreedList := Nil; (* some larger blocks among the smaller blocks to allocate in *)
     buildLongList 402
   done

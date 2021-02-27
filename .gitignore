@@ -1,10 +1,13 @@
 wasm-of-ocaml/src/middle-end/ocamltransl.ml
 wasm-of-ocaml/benchmarks/js/*.js
 wasm-of-ocaml/benchmarks/results/*
+wasm-of-ocaml/benchmarks/gc/tmp.*
 
 Data/figures/*
 Data/__pycache__/
 Data/*.png
+Data/.ipynb_checkpoints/
+Data/notebooks/.ipynb_checkpoints/
 
 *.annot
 *.cmo

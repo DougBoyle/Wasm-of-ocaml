@@ -1,7 +1,4 @@
-(* Very memory intensive, would just counting cases be better? i.e. make recursion relation more explicit *)
-(* Intentionally terrible recursive implementation i.e. not caching sub-results, using regular append.
-   Estimate of minimum: 16000 trees, each at least 10 Nodes which are [tag, arity, t1, t2].
-                        Cell = 4 bytes => minimum of 16k * 10 * 4 * 4 = 2.56 MB *)
+(* Testing GC performance on various  *)
 type tree = Leaf | Node of tree * tree
 
 let rec map f = function
@@ -23,4 +20,4 @@ let rec all_trees = function
     | n -> (trees_i n)@(getall (n-1)) in
   getall (n-1)
 
-let a = all_trees 7
+let a = all_trees iters
