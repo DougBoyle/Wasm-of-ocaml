@@ -26,6 +26,7 @@ let ir_analysis = [
 ]
 
 let ir_passes = [
+  ("copy", OptImms.optimise);
   ("const", OptConstants.optimise);
   ("fails", OptFails.optimise);
   ("cse",  OptCSE.optimise);

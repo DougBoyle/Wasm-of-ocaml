@@ -4,23 +4,6 @@
 open Linast
 open Asttypes
 
-let constant_idents = (Ident.Tbl.create 50 : Asttypes.constant Ident.Tbl.t)
-
-(* Ideally want this to happen after body evaluated, just means extra passes needed *)
-let enter_linast linast = (match linast.desc with
-  (* Don't try to propagate constants on Mut idents *)
-  | LLet(id, (Local | Export), body, rest) -> (match body.c_desc with
-    (* Only immediate constants, binop(im1, im2) first reduced by constant folding *)
-    | CImm {i_desc=ImmConst c} -> Ident.Tbl.add constant_idents id c
-    | _ -> ())
-  | _ -> () (* LLetRec is always a function so no constants to optimise *)
-  ); linast
-
-let map_imm imm = match imm.i_desc with
-  | ImmIdent id ->
-    (match Ident.Tbl.find_opt constant_idents id with Some c -> {imm with i_desc=ImmConst c} | None -> imm)
-  | _ -> imm
-
 (* TODO: Update eval_unary/binary if other types ever need supporting for the same ops *)
 let eval_unary = function
   | (Not, Const_int i) -> Const_int (if i > 0 then 0 else 1) (* 0=false, 1=true *)
@@ -163,9 +146,6 @@ let leave_linast linast = match linast.desc with
            (not yet done by pattern match).
            Implicitly passing out values is starting to look like an issue, any way to avoid this scope issue? *)
   | LLet (id, global, compound, rest) when can_simplify_branch compound ->
-    (match compound.c_desc with (* remove from table *)
-      | CImm {i_desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
-      | _ -> ());
     let branch = simplify_branch compound in
     let mkleaf = LinastUtils.LinastExpr.mklet id global in
     (match branch.desc with (* Keep annotations on top-level linast, rewrite_sequence generates a new one *)
@@ -175,11 +155,7 @@ let leave_linast linast = match linast.desc with
         {linast with desc=LLet(id', global', compound', rewrite_tree mkleaf body rest)}
       | LLetRec (binds, body) -> {linast with desc=LLetRec(binds, rewrite_tree mkleaf body rest)}
     )
-  | LLet(id, _, body, rest) -> (match body.c_desc with (* remove from table *)
-     | CImm {i_desc=ImmConst c} -> Ident.Tbl.remove constant_idents id
-     | _ -> ()); linast
   | _ -> linast
 
 let optimise linast =
-  Ident.Tbl.clear constant_idents;
-  (LinastMap.create_mapper ~map_imm ~leave_compound ~enter_linast ~leave_linast ()) linast
+  (LinastMap.create_mapper ~leave_compound ~leave_linast ()) linast
