@@ -6,21 +6,21 @@ all:
 unittest:
 	make all
 	set -e
-	for f in unit_tests/*.ml ; do ./main.byte -d unit_tests/out $$f || { echo $$f ; exit 1 ; }  ; done
-	node unit_tests/test.js
+	for f in samples/*.ml ; do ./main.byte -d samples/out $$f || { echo $$f ; exit 1 ; }  ; done
+	node samples/test.js
 rt:
 	wat2wasm src/runtime/runtime.wast
 	mv runtime.wasm src/runtime/runtime.wasm
 lintest:
-	ocamlbuild -pkg ounit2 $(INCLUDES) -I ounit test_linast_utils.byte
+	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_linast_utils.byte
 analysistest:
-	ocamlbuild -pkg ounit2 $(INCLUDES) -I ounit test_analysis.byte
+	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_analysis.byte
 constproptest:
-	ocamlbuild -pkg ounit2 $(INCLUDES) -I ounit test_const_prop.byte
+	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_const_prop.byte
 graphtest:
-	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I ounit test_graph.byte
+	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I unit_tests test_graph.byte
 testall:
-	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I ounit run_all_tests.byte
+	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I unit_tests run_all_tests.byte
 	./run_all_tests.byte
 cleanout:
 	rm benchmarks/out/*.wasm

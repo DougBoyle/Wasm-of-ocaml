@@ -1,8 +1,30 @@
 \chapter{Implementation}
 
+\section{Repository Overview}
+\dirtree{%
+.1 . 
+.2 src.
+.3 ocaml/\DTcomment{OCaml compiler's frontend for parsing/typing}.
+.3 middle-end/\DTcomment{IR translation}. 
+.3 runtime. 
+.4 memory.js. 
+.4 runtime.wast. 
+.3 optimisations/\DTcomment{IR analysis passes and optimisations}. 
+.3 graph/\DTcomment{Wasm flowgraph datatype and optimisations}. 
+.3 codegen/\DTcomment{Translation from IR to Wasm flowgraph}. 
+%.3 jeancomeson\DTcomment{Guillaume}.
+.2 samples\DTcomment{OCaml regression test programs}. 
+.3 results.txt\DTcomment{Expected output of test files}. 
+.3 test.js\DTcomment{Script to instantiate each test and compare output}. 
+.2 benchmarks.
+.3 C/. 
+.3 Grain/.  
+.2 unit-tests/\DTcomment{Tests for isolated elements of translation/optimisation}.
+}
+
 \section{Administrative Normal Form IR}
 % Reference for ANF?
-From OCaml's Typedtree data structure, the first pass of the compiler translates programs to administrative normal form (also called A-normal form or just ANF), which linearises the syntax tree so that the operands to operations are always constants or idnetifiers, with the exception of control flow construsts such as if/while statements. For example:
+From OCaml's Typedtree data structure, the first pass of the compiler translates programs to administrative normal form (ANF), which linearises the syntax tree so that the operands to operations are always constants or idnetifiers, with the exception of control flow construsts such as if/while statements. For example:
 
 \begin{verbatim}
 f(g(x), h(x+y))
@@ -20,6 +42,7 @@ Linearising is implemented using three mutually recursive functions which compil
 % Give actual examples of code translation/algorithm cases?
 % OCaml primitives handling?
 
+% TODO: Describe 3-level structure of immediate, compounds and linast terms
 
 \section{Pattern Matching}
 The linearised intermediate representation also compiles patterns in OCaml's \verb|Typedtree| datatype to the code required to match them and bind variables within patterns. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
@@ -100,7 +123,7 @@ p^3_1 & p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
 $
 
 
-\subsection{Optimisations}
+\subsection{Optimisations to pattern matching}
 This process was then improved by adding several auxiliary data structures, which are described here rather than waiting till the optimisations section.
 
 % MENTION USE OF EXHAUSTIVENESS INFORMATION EARLY ON! EXPLAINS WHY WE DON'T NEED A TEST ON THE LAST ROW!
@@ -189,7 +212,9 @@ Now, when we compile a handler, we take its context to be the context mapped to 
 % OR PATTERNS - DIFFERS FROM PAPER!
 % Is this actually something I want to draw attention to???
 % Should probably change this in my code to do it the other way, as it only every applies to OR patterns doesn't it? Can easily determine which variables need to be passed out.
-%My implementation differs from the one described in the paper by not also specifying variables passed through to handlers in addition to a handler index. When an OR pattern \verb"(p1|...|pk) q1 q2 ..." is split into several rows, unless it is the only row of the matrix, we introduce an exit to a handler which matches the remaining patterns \verb|q1 q2 ...|. This is done to avoid duplicating the patterns \verb|q1 q2 ...| in the original matrix, which could result in duplicate code across switch cases. The issue here is that the patterns \verb"p1|...|pk" could each bind some variable \verb|x|, which is in scope when we enter the handler. The paper handles this by listing all such variables at the exit and at the start of the handler block. \\
+My implementation differs from the one described in the paper by not also specifying variables passed through to handlers in addition to a handler index. When an OR pattern \verb"(p1|...|pk) q1 q2 ..." is split into several rows, unless it is the only row of the matrix, we introduce an exit to a handler which matches the remaining patterns \verb|q1 q2 ...|. This is done to avoid duplicating the patterns \verb|q1 q2 ...| in the original matrix, which could result in duplicate code across switch cases. The issue here is that the patterns \verb"p1|...|pk" could each bind some variable \verb|x|, which is then in scope when we enter the handler. The paper handles this by listing all such variables at the exit and at the start of the handler block. \\
+Because the parser in the compiler front-end assigns a unique identifier to each variable, there is never a scoping issue where the \verb|x| in the handler could refer to the same \verb|x| declared elsewhere. Even with variables listed on exits and handers, we still need an extra data structure to remember identifiers outside of the subtree they are defined when performing analyses or translations, for example so tat we know which lower level local variable the identifier was mapped to when we come to translate the handler. Therefore, I chose to leave out these lists of variables since they serve little purpose other than to make such scoping complications explicit, so exits and handlers are only annotated with the index of the handler they correspond to. \\
+This scoping complication disappears at the WebAssembly level, since static exceptions compile to code looking more like a standard \verb|break| statement, jumping to the next block (the handler) at an exit, or jumping past the next block if pattern matching ultimately succeeds.
 %This is not necessary as parsing uniquely identifies reuses of the same variable name in different scopes, so a table can track all the variables seen so far without having to deal with renaming issues, at the relatively small overhead of needing to remember more variables simultaneously.
 %%% ALSO PREVENTS OPTIMISING, BUT VERY RARE ANYWAY?
 
@@ -202,22 +227,42 @@ In summary, the compilation scheme now has three additional arguments, a boolean
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Compiling Identifiers}
-After any optimisations are performed, the linearised tree is then compiled to a lower intermediate form. The tree is replaced with a list of instructions, and identifiers are resolved into integer indexes for argument, local, global or closure bound variables. 
-% Give more detail about blocks in WebAssembly
-Conversion to a list of instructions is straightforward since WebAssembly contains nested blocks. \verb|Block| constructs in WebAssembly contain a list of instructions and introduce a label at the end of the block, which can be jumped to from within the block. \verb|If| blocks are similar but contain two lists of instructions, and \verb|Loop| blocks have the label at the start of the block, allowing code to be repeated. 
-Rather than map to these straight away, programs are still described using \verb|if| and \verb|while| constructs, which are easily mapped to WebAssembly at the code generation stage. % Put examples when we get there, not here
+After any optimisations on the IR are done, the linearised tree is lowered to WebAssembly in two stages. The first of these pulls function definitions out to the top level of the program, making closures and free variables explicit, converts the tree to lists of instructions (with nesting still present for \verb|If|, \verb|For| and \verb|While| statements as WebAssembly supports nested blocks) and replaces identifiers with integer indexes.
 
-This stage also lifts any function declarations to the top level of the program, since closures and environments are now explicit, so the result is a list of functions. The complexity here is in determining the free variables of a function and the number of local stack variables needed by the function body, both of which are done by simple recursive algorithms. The number of locals needed is the maximum needed at any point in the function body. This increases by one after each let binding is evaluated, and for loops also require two to remember the current and end values for the loop (for loops in OCaml have a very constrained \verb"for var = i [up|down]to j do ... done" syntax). 
+Identifiers are replaced with a datatype indicating whether that variable is accessed as a global variable, a function argument, a local variable of the function or a variable in the function's closure, with an integer index into the corresponding set of variables. Initially, assignment of local variables was done following the scoping of the program, so each nested let binding would use one more local variable and a \verb|for| loop would use two, one for the loop variable and another to remember the upper limit of the loop the first time it is evaluated. \\
+This was replaced with generating a new local variable for each identifier in the function, and keeping these distinct even when generating WebAssembly. Then, after performing peephole optimisations on the WebAssembly, I perform live variable analysis, which determines the points in the program where each local variable's value could be used later so cannot be overwritten. From this, I construct a clash graph with edges between every pair of variables that are ever simultaneously live so cannot be allocated to the same local variable. A graph colouring heuristic then maps these local variables to a hopefully much smaller set of local variables and unused local variables are removed from the function. % TODO: Better to describe register allocation and LVA somewhere else? Maybe even in preparation chapter?
+
+This register allocation process is necessary for lower level target languages like x86 where there is only a finite set of registers available. Although a WebAssembly function can be defined with arbitrarily many local variables, it is likely that a platform's WebAssembly implementation will use less memory by using fewer locals, and when garbage collection is later described this directly affects the height of the shadow stack used to track local variables, making this a useful optimisations.
+
+%After any optimisations are performed, the linearised tree is then compiled to a lower intermediate form. The tree is replaced with a list of instructions, and identifiers are resolved into integer indexes for argument, local, global or closure bound variables. 
+% Give more detail about blocks in WebAssembly
+%Conversion to a list of instructions is straightforward since WebAssembly contains nested blocks. \verb|Block| constructs in WebAssembly contain a list of instructions and introduce a label at the end of the block, which can be jumped to from within the block. \verb|If| blocks are similar but contain two lists of instructions, and \verb|Loop| blocks have the label at the start of the block, allowing code to be repeated. 
+%Rather than map to these straight away, programs are still described using \verb|if| and \verb|while| constructs, which are easily mapped to WebAssembly at the code generation stage. % Put examples when we get there, not here
+
+%This stage also lifts any function declarations to the top level of the program, since closures and environments are now explicit, so the result is a list of functions. The complexity here is in determining the free variables of a function and the number of local stack variables needed by the function body, both of which are done by simple recursive algorithms. The number of locals needed is the maximum needed at any point in the function body. This increases by one after each let binding is evaluated, and for loops also require two to remember the current and end values for the loop (for loops in OCaml have a very constrained \verb"for var = i [up|down]to j do ... done" syntax). 
 
 % Currying removed at this point. Wasn't being used anyway so why do I allow it at all? Does it actually provide any benefit to me?
 
 \section{Code Generation}
 WebAssembly generation is then straightforward, as each of the constructs and primitive operators in my lower IR are all simple to implement. The variable bindings in the lower IR were separated into argument, local, global and closure bindings. Argument and global bindings translate directly to Local and Global operations respectively. The locals in a function are laid out as function arguments, then swap space locals used to implement some of the operations in WebAssembly, then locals allocated above for let bindings and loops. Therefore, local bindings are offset by the number of swap spaces and function arguments. The first argument to each function is its closure, so closure bindings first get local 0 then do a load from that address, with an offset selecting the correct variable from the closure. 
 
-I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append and some of the integer primitives. These are declared as imports to the WebAssembly module and each function index in my IR must be offset by the number of runtime functions imported. Additionally, the memory for the module is also imported from the runtime since it is managed by the allocation function from the runtime imports. Lastly, each of the globals and functions from the module is exported. Every function is exported so that values representing closures can be returned from WebAssembly. As integers are encoded by shifting them left by one, and so that pointers to closures can be used to call functions in WebAssembly from JavaScript, I added a JavaScript wrapper which uses knowledge of how values are represented in memory to be able to pass values back into compiled functions, or return integer values back to a JavaScript caller.
+I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append and some of the integer primitives. These are declared as imports to the WebAssembly module and each function index in my IR must be offset by the number of runtime functions imported. Additionally, the memory for the module is also imported from the runtime since it is managed by the allocation function from the runtime imports. Lastly, the global variables for each user variable declared at the top level of the OCaml program are exported, along with all functions from the module. Every function is exported so that values representing closures can be returned from WebAssembly and called. As integers are encoded by shifting them left by one, and so that pointers to closures can be used to call functions in WebAssembly from JavaScript, I added a JavaScript wrapper which uses knowledge of how values are represented in memory to be able to pass values back into compiled functions, or return integer values back to a JavaScript caller.
 
-Even before implementing a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are not needed. I therefore tag integers as 10 or 00 by shifting them left one, function as 11, and other blocks from tuples or constructors as 01. In the last case, data blocks are represented as a variant tag, their arity, then the elements they contain. As OCaml limits the number of different constructors supported% Reference required
-, the variant tag is guaranteed to be a non-negative integer. Therefore, -1 was used to encode floats, which were separately represented as -1 followed by the 64-bit float value. This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
+Even before implementing a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are not needed. I therefore tag integers as 10 or 00 by shifting them left one, closure pointers as 11, and other blocks from tuples or constructors as 01. In the last case, data blocks are represented as a variant tag, their arity, then the elements they contain.  \\
+Since arguments and return values in WebAssembly are strongly typed and we need to support polymorphic functions, all values are 32-bit integers which are decoded as pointers to data or functions as just described. In particular, floating point values need to be ``boxed'' in memory and represented as a data block. The variant tag on data blocks goes from 0 to the number of variants of that type, so -1 is used as a special value to distinguish blocks storing a float value.
+
+Although not strictly necessary, an arity field is included for both floating point values and closures. In the case of floating point values, it is always 0, and for closures it is the number of free variables. For floating point values, this ensures the 64-bit float value is aligned, which may improve memory access performance, and a floating point value can be treated as any other data block by the garbage collector, as the block will be inspected and the arity field indicates that we do not need to inspect the block further for other pointers. \\
+In the case of closures, we need to know the number of free variables for garbage collection, so that pointers stored in the block can be followed in the marking algorithm. This again means all pointers can be treated uniformly by the garbage collector, checking first the arity field and then any potential pointer fields within the block, as indicated below:
+
+  \begin{tabular}{c|c|c|c|c|c|m{2cm}|} \cline{2-7}
+Constructor block &   variant tag  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements} } &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-7}
+Tuple/Record &   0  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements}} &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-4}
+Boxed float &  -1 & 0 & 64-bit float value      \\ \cline{2-4} \multicolumn{1}{c}{}  \\ \cline{2-7}
+Closure & function index  & arity &   \multicolumn{3}{c}{\hspace{2cm}{free variables}} &  \\ \cline{2-7} 
+\end{tabular}
+
+%As OCaml limits the number of different constructors supported% Reference required
+%, the variant tag is guaranteed to be a non-negative integer. Therefore, as floats need to be``boxed'' and stored in memory as a data block, -1 was used to identify floats, which are stored similarly to . This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
 
 \section{Optimisations}
 \subsection{Tail calls}
@@ -289,6 +334,23 @@ Above we were able to include the body of the function in the new function. For 
 % Give pseudocode for this too?
 
 % Describe graphs
+
+\subsection{Copying expressions, variables and constants}
+Due to OCaml being a functional language, each local variable is assigned to once in the IR (with the exception of those variables introduced specially for tail call optimisation), making these optimisations relatively easy to implement. 
+
+% TODO: Describe IR structure in more detail e.g. imm/compond/linast and labelled of nodes as Local|Export|Mutable
+First, the tree is scanned and every \verb|let x = Constant c in ...| or \verb|let x = Ident y in ...| binding where \verb|x| is marked as a local variable is added to a table. These are the ``immediate" values in the linearised IR and represent bindings that do no real work. Every variable use in the tree is looked up in the table, and wherever a corresponding entry is found that variable is replaced with its known value. 
+
+\subsection{Uncurrying}
+Functions which take many curried arguments are implemented as several functions, where each just constructs the closure to the next until the last evaluates the function. I looked at implementing this a different way. All but the last function just copy the closure then additionally write the argument of that call, one of the curried arguments, into the closure. Therefore, I included an integer of the number of arguments remaining, and made the original closure allocation large enough to store space for them. Then, each application just stores the argument in the closure and decrements the number of arguments remaining. When this value reaches 0, the last application is done as an actual function call. \\
+The hope was that, by no longer producing a function for each argument, the output file size would be reduced. Also, a closure may be reused in several places so often needs copying anyway, but not when we have several applications to a curried function, in which case we know the intermediate partially applied functions are not being stored anywhere. Therefore, we avoid function applications which effectively just copy the closure every time so may also save on execution time and memory usage. \\
+Unfortunately, the overhead of checking and modifying the number of arguments remaining on each function application, and the fact we still need to copy closures often enough, mean that this change did not improve any of the metrics and in some cases could increase both the filesize and memory usage by about 20\%, despite now having fewer functions defined.
+% GO FIND THIS DATA!
+
+An alternative approach I then looked at was to identify functions which were not exported and were always called with all of their curried arguments. This could also have been done where a function always had more than one but not all of its arguments applied, but the benefit would not be as significant. In this case, we can replace the curried function with one that takes all of its arguments as a tuple, and update the calling sites accordingly. Rather than actually creating a tuple in memory and passing that to the function (as in a function like \verb|f (x, y) = x + y|), the WebAssembly function takes multiple arguments directly, saving on memory usage. \\
+Such functions and calls to them are tagged with an annotation in the IR tree, so that translation to WebAssembly can distinguish them from function definitions/calls using curried arguments. \\
+This requires that every call to the function be identified, as a variable which could be one of two functions, each taking their arguments in different ways, would handle one case incorrectly and this optimisation would be unsafe. For this reason, the optimisation is only done when every occurrence of the function variable is an application. More complex analysis is possible to identify where the function is assigned to another variable and all of its uses can still be identified, such as in \verb|let g = f in g(1,2)|, but this was not implemented and such cases instead rely on copy propagation rewriting this to use \verb|f| directly and remove \verb|g|.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Garbage Collection}

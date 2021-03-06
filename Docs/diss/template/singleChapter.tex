@@ -1,0 +1,38 @@
+\documentclass[a4paper,12pt,twoside]{report} % openright
+
+
+\def\authorname{Douglas Boyle\xspace}
+\def\authorcollege{Churchill College\xspace}
+%\def\authoremail{Sarah.Jones@cl.cam.ac.uk}
+\def\dissertationtitle{Optimising compiler from OCaml to Webassembly}
+\def\wordcount{\#\#\#\#\#}
+
+
+\usepackage{epsfig,parskip,setspace,tabularx,xspace}
+
+\usepackage[pdfborder={0 0 0}]{hyperref}    % turns references into hyperlinks
+\usepackage[margin=25mm]{geometry}  % adjusts page layout
+\usepackage{graphicx}  % allows inclusion of PDF, PNG and JPG images
+\usepackage{verbatim}
+\usepackage{docmute}   % only needed to allow inclusion of proposal.tex
+\usepackage{amsmath}
+
+\usepackage{dirtree}
+
+%\includeonly{chapters/implementation}
+%\includeonly{diss.bib}
+
+\usepackage[backend=bibtex, sorting=ynt]{biblatex}
+\addbibresource{diss.bib}
+
+
+
+%% START OF DOCUMENT
+\begin{document}
+
+
+\setcounter{chapter}{2}
+\include{chapters/implementation}
+
+
+\end{document}
