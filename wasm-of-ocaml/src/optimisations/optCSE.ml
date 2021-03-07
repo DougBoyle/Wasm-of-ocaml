@@ -9,6 +9,7 @@
    See: https://caml.inria.fr/pub/docs/manual-ocaml/libref/Hashtbl.html*)
 
 open Linast
+open LinastUtils
 
 module CompoundHash = struct
     type t = Linast.compound_expr_desc (* keys of the table *)
@@ -62,14 +63,21 @@ module CompoundHashtbl = Hashtbl.Make(CompoundHash)
 let replaced_idents = (Ident.Tbl.create 50 : Ident.t Ident.Tbl.t)
 let common_expressions = (CompoundHashtbl.create(50) : Ident.t CompoundHashtbl.t)
 
-let enter_linast linast = (match linast.desc with
+let enter_linast linast = match linast.desc with
   (* Track known subexpressions and Idents that can be replaced *)
+  (* TODO: Rather than replaced_idents - just introduct id = id' and leave it to copy propagation to simplify *)
   | LLet(id, (Local | Export), body, _) -> (match CompoundHashtbl.find_opt common_expressions body.c_desc with
     | Some id' -> Ident.Tbl.add replaced_idents id id'
     | None -> if List.mem Immutable (!(body.c_annotations)) then
-      CompoundHashtbl.add common_expressions body.c_desc id)
-  | _ -> ()
-  ); linast
+      CompoundHashtbl.add common_expressions body.c_desc id); linast
+  (* Replace common expressions that aren't in bindings *)
+  | LSeq (compound, body) -> (match CompoundHashtbl.find_opt common_expressions compound.c_desc with
+    | Some id -> {linast with desc=LSeq (Compound.imm (Imm.id id), body)}
+    | None -> linast)
+  | LCompound compound -> (match CompoundHashtbl.find_opt common_expressions compound.c_desc with
+    | Some id -> {linast with desc=LCompound (Compound.imm (Imm.id id))}
+    | None -> linast)
+  | _ -> linast
 
 let map_imm imm = match imm.i_desc with
   | ImmIdent id ->

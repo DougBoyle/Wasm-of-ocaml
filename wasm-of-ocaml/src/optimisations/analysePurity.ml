@@ -141,12 +141,17 @@ let rec analyse_compound handlers compound = match compound.c_desc with
      etc. hence no point in analysing here. *)
   (* Any properties guarenteed about function body are also guarenteed about its application.
      Need to unroll currying in analysis however *)
+  (* Due to how analysis propagates, side effect within a function will prevent analysis of a pure function
+     return value from propagating out of the function if first one is over-applied *)
   | CApp (f, args) ->
     analyse_imm f;
-  (*  List.iter analyse_imm args;  -- Not made use of *)
     compound.c_annotations <- List.fold_left
-     (fun func_annots arg -> List.fold_left (* extract just the body annotations, assume nothing else *)
-       (fun annots -> (function (Fields [body]) -> body | _ -> annots)) (ref []) (!func_annots))
+     (fun func_annots arg ->
+       if List.mem Pure (!func_annots) && List.mem Immutable (!func_annots)
+       then (* extract known properties of function result *)
+         List.fold_left (fun annots -> (function (Fields [body]) -> body | _ -> annots)) (ref []) (!func_annots)
+       else (* function has side effect so not a simple curried argument application, don't extract properties *)
+         ref [])
      f.i_annotations args
 
   (* Assume the worst of each argument, don't try to analyse everywhere the function is called from *)

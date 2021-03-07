@@ -625,7 +625,6 @@ and compile_instr env instr =
        Call(add_dummy_loc
          (Int32.(add func_idx (of_int env.func_offset))));
     ]
-  | MIncrement -> failwith "no longer need MIncrement"
 
 let rec get_last = function
   | [] -> failwith "No last element for an empty list"

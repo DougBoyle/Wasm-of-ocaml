@@ -113,8 +113,6 @@ type instr =
   | MDataOp of data_op * immediate
   | MStore of (binding * instr) list (* Items in the same list have their backpatching delayed until the end of that list *)
   | MDrop (* Ignore the result of the last expression. Used for sequences. *)
-  (* For garbage collection *)
-  | MIncrement
 
 and block = instr list
 

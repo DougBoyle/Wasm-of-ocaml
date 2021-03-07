@@ -24,21 +24,44 @@
 
 \section{Administrative Normal Form IR}
 % Reference for ANF?
-From OCaml's Typedtree data structure, the first pass of the compiler translates programs to administrative normal form (ANF), which linearises the syntax tree so that the operands to operations are always constants or idnetifiers, with the exception of control flow construsts such as if/while statements. For example:
+From OCaml's Typedtree data structure, the first pass of the compiler translates programs to administrative normal form (ANF), which linearises the syntax tree so that the operands to operations are always constants or idnetifiers, with the exception of control flow construsts such as if/while statements. Expressions are broken down into immediate values, compound and linast (linearised AST) terms. The general structure is given below, with some details omitted.
 
 \begin{verbatim}
-f(g(x), h(x+y))
-\end{verbatim}
-would be translated to
-\begin{verbatim}
-let v0 = g(x) in
-  let t = x + y in 
-    let v1 = h(t) in
-      f(v0, v1)
+linast = compound 
+  | Sequence (compound, linast)
+  | Let(Identifier, compound, linast) 
+  | LetRec((Identifier * compound) list, linast)
+
+compound = imm | unary_op imm | binary_op (imm, imm) 
+  | Block (tag, imm list) | GetTag imm
+  | Field (imm, index) | SetField (imm, index, imm)
+  | If (imm, linast, linast) | Switch (imm, (int * linast) list)
+  | Try (index, linast, linast) | Fail index
+  | Function (Identifier list, linast) | App (imm, imm list)
+
+imm = Constant | Identifier
+tag = index = int
 \end{verbatim}
 
-Temporary values are now explicit and the linear structure makes optimisations such as common subexpression elimination and dead assignment elimination easier to implement in this form. Code which may execute zero or many times cannot be completely linearised, for example the subexpressions for the body of a while loop must be evaluated within the while loop, since they are never evaluated if the condition is false. \\
-Linearising is implemented using three mutually recursive functions which compile immediates (constants/identifiers), compound terms such as \verb|x + y|, and top level terms such as \verb|let x = e in e'| or \verb|e; e'|. The first two of these return a pair of the actual term needed, and a list of any setup operations extracted as part of linearising the expression being compiled. Compiling a top level term then converts this result and list of setup operations into a tree which performs all of the setup then evaluates the result.
+%For example:
+%
+%\begin{verbatim}
+%f(g(x), h(x+y))
+%\end{verbatim}
+%would be translated to
+%\begin{verbatim}
+%let v0 = g(x) in
+%  let t = x + y in 
+%    let v1 = h(t) in
+%      f(v0, v1)
+%\end{verbatim}
+
+Temporary values are now explicit and the linear structure makes optimisations such as common subexpression elimination and dead assignment elimination easier to implement in this form. Code which may execute zero or many times cannot be completely linearised, for example the branches of an if statement, as only one branch will actually be evaluated. 
+
+Given an expression in the Typedtree to translate to an immediate or compound term, we recursively decompose the expression, returning a list of let bindings for any temporary values required in its computation and an immediate or compound term for its final value. In this way, an initial call to translate an expression to a linast term identifies a list of setup operations and a final compound term, then combines these into a tree by chaining the setup operations together, terminated by the final compound term.
+
+
+%Linearising is implemented using three mutually recursive functions which compile immediates (constants/identifiers), compound terms such as \verb|x + y|, and top level terms such as \verb|let x = e in e'| or \verb|e; e'|. The first two of these return a pair of the actual term needed, and a list of any setup operations extracted as part of linearising the expression being compiled. Compiling a top level term then converts this result and list of setup operations into a tree which performs all of the setup then evaluates the result.
 % Give actual examples of code translation/algorithm cases?
 % OCaml primitives handling?
 
@@ -335,11 +358,51 @@ Above we were able to include the body of the function in the new function. For 
 
 % Describe graphs
 
+
 \subsection{Copying expressions, variables and constants}
 Due to OCaml being a functional language, each local variable is assigned to once in the IR (with the exception of those variables introduced specially for tail call optimisation), making these optimisations relatively easy to implement. 
 
 % TODO: Describe IR structure in more detail e.g. imm/compond/linast and labelled of nodes as Local|Export|Mutable
-First, the tree is scanned and every \verb|let x = Constant c in ...| or \verb|let x = Ident y in ...| binding where \verb|x| is marked as a local variable is added to a table. These are the ``immediate" values in the linearised IR and represent bindings that do no real work. Every variable use in the tree is looked up in the table, and wherever a corresponding entry is found that variable is replaced with its known value. 
+First, the tree is scanned and every \verb|let x = Constant c in ...| or \verb|let x = Ident y in ...| binding is added to a table (unless \verb|x| is one of the variables introduced by tail call optimisations and is therefore mutable). These are the ``immediate" values in the linearised IR and represent bindings that do no real work. Every variable use in the tree is looked up in the table, and wherever a corresponding entry is found that variable is replaced with its known value. 
+
+% Could have done some sort of flow based analysis here but didn't, do I want to?
+That alone is not enough to detect fixed values being propagated through memory. There are four sources of memory blocks in the OCaml Typedtree (ignoring floats, which are treated as constants until later stages, and closures, which are hidden in this representation): constructors, tuples, arrays and records. Of these, constructor and tuple fields are always immutable and record fields are unless specified as mutable. Therefore, during translation to the IR, although all of these are mapped to a single \verb|Block| structure, constructors, tuples and records are annotated with a list of booleans for which of their fields are immutable. We also annotate the nodes for these blocks with the constants or variables stored to each of those immutable fields. 
+% Describe this process in more detail? Relates to constant propagation too.
+% TODO: Could just describe by data-flow equations?
+% Doing this across function calls would require CFA, which gets complex when not talking about function values
+While traversing the IR tree, variable bindings copy these annotations to a table mapping identifiers to annotations, which are copied back onto nodes in the tree where these variables are used. Then, when a \verb|Field(x, i)| node is encountered, if such an annotation is present on \verb|x| then we check if element \verb|i| of the list is immutable. If so, the field access is replaced with the variable or constant known to be stored there. \\
+Where possible, this information is also preserved across branches by taking the intersection of lists present on each branch if they exist. For example, consider the program \verb|let p = if cond then (x, y) else (x, z) in p[0]|. We would annotate the nodes forming each of the pairs, then the node corresponding to the \verb|if| statement would be annotated with the list \verb|[Some x, None]| and this would be used to identify \verb|p[0]| as \verb|x|.
+% Annotations not carried across function arguments/results, would get a lot more complicated and need to make some approximations to ensure termination
+
+As well constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression which does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table. Identifying such expressions is done by the analysis pass described below. Then, whenever such expressions are encountered in the IR tree and are present in the table, they are replaced by the identifier known to hold that value. So that we do not attempt to use variables that are out of scope, each entry is removed from the table after the subtree below its binding is searched.
+
+These passes tend to result in unused variables due to them being replaced with their known values. Therefore, after each of these passes has been performed we identify dead assignments as assignments to variables that are never used elsewhere. Of these, those that have no side effects can then be removed from the tree.
+
+% Doing things in copy propagation/CSE doesn't make much difference overall
+
+% TODO:
+% CSE, evaluating simple expressions, optimising branches and dead assignments
+%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%
+
+% TODO: Make side effect analysis iterative to solve functions?
+\subsection{Side effect analysis}
+As mentioned in the previous optimisation, some analysis of side effects is necessary to identify where those optimisations are safe to perform.
+We need to be able to analyse which expressions do not modify program state, so can safely be removed if their result is unused. Of these, we also distinguish those that will return the same value each time they are evaluated, so if both \verb|x| and \verb|y| are bound to the same such expression, they will have the same value and any uses of \verb|y| can be replaced with \verb|x|. I call the first set of expressions ``pure" and the second ``immutable", as a way of talking about the two properties.
+
+For the purpose of removing dead expressions, creating a block in memory is considered pure, as there is no reason to allocate an unused block and such an allocation can be safely removed. It is also considered immutable if every field of the block is immutable, since there is no need to duplicate an identical immutable object in memory. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. \\
+Due to the IR being linearised, the argument to an if or switch statement is always an immutable integer variable, so these expressions are immutable/pure if each possible branch is, which is easy to check. \\
+% Describe in terms of annotations?
+The last case of interest is functions. Defining a function causes no immediate side effects so is both pure and immutable, but we still need to capture the latent effects incurred if that function executes. This is done by first analysing the function body, then attaching a third property to the function node in the tree to indicate the latent behaviour of the function body. This latent effect property can also be nested to describe the behaviour of curried function applications. \\
+ At a function application, if this annotation is present then it is unwrapped once for each argument to get the purity/immutability of the result of that application, assuming that the pure and immutable properties are present each time the latent effects are unwrapped. If there is a level of latent effects not containing the pure/immutable property, that means we have a function which performs some side effect then returns another function, so the results is not considered pure/immutable accordingly. Also, if the latent effects property is not present, then the function assigned to the variable being applied could not be determined and nothing is assumed about its behaviour. % This rules out inferring properties of recursive functions, which in general is a good idea to preserve termination behaviour. Also, most dead/common expressions are the result of compiler optimisations, and it is rare for these to be recursive function calls
+% Handling of purity properties passed through memory is similar to long description below, only worth mentioning in one place. 
+% TODO: We don't actually care about the immutability of linast terms, they aren't CSE optimised are they? Instead just rely on each compound being replaced?
+
+
 
 \subsection{Uncurrying}
 Functions which take many curried arguments are implemented as several functions, where each just constructs the closure to the next until the last evaluates the function. I looked at implementing this a different way. All but the last function just copy the closure then additionally write the argument of that call, one of the curried arguments, into the closure. Therefore, I included an integer of the number of arguments remaining, and made the original closure allocation large enough to store space for them. Then, each application just stores the argument in the closure and decrements the number of arguments remaining. When this value reaches 0, the last application is done as an actual function call. \\
