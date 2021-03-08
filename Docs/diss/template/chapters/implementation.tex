@@ -70,34 +70,39 @@ Given an expression in the Typedtree to translate to an immediate or compound te
 \section{Pattern Matching}
 The linearised intermediate representation also compiles patterns in OCaml's \verb|Typedtree| datatype to the code required to match them and bind variables within patterns. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
 
-I chose to implement the backtracking pattern matching compiler described by Fessant and Maranget \cite{ocamlpatternmatch}, which is also used in the OCaml compiler. A backtracking compiler minimises the size of the code generated, whereas a decision tree compiler may produce larger code but ensures that each pattern is examined at most once. The Grain compiler instead implements a decision tree compiler, however both approaches have similar performance once optimised.
+I chose to implement the backtracking pattern matching compiler described by Le Fessant and Maranget \cite{ocamlpatternmatch}, which is also implemented in the OCaml compiler for its intermediate representation. A backtracking compiler minimises the size of the code generated, whereas a decision tree compiler may produce larger code but ensures that each pattern is examined at most once, and is the approach taken by the Grain compiler. When optimised, each approach typically has similar performance \cite{decisiontrees} however backtracking compilers appear to be the more common approach, and guarantee linear code size.
 
-% Description of algorithm in paper
-The basic algorithm represents the patterns to compile by a vector of values to be matched and a matrix, where each row is a corresponding vector of patterns to match against (where rows are tried in top to bottom order) plus some code, called an action, to execute if the values match that row. The handling of guard statements is not described. Without guards, when the algorithm reaches a $m \times 0$ matrix (so each row has an empty vector of patterns left to match), the pattern has now been matched so the action of the top row is returned. To handle guards, each row of the matrix is augmented to also have an optional compiled guard expression. When an $m \times 0$ matrix is reached, this compiles to a series of if-then-else tests of the guards of each row until a row without a guard is reached. If all rows are guarded, then we eventually reach a $0 \times 0$ matrix which corresponds to pattern matching having failed, so we escape to the enclosing statement testing any other patterns or trap if there is nothing else to test. \\
-As guard expressions can include variables bound by the pattern, bindings introduced by pattern matching also need to be kept separate from the action to perform when a match succeeds. This allows the guard expression to be inserted between these bindings and the body of the action, which must only execute if the guard succeeds. \\
-For describing examples, $p$ represents a pattern, $a$ is an action, $g$ is an (optional) guard expression, and $b$ are binds introduced by pattern matching. $v$ is the first value being matched against.
 
-Escaping out of failed matches is achieved by the intermediate representation having static exceptions in the form of a \verb|fail i| and \verb|try ... with i ...| expression. Therefore, the algorithm just remembers the closest enclosing handler at any point and escapes to that when pattern matching fails. Although regular exceptions are challenging to implement in WebAssembly, these static exceptions compile to simple blocks with branch instructions to escape out of depending on if the expression succeeds or fails.
+The idea is to have a vector of the values being matched, and a matrix representing the different cases and the action when each matches. An example of this is:
 
-% Mention that bindings and the actual action need to be kept separate so that the guard can be checked between them?
-Another complication is the additional cases that need to be checked for. The described algorithm considers three types of patterns which are variables $\_$ or $x$ (where the latter generates a binding of the value to $x$ when it is matched), constructors $c(p_1, \dots, p_k)$ and OR patterns $(p_1 | p_2)$. Compilation can then be broken down into a handful of cases based on the patterns in the first column of the matrix. If every pattern is a variable pattern, then the first value and first column of the matrix can be discarded after binding the value to any non-wildcard variables for each row. 
+\begin{minipage}{0.45\textwidth}
+\begin{verbatim}
+let f l1 l2 = match l1, l2 with
+  | [], _ -> e1
+  | _, [] -> e2
+  | x::xs, y::ys -> e3
+\end{verbatim}
+\end{minipage}
+\begin{minipage}{0.55\textwidth}
+ values $\begin{pmatrix}
+\verb|l1| \\
+\verb|l2|
+\end{pmatrix}$, cases
+$\begin{pmatrix}
+\verb|[]| & \_ & \to & \verb|e1| \\
+\_ & \verb|[]| & \to & \verb|e2| \\
+\verb|x::xs| & \verb|y::ys| & \to & \verb|e3| \\
+\end{pmatrix}$
+\end{minipage}
 
-$
-\begin{pmatrix}
-x & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
-y & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
-\_ & p^3_2 & \dots & p^3_n & \to & a^3 & g^3 & b^3
-\end{pmatrix}
-\to
-\begin{pmatrix}
- p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, x=v) \\
- p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & (b^2, y=v) \\
- p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
-\end{pmatrix}
-$
+The algorithm given in the paper is made more complex by the range of syntax OCaml supports, and to a lesser extent by the fact the IR is linearised. First, OCaml patterns can have guard statements which need to be tested if a pattern matches. Some of the compilation steps prefix additional variable bindings onto the actions, and the guard statement needs to be evaluated after these, but before any of the original action is evaluated. Therefore, each action $\to a$ is replaced with $\to a \ g \ b$ where $g$ is the optional guard expression and $b$ is the other bindings introduced.
 
-If instead every pattern is a constructor pattern, then the matrix is compiled into a switch statement on the variant tag of the first value. A case is generated for each constructor present in the matrix, where the body of the switch case is the result of compiling the matrix with all rows with incompatible constructors discarded, and any sub-patterns of the constructor pattern extracted out and appended to the front of each row. 
+The base cases of this algorithm occur when we reach a matrix with either no rows or no columns of patterns. If there are no rows, we have run out of possibilities so pattern matching fails and backtracks to another branch. If there are no columns, we have successfully matched the whole pattern. We then output code testing the guard for each action from top to bottom of the matrix, executing the corresponding action if the guard succeeds. Either some row is not guarded, in which case it runs unconditionally if that is reached, or every row is guarded in which case we similarly backtrack if all guards are false.
 
+There are four broad cases for when the matrix is non-empty:
+\begin{itemize}
+\item \textbf{Variable rule}: If the first column has just variable patterns, the corresponding binding of the first value in the values vector is added to each row's bindings, then the first column of the matrix is discarded, as is the now matched value of the value vector.
+\item \textbf{Constructor rule}: If the first column has just constructor patterns, several specialised matrices are produced, each removing incompatible rows and deconstructing the fields of the chosen constructor. The result of compiling each of these then forms the branches of a switch statement on the constructor tag. A default case captures any constructor with no corresponding rows, and fails so that matching backtracks. \\
 $
 \begin{pmatrix}
 c(q_1, \dots, q_k) & p^1_2 & \dots & p^1_n & \to & \dots \\
@@ -108,6 +113,67 @@ c'(\dots) & p^2_2 & \dots & p^2_n & \to & \dots \\
  q_1 & \dots & q_k & p^1_2 & \dots & p^1_n  & \to & \dots 
 \end{pmatrix}
 $
+% OR variables are an issue even at this stage, mention difference to paper's approach here about extended scope
+\item \textbf{OR rule}: If there is just one row and it starts with an OR pattern \verb"(p1|...|pk)", a $k \times 1$ matrix is produced expanding out the OR pattern. %, with each row having an empty action. 
+The output is the result of compiling this matrix, sequenced with the result of compiling the rest of the original matrix. Simply duplicating the original row once for each case of the OR pattern would have duplicated all of the patterns in later columns. That could lead to exponential growth in code size, which backtracking compilation aims to avoid.
+\item \textbf{Mixture rule}: If no other case is applicable, the matrix is split into an upper and lower matrix where one of the other rules can be applied to the upper matrix. The matrices are compiled separately, with failure in the upper matrix resulting in a \verb|Fail i| instruction. This is handled by the \verb|try ... with (i) ...| construct which backtracks to try the lower matrix instead.
+
+\end{itemize}
+
+This is how the paper describes the algorithm. In practice, OCaml has several different types that all fall under the ``Constructor" rule and had to be handled separately:
+\begin{itemize}
+\item \textbf{Constants}: Constants can be viewed as a datatype with infinitely many 0-arity constructors. For integers, these compile to a switch statement on the integer value, and this switch statement will always have a default case that backtracks, since it can never be exhaustive. The decision to implement this switch statement as a branch table or nested if-then-else statements is made at the WebAssembly generation stage based on how sparse the set of values is. \\
+For floating point values, we must always use a chain of if-then-else tests so these are compiled as such at the IR level.
+
+\item \textbf{Tuples}: Tuples are just constructors with a single variant of a particular size. Therefore, the matrix is specialised by just extracting the nested patterns, as every row has the same constructor so none are discarded. There is also no need for a switch statement, since there is only one case.
+
+\item \textbf{Arrays}: In OCaml, array patterns look like \verb"[|p1, p2, ..., pk|]", matching a specific length. Again there are infinitely many constructors, each of different arity, so the code switches on the length of the array, stored as its tag, and extract the corresponding number of fields in each case. As there are infinitely many possibilities, a default case is always included.
+
+\item \textbf{Records}:
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% Description of algorithm in paper
+%The basic algorithm represents the patterns to compile by a vector of values to be matched and a matrix, where each row is a corresponding vector of patterns to match against (where rows are tried in top to bottom order) plus some code, called an action, to execute if the values match that row. The handling of guard statements is not described. Without guards, when the algorithm reaches a $m \times 0$ matrix (so each row has an empty vector of patterns left to match), the pattern has now been matched so the action of the top row is returned. To handle guards, each row of the matrix is augmented to also have an optional compiled guard expression. When an $m \times 0$ matrix is reached, this compiles to a series of if-then-else tests of the guards of each row until a row without a guard is reached. If all rows are guarded, then we eventually reach a $0 \times 0$ matrix which corresponds to pattern matching having failed, so we escape to the enclosing statement testing any other patterns or trap if there is nothing else to test. \\
+%As guard expressions can include variables bound by the pattern, bindings introduced by pattern matching also need to be kept separate from the action to perform when a match succeeds. This allows the guard expression to be inserted between these bindings and the body of the action, which must only execute if the guard succeeds. \\
+%For describing examples, $p$ represents a pattern, $a$ is an action, $g$ is an (optional) guard expression, and $b$ are binds introduced by pattern matching. $v$ is the first value being matched against.
+
+%Escaping out of failed matches is achieved by the intermediate representation having static exceptions in the form of a \verb|fail i| and \verb|try ... with i ...| expression. Therefore, the algorithm just remembers the closest enclosing handler at any point and escapes to that when pattern matching fails. Although regular exceptions are challenging to implement in WebAssembly, these static exceptions compile to simple blocks with branch instructions to escape out of depending on if the expression succeeds or fails.
+
+% Mention that bindings and the actual action need to be kept separate so that the guard can be checked between them?
+%Another complication is the additional cases that need to be checked for. The described algorithm considers three types of patterns which are variables $\_$ or $x$ (where the latter generates a binding of the value to $x$ when it is matched), constructors $c(p_1, \dots, p_k)$ and OR patterns $(p_1 | p_2)$. Compilation can then be broken down into a handful of cases based on the patterns in the first column of the matrix. If every pattern is a variable pattern, then the first value and first column of the matrix can be discarded after binding the value to any non-wildcard variables for each row. 
+
+%$
+%\begin{pmatrix}
+%x & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
+%y & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
+%\_ & p^3_2 & \dots & p^3_n & \to & a^3 & g^3 & b^3
+%\end{pmatrix}
+%\to
+%\begin{pmatrix}
+% p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, x=v) \\
+% p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & (b^2, y=v) \\
+% p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
+%\end{pmatrix}
+%$
+%
+%If instead every pattern is a constructor pattern, then the matrix is compiled into a switch statement on the variant tag of the first value. A case is generated for each constructor present in the matrix, where the body of the switch case is the result of compiling the matrix with all rows with incompatible constructors discarded, and any sub-patterns of the constructor pattern extracted out and appended to the front of each row. 
+%
+%$
+%\begin{pmatrix}
+%c(q_1, \dots, q_k) & p^1_2 & \dots & p^1_n & \to & \dots \\
+%c'(\dots) & p^2_2 & \dots & p^2_n & \to & \dots \\
+%\end{pmatrix}
+%\xrightarrow{\text{specialise } c}
+%\begin{pmatrix}
+% q_1 & \dots & q_k & p^1_2 & \dots & p^1_n  & \to & \dots 
+%\end{pmatrix}
+%$
 
 Although this is described as one rule, there are many types of OCaml patterns which are all treated as constructors and need to be handled slightly differently. Tuples are treated as a constructor type with a single variant, so a switch statements is not required, just extracting each of the values contained from the tuple and corresponding patterns. Records are similarly treated as a constructor type with only one variant. As each pattern may match different fields of the record, the fields extracted are the union of the fields mentioned by each row. Where a field is extracted but a row does not match on that field, a wildcard pattern is introduced in the row to effectively ignore that extracted value.  Fields in a record which no pattern mentions are ignored entirely.
 
@@ -376,7 +442,7 @@ Where possible, this information is also preserved across branches by taking the
 
 As well constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression which does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table. Identifying such expressions is done by the analysis pass described below. Then, whenever such expressions are encountered in the IR tree and are present in the table, they are replaced by the identifier known to hold that value. So that we do not attempt to use variables that are out of scope, each entry is removed from the table after the subtree below its binding is searched.
 
-These passes tend to result in unused variables due to them being replaced with their known values. Therefore, after each of these passes has been performed we identify dead assignments as assignments to variables that are never used elsewhere. Of these, those that have no side effects can then be removed from the tree.
+These passes tend to result in unused variables due to them being replaced with their known values. Therefore, after each of these passes has been performed we identify dead assignments as assignments to variables that are never used elsewhere. Of these, those that have no side effects can then be removed from the tree.x
 
 % Doing things in copy propagation/CSE doesn't make much difference overall
 
@@ -390,15 +456,23 @@ These passes tend to result in unused variables due to them being replaced with 
 %%%%%%%%%%%%%%%%
 
 % TODO: Make side effect analysis iterative to solve functions?
-\subsection{Side effect analysis}
-As mentioned in the previous optimisation, some analysis of side effects is necessary to identify where those optimisations are safe to perform.
-We need to be able to analyse which expressions do not modify program state, so can safely be removed if their result is unused. Of these, we also distinguish those that will return the same value each time they are evaluated, so if both \verb|x| and \verb|y| are bound to the same such expression, they will have the same value and any uses of \verb|y| can be replaced with \verb|x|. I call the first set of expressions ``pure" and the second ``immutable", as a way of talking about the two properties.
+\subsection{Effects analysis}
+OCaml is an impure language, so some analysis of side effects is necessary to determine when the above optimisations are safe. This is done using the following annotations on nodes in the IR tree:
 
-For the purpose of removing dead expressions, creating a block in memory is considered pure, as there is no reason to allocate an unused block and such an allocation can be safely removed. It is also considered immutable if every field of the block is immutable, since there is no need to duplicate an identical immutable object in memory. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. \\
-Due to the IR being linearised, the argument to an if or switch statement is always an immutable integer variable, so these expressions are immutable/pure if each possible branch is, which is easy to check. \\
+\verb"annotation ::= ... | Pure | Immutable | Latent of annotation list"
+
+\verb|Pure| identifies expressions that do not modify program state, making them safe for dead code elimination to remove. Of the pure expressions, \verb|Immutable| identifies expressions that will return the same value each time they are evaluated, so common subexpression elimination can remove repeated occurrences of such expressions.
+
+For the purpose of removing dead expressions, creating a block in memory is considered pure, as it would be immediately garbage collected if it is unused. It is also considered immutable if every field of the block is immutable so always has a fixed value. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. \\
+For branches in \verb|if| and \verb|switch| statements, the condition/switch argument is always an immutable integer so we can take the intersection of the annotations on each branch for the analysis of the overall statement, therefore safely underestimating these properties. 
+
+%Due to the IR being linearised, the argument to an if or switch statement is always an immutable integer variable, so these expressions are immutable/pure if each possible branch is, which is easy to check. \\
 % Describe in terms of annotations?
-The last case of interest is functions. Defining a function causes no immediate side effects so is both pure and immutable, but we still need to capture the latent effects incurred if that function executes. This is done by first analysing the function body, then attaching a third property to the function node in the tree to indicate the latent behaviour of the function body. This latent effect property can also be nested to describe the behaviour of curried function applications. \\
- At a function application, if this annotation is present then it is unwrapped once for each argument to get the purity/immutability of the result of that application, assuming that the pure and immutable properties are present each time the latent effects are unwrapped. If there is a level of latent effects not containing the pure/immutable property, that means we have a function which performs some side effect then returns another function, so the results is not considered pure/immutable accordingly. Also, if the latent effects property is not present, then the function assigned to the variable being applied could not be determined and nothing is assumed about its behaviour. % This rules out inferring properties of recursive functions, which in general is a good idea to preserve termination behaviour. Also, most dead/common expressions are the result of compiler optimisations, and it is rare for these to be recursive function calls
+Functions are the most interesting case since they define expressions that may have latent side effects, as the function definition itself is pure and immutable, and any side effects only occur when the function is called. This is the purpose of the \verb|Latent| annotation. After analysing the body of the function, the annotations of the body are copied into a \verb|Latent| annotation and the function is marked with this as well as \verb|Pure| and \verb|Immutable|. This wrapping of annotations is repeated for each curried argument. \\
+The reverse occurs at function application, unwrapping the \verb|Latent| annotation as the analysis of each argument application. If at any point in unwrapping these, the function is not also marked as \verb|Pure| or \verb|Immutable|, the missing annotation is removed from the final annotations of the application node. This accounts for any side effects in partially evaluating the function, such as for \verb|let f x = (z := 5; (fun y -> x + y))|. Here, \verb|f 1 2| is valid as \verb|f| returns a function, but the first application is impure despite the returned function being pure so the application is not marked as pure.
+
+%The last case of interest is functions. Defining a function causes no immediate side effects so is both pure and immutable, but we still need to capture the latent effects incurred if that function executes. This is done by first analysing the function body, then attaching a third property to the function node in the tree to indicate the latent behaviour of the function body. This latent effect property can also be nested to describe the behaviour of curried function applications. \\
+ %At a function application, if this annotation is present then it is unwrapped once for each argument to get the purity/immutability of the result of that application, assuming that the pure and immutable properties are present each time the latent effects are unwrapped. If there is a level of latent effects not containing the pure/immutable property, that means we have a function which performs some side effect then returns another function, so the results is not considered pure/immutable accordingly. Also, if the latent effects property is not present, then the function assigned to the variable being applied could not be determined and nothing is assumed about its behaviour. % This rules out inferring properties of recursive functions, which in general is a good idea to preserve termination behaviour. Also, most dead/common expressions are the result of compiler optimisations, and it is rare for these to be recursive function calls
 % Handling of purity properties passed through memory is similar to long description below, only worth mentioning in one place. 
 % TODO: We don't actually care about the immutability of linast terms, they aren't CSE optimised are they? Instead just rely on each compound being replaced?
 

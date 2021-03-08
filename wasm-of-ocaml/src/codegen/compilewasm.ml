@@ -484,27 +484,47 @@ let rec compile_store env binds =
 (* TODO: Detect when better to just use nested ifthenelse *)
 (* Rewriting Grain version to put one "value" block at top, rest nonetype *)
 and compile_switch env arg branches default =
-  let compile_table labels =
-    let max_label = List.fold_left max 0 labels in
-    let labs_to_branches = List.mapi (fun i l -> (l, i+1)) labels in
-    let default = add_dummy_loc 0l in
-    (* +1 since List.init n creates cases for 0 up to (n-1) *)
-    List.init (max_label + 1) (fun l -> match List.assoc_opt l labs_to_branches with
-      | Some b -> add_dummy_loc (Int32.of_int b) | None -> default) in
-  let rec build_branches i seen = function
-    (* Base case, do actual arg eval, branch table and default case *)
-    | [] ->
-     [Block(ValBlockType None, (* Only left by branch table *)
-      List.map add_dummy_edges
-        ((compile_imm (enter_block ~n:(i + 2) env) arg) @
-        decode_num @ [BrTable (compile_table seen, add_dummy_loc 0l)]))]
-        @ (compile_block (enter_block ~n:(i + 1) env) default) @ [Br(add_dummy_loc (Int32.of_int i))]
-    (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
-    | (l, action)::rest -> (Block(ValBlockType None,
-      List.map add_dummy_edges
-      ((build_branches (i+1) ((Int32.to_int l)::seen) rest))))
-      :: (compile_block (enter_block ~n:(i+1) env) action) @ [Br(add_dummy_loc (Int32.of_int i))] in
-  [Block(ValBlockType (Some Types.I32Type), List.map add_dummy_edges (build_branches 0 [] branches))]
+  let max_label = Int32.to_int (List.fold_left (fun m (i, _) -> max m i) 0l branches) in
+  let num_cases = List.length branches in
+  if  max_label > 2*num_cases
+  then (* Too sparse, use chain of if-then-else statements rather than branch table *)
+    let get_swap = get_swap env 0 in
+    let set_swap = set_swap env 0 in
+    let compiled_arg = compile_imm env arg in
+    let rec build_branches i = function
+      (* TODO: Check jump indices match up *)
+      | [] ->
+       (compile_block (enter_block ~n:i env) default) @ [Br(add_dummy_loc (Int32.of_int i))]
+      (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
+      | (l, action)::rest -> get_swap @ [Const(encoded_const_int32 l); Compare(Values.I32 Ast.IntOp.Eq)] @
+       [If(ValBlockType (Some Types.I32Type),
+         List.map add_dummy_edges ((compile_block (enter_block ~n:(i+1) env) action)
+           @ [Br(add_dummy_loc (Int32.of_int i))]),
+         List.map add_dummy_edges (build_branches (i+1) rest))] in
+    compiled_arg @ set_swap @
+    [Block(ValBlockType (Some Types.I32Type), List.map add_dummy_edges (build_branches 1 branches))]
+  else
+    let compile_table labels =
+      let labs_to_branches = List.mapi (fun i l -> (l, i+1)) labels in
+      let default = add_dummy_loc 0l in
+      (* +1 since List.init n creates cases for 0 up to (n-1) *)
+      List.init (max_label + 1) (fun l -> match List.assoc_opt l labs_to_branches with
+        | Some b -> add_dummy_loc (Int32.of_int b) | None -> default) in
+    let rec build_branches i seen = function
+      (* Base case, do actual arg eval, branch table and default case *)
+      | [] ->
+       [Block(ValBlockType None, (* Only left by branch table *)
+        List.map add_dummy_edges
+          (* enter_block not necessary for just compiling immediates *)
+          ((compile_imm env arg) @
+          decode_num @ [BrTable (compile_table seen, add_dummy_loc 0l)]))]
+          @ (compile_block (enter_block ~n:(i + 1) env) default) @ [Br(add_dummy_loc (Int32.of_int i))]
+      (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
+      | (l, action)::rest -> (Block(ValBlockType None,
+        List.map add_dummy_edges
+        ((build_branches (i+1) ((Int32.to_int l)::seen) rest))))
+        :: (compile_block (enter_block ~n:(i+1) env) action) @ [Br(add_dummy_loc (Int32.of_int i))] in
+    [Block(ValBlockType (Some Types.I32Type), List.map add_dummy_edges (build_branches 0 [] branches))]
 
 
 and compile_block env block =

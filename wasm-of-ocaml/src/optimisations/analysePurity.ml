@@ -147,20 +147,22 @@ let rec analyse_compound handlers compound = match compound.c_desc with
     analyse_imm f;
     compound.c_annotations <- List.fold_left
      (fun func_annots arg ->
+       (* TODO: Could be slightly more precise e.g. If all applications are pure but not always Immutable *)
        if List.mem Pure (!func_annots) && List.mem Immutable (!func_annots)
        then (* extract known properties of function result *)
-         List.fold_left (fun annots -> (function (Fields [body]) -> body | _ -> annots)) (ref []) (!func_annots)
+         (* Latent is identical to Fields annotation, different name just used for clarity i.e. side effects *)
+         List.fold_left (fun annots -> (function (Latent [body]) -> body | _ -> annots)) (ref []) (!func_annots)
        else (* function has side effect so not a simple curried argument application, don't extract properties *)
          ref [])
      f.i_annotations args
 
   (* Assume the worst of each argument, don't try to analyse everywhere the function is called from *)
-  (* Creating a closure is always pure/immutable so pass body as Fields annotation *)
+  (* Creating a closure is always pure/immutable so pass body as Latent annotation *)
   | CFunction (args, body) ->
     analyse_linast handlers body;
     (* Encodes currying by nesting fields. Each partial function is pure/immutable *)
     let function_annotations =
-      (List.fold_left (fun annots _ -> ref [Pure; Immutable; Fields [annots]]) body.annotations args) in
+      (List.fold_left (fun annots _ -> ref [Pure; Immutable; Latent [annots]]) body.annotations args) in
     (* Need to remember if function has been tail call optimised/expects args as a tuple *)
     if List.mem TailCallOptimised (!(compound.c_annotations))
       then function_annotations := TailCallOptimised :: (!function_annotations);

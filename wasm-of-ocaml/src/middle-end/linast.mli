@@ -56,13 +56,12 @@ type imm_expr_desc =
 (* Pure => evaluation has no side effects. Immutable => Result also can not have been changed by other effects
    Some redundancy here? Think of Pure = dead assignment elimination, Immutable = CSE *)
 (* TODO: Impossible annotation to remove cases, and a Tag/Constant annotation for constant propagation
-         of blocks.
-         Constant annotation used similarly to Fields where value assigned is a known constant.
-         Between them, Fields and Constant (base case) allow full constant propagation, don't need
-         a special optConstants program except to actually do the replacements. *)
-type annotation = Pure (* whole term/body pure *) | Fields of annotations list
+         of blocks. *)
+type annotation = Pure (* whole term/body pure *) | Latent of annotations list (* latent effects of function *)
+  | Fields of annotations list (* Propagate known values around immutable memory *)
   | ImmutableBlock of bool list (* Whether SetField possible for each field - very basic analysis *)
   | Immutable
+
   (* Assertion: Since tree is linearised and nothing assumed about function args, imms only occur where in scope *)
   | FieldImms of (imm_expr option) list
   | Tag of int (* same as FieldImms but for tracking the tag. No option since annotation removed if None *)
