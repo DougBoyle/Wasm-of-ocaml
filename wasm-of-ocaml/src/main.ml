@@ -103,6 +103,18 @@ let _ = Arg.parse [
     (* Taken from driver/main_args.ml in OCaml compiler *)
     ("-I", Arg.String (fun dir -> Clflags.include_dirs := (dir :: (!(Clflags.include_dirs)))),
       "<dir>  Add <dir> to the list of include directories");
+    ("-w", Arg.String (Warnings.parse_options false),
+      Printf.sprintf
+      "<list>  Enable or disable warnings according to <list>:\n\
+      \        +<spec>   enable warnings in <spec>\n\
+      \        -<spec>   disable warnings in <spec>\n\
+      \        @<spec>   enable warnings in <spec> and treat them as errors\n\
+      \     <spec> can be:\n\
+      \        <num>             a single warning number\n\
+      \        <num1>..<num2>    a range of consecutive warning numbers\n\
+      \        <letter>          a predefined set\n\
+      \     default setting is %S" Warnings.defaults_w);
+
     ("-d", Arg.Set_string output, "Specify output directory");
     ("-ir", Arg.Set print_ir, "Print Linast IR program produced");
     ("-bindstree", Arg.Set print_bindstree, "Print Bindstree produced");

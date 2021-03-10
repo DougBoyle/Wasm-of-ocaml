@@ -443,12 +443,11 @@ let compile_data_op env imm op =
     (* block is actually just a local variable in this case *)
     block @ (compile_bind ~is_get:false env b) @ const_false
 
-(* What is this doing? Appears to just call f on the given env, but with backpatches reset *)
 let collect_backpatches env f =
-  let nested_backpatches = ref [] in
-  let res = f {env with backpatches=nested_backpatches} in
-  (* TODO: Work out if original ones wanted or not *)
-  res, !nested_backpatches
+  let res = f env in
+  let backpatching = !(env.backpatches) in
+  env.backpatches := []; (* clear, ready for next function *)
+  res, backpatching
 
 (* Mutually recursive functions, once closures created, need to associate each variable for one of the other functions
    (or themself) with that closure. So go through and put a pointer to each needed closure in each of the closures. *)
@@ -481,7 +480,6 @@ let rec compile_store env binds =
   let instrs, backpatches = collect_backpatches env process_binds in
   instrs @ (do_backpatches env backpatches)
 
-(* TODO: Detect when better to just use nested ifthenelse *)
 (* Rewriting Grain version to put one "value" block at top, rest nonetype *)
 and compile_switch env arg branches default =
   let max_label = Int32.to_int (List.fold_left (fun m (i, _) -> max m i) 0l branches) in
@@ -492,7 +490,6 @@ and compile_switch env arg branches default =
     let set_swap = set_swap env 0 in
     let compiled_arg = compile_imm env arg in
     let rec build_branches i = function
-      (* TODO: Check jump indices match up *)
       | [] ->
        (compile_block (enter_block ~n:i env) default) @ [Br(add_dummy_loc (Int32.of_int i))]
       (* Some constructor case, wrap recursive call in this action + jump to end of switch *)
@@ -532,7 +529,6 @@ and compile_block env block =
 
 and compile_instr env instr =
   match instr with
-  (* TODO: Remove ignore_zero *)
   | MDrop -> [Drop]
   | MImmediate(imm) -> compile_imm env imm
   | MFail j -> (match j with
@@ -666,13 +662,9 @@ let compile_function env {index; arity; stack_size; body=body_instrs} =
     body = List.map add_dummy_edges body;
   }
 
-(* TODO: Is this necessary? (global)Imports should be fixed. Relates to how compile_globals works
-   Shouldn't actually import any global costnats, so +2 from grain version removed (grain runtime has 2 globals in it) *)
 let compute_table_size env {functions} =
   (List.length functions) + (List.length (runtime_imports ()))
 
-(* TODO: Should be able to massively simplify this. Set of imports should be fixed, ignore any that aren't OcamlRuntime *)
-(* TODO: Understand what all of ths does/is needed for *)
 let compile_imports env =
   let compile_import {mimp_name; mimp_type=(args, ret)} =
     let module_name = encode_string (Ident.name runtime_mod) in

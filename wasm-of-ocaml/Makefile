@@ -6,7 +6,7 @@ all:
 unittest:
 	make all
 	set -e
-	for f in samples/*.ml ; do ./main.byte -d samples/out $$f || { echo $$f ; exit 1 ; }  ; done
+	for f in samples/*.ml ; do ./main.byte -d samples/out $$f -w -8-26 || { echo $$f ; exit 1 ; }  ; done
 	node samples/test.js
 rt:
 	wat2wasm src/runtime/runtime.wast
@@ -17,6 +17,8 @@ analysistest:
 	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_analysis.byte
 constproptest:
 	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_const_prop.byte
+uncurrytest:
+	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_uncurry.byte
 graphtest:
 	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I unit_tests test_graph.byte
 testall:
