@@ -19,6 +19,8 @@ constproptest:
 	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_const_prop.byte
 uncurrytest:
 	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_uncurry.byte
+lvatest:
+	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I unit_tests test_lva.byte
 graphtest:
 	ocamlbuild -pkg ounit2 -pkg wasm $(INCLUDES) -I unit_tests test_graph.byte
 testall:
