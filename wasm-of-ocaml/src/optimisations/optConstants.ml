@@ -57,7 +57,8 @@ let eval_binary = function
   | (Div, Const_int i, Const_int j) -> Const_int (i / j)
   | (Mod, Const_int i, Const_int j) -> Const_int (i mod j)
   (* list *)
-  | (Append, _, _) -> failwith "Append should never get constants as arguments" (* Update if tag encoding changes *)
+  (* [] = 0, so this only happens if both lists 0, in which case can just return 0 too *)
+  | (Append, _, _) -> Const_int 0
   (* float *)
   | (FAdd, Const_float fstr1, Const_float fstr2) ->
     Const_float(Float.to_string((Float.of_string fstr1) +. (Float.of_string fstr2)))

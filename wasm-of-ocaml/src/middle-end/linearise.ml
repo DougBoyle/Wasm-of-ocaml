@@ -79,8 +79,10 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
     let (result, result_setup) = translate_imm e2 in
       (result, effect_setup @ [BEffect effect] @ result_setup)
 
-  | Texp_construct (identLoc, desc, []) when desc.cstr_nonconsts = 0 ->
-    (Imm.const (Asttypes.Const_int (get_const_constructor_tag desc.cstr_tag)), [])
+  (* New *)
+  | Texp_construct (identLoc, {cstr_tag = Cstr_constant i}, l) ->
+      (Imm.const (Const_int i), [])
+  | Texp_array [] -> (Imm.const (Const_int 0), [])
 
   | Texp_tuple _ | Texp_construct _ | Texp_record _ | Texp_field _
   | Texp_setfield _ | Texp_ifthenelse _ | Texp_while _ | Texp_for _
@@ -156,13 +158,17 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock ~annotations:(ref [ImmutableBlock (List.map (fun _ -> true) l)]) 0 args, List.concat setup)
 
-  | Texp_construct (identLoc, desc, []) when desc.cstr_nonconsts = 0 ->
-    (Compound.imm (Imm.const (Asttypes.Const_int (get_const_constructor_tag desc.cstr_tag))), [])
+  (* New *)
+  | Texp_construct (identLoc, {cstr_tag = Cstr_constant i}, l) ->
+    (Compound.imm (Imm.const (Const_int i)), [])
+
   | Texp_construct (identLoc, desc, l) ->
     let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock ~annotations:(ref [ImmutableBlock (List.map (fun _ -> true) l)])
      (unify_constructor_tag desc) args, List.concat setup)
   (* Every field of an array is mutable *)
+
+  | Texp_array [] -> (Compound.imm (Imm.const (Const_int 0)), [])
   | Texp_array l -> let (args, setup) = List.split (List.map translate_imm l) in
     (Compound.makeblock ~annotations:(ref [ImmutableBlock (List.map (fun _ -> false) l)])
      (List.length l) args, List.concat setup)

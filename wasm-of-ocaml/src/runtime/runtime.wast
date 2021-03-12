@@ -246,13 +246,20 @@
 
   (func $append (export "@") (param $l1 i32) (param $l2 i32) (result i32)
     (local $result i32) (local $tail i32) (local $cell i32)
-    local.get $l1
-    i32.const 1
-    i32.xor
-    local.tee $l1  ;; untag l1
 
-    i32.load ;; get tag, 0 = [], 2 = x::xs
-    if (result i32) ;; list not empty
+    local.get $l1
+
+    i32.eqz
+    if (result i32) ;; 0 = []
+      local.get $l2
+
+    else ;; block, untag pointer
+      local.get $l1
+      i32.const 1
+      i32.xor
+      local.set $l1  ;; untag l1
+
+
       i32.const 4
       call $create_fun  ;; allocate stack space to remember 'result'
 
@@ -287,8 +294,6 @@
       ;; advance l1
       local.get $l1
       i32.load offset=12
-      i32.const 1
-      i32.xor
       local.set $l1
 
       ;; while loop
@@ -296,9 +301,15 @@
         loop
           ;; test condition
           local.get $l1
-          i32.load
           i32.eqz
+
           br_if 1
+
+          local.get $l1
+          i32.const 1
+          i32.xor
+          local.set $l1
+
 
           local.get $tail
           ;; allocate new cell
@@ -326,8 +337,6 @@
           ;; advance l1
           local.get $l1
           i32.load offset=12
-          i32.const 1
-          i32.xor
           local.set $l1
 
           br 0 ;; loop
@@ -345,9 +354,6 @@
       ;; free stack space
       i32.const 4
       call $exit_fun
-
-    else ;; list empty, just return l2
-      local.get $l2
     end
   )
 )

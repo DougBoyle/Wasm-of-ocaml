@@ -387,7 +387,7 @@ let allocate_data env vtag elts =
       store ~offset:(Int32.of_int(4 * (idx + 2))) ();
     ] in
   (heap_allocate env (num_elts + 2)) @ tee_swap @
-  [Const(encoded_const_int32 vtag); (* Tag stored literally, not doubled *)
+  [Const(encoded_const_int32 vtag); (* TODO: Store tag literally, not doubled *)
     store ~offset:0l ();
   ] @ get_swap @ [
     Const(const_int32 num_elts);
@@ -432,9 +432,21 @@ let compile_data_op env imm op =
         store ~offset:(Int32.mul 4l (Int32.add idx 2l)) ();
       ] @ const_false (* Return unit *)
   | MGetTag -> (* Not divided by 2 unless actually used in a switch *)
-    block @ (toggle_tag Data) @ [
+    (* New - use simple ints for const constructors, so only do load if pointer value *)
+    let get_swap = get_swap env 0 in
+    let tee_swap = tee_swap env 0 in
+    block @ tee_swap @
+     [Const(wrap_int32 1l); Binary(Values.I32 Ast.IntOp.And);
+      If(ValBlockType (Some Types.I32Type),
+         (* block case *)
+         List.map add_dummy_edges (get_swap @ (toggle_tag Data) @ [load ~offset:0l ();]),
+         (* const case *)
+         List.map add_dummy_edges get_swap)
+     ]
+
+   (*  (toggle_tag Data) @ [
       load ~offset:0l ();
-    ]
+    ] *)
   | MArrayGet idx -> check_array_bounds idx [load ~offset:8l ()]
   | MArraySet (idx, v) ->
     let value = compile_imm (enter_block env) v in

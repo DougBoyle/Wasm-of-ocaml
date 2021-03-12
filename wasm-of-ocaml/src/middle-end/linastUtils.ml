@@ -65,7 +65,7 @@ let get_const_constructor_tag = function
 
 (* Assign constant/block constructor tags to disjoint, contiguous values *)
 let unify_constructor_tag desc = match desc.cstr_tag with
-  | Cstr_constant i -> i
+  | Cstr_constant i -> i (* Still used in pattern matching, but const constructors are now always ints *)
   | Cstr_block i -> i + desc.cstr_consts
   | _ -> raise NotSupported
 
