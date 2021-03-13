@@ -16,4 +16,4 @@ let rec stackphi = function
   | 0 -> 0
   | n -> (phi n) + stackphi (n-1)
 
-let _ = stackphi 75
+let a = stackphi 1000

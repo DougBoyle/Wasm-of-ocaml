@@ -36,7 +36,7 @@ let rec map f = function
 
 (* Was originally defined on arrays, now defined on lists *)
 let make_perms (* : int -> (int -> int) list * (int list -> int list -> unit) list *) =
-  (* Create a random list of transformations - No random module, have to just pick a number! *)
+  (* Create a random list of transformations *)
   let rec random_perm ((p_f, p_v) as acc) i =
     if i <= 0 then acc else
       let c = rand 3 in

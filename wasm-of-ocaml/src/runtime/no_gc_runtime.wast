@@ -1,8 +1,15 @@
 (module
   (type $0 (func (result i32)))
+
+
+  (type $1 (func (param i32) (result i32)))
+  (import "jsRuntime" "log" (func $log (type 1)))
+  (export "log" (func $log))
+
   (memory (export "mem") 1) ;; initially just a 1 page memory i.e. 64KB. Can use up to 4GB in Wasm (32-bit)
   (global $heap_top (mut i32) (i32.const 0))
-  (func $malloc (export "$malloc") (param $n i32) (result i32)
+
+  (func $malloc (export "malloc") (param $n i32) (result i32)
     (local $difference i32)
     global.get $heap_top ;; returned value
 	global.get $heap_top
@@ -11,9 +18,13 @@
 	global.set $heap_top ;; store updated heap_top
 
     global.get $heap_top
+  ;;;  call $log
+
 	memory.size
 	i32.const 16
     i32.shl  ;; page size = 2^16 = 65536
+ ;;;   call $log
+
     i32.gt_u
     if
       global.get $heap_top
@@ -47,6 +58,7 @@
     local.get $result
     i32.const 1 ;; data block tag
     i32.or
+ ;;;   call $log
   )
   (func $compare (export "compare") (param $v1 i32) (param $v2 i32) (result i32)
     (local $x i32) (local $arity i32) (local $i i32) (local $f1 f64) (local $f2 f64)

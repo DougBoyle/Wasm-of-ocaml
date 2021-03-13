@@ -21,7 +21,7 @@ let rec iter f x = function
     | 0 -> x
     | n -> iter f ((f x) mod 1024) (n-1)
 
-let _ = iter (h_record record) 1 10000
-let _ = iter (h_function f g) 1 10000
-let _ = iter h 1 10000
+let a = iter (h_record record) 1 10000
+let b = iter (h_function f g) 1 10000
+let c = iter h 1 10000
 

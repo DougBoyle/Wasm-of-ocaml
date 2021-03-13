@@ -11,6 +11,8 @@ unittest:
 rt:
 	wat2wasm src/runtime/runtime.wast
 	mv runtime.wasm src/runtime/runtime.wasm
+	wat2wasm src/runtime/no_gc_runtime.wast
+	mv no_gc_runtime.wasm src/runtime/no_gc_runtime.wasm
 lintest:
 	ocamlbuild -pkg ounit2 $(INCLUDES) -I unit_tests test_linast_utils.byte
 analysistest:
@@ -32,3 +34,10 @@ cleanout:
 	rm benchmarks/js/*.byte
 	rm benchmarks/grain/out/*.wasm
 	rm benchmarks/C/out/*.wasm
+interfaces:
+	for f in benchmarks/Ocaml/*.mli ; do \
+	  ocamlc $$f ; \
+	  NAME=$$(basename $$f .mli) ; \
+	  mv benchmarks/Ocaml/$${NAME}.cmi benchmarks/out/$${NAME}.cmi ; \
+	done
+

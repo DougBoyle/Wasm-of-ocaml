@@ -119,10 +119,10 @@
       i32.eq
       if ;; compare floats. Compares according to Wasm's semantics, need to check OCaml's behaviour
         local.get $v1
-        f64.load offset=4
+        f64.load offset=8
         local.tee $f1
         local.get $v2
-        f64.load offset=4
+        f64.load offset=8
         local.tee $f2
         f64.lt
         if

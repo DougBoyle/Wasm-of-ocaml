@@ -107,9 +107,11 @@ let translate_funcs types globals funcs =
   (* As well as leaving stack space for the locals of main, it first leaves some space for globals.
      Could merge both of the create_fun calls at start into 1, but overhead is minimal and makes purpose clearer *)
   let new_main =
-  List.map add_dummy_loc ([Ast.Const(Compilewasm.const_int32 ((List.length globals) * 4));
-     Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.create_fun_ident)])
-  @ (wrap_function types main wasm_main) in
+    if !(Compilerflags.no_gc) then wasm_main
+    else
+      List.map add_dummy_loc ([Ast.Const(Compilewasm.const_int32 ((List.length globals) * 4));
+         Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.create_fun_ident)])
+      @ (wrap_function types main wasm_main) in
 
 
   (List.map (fun ({ftype; locals; body; num_swaps} as f) ->
