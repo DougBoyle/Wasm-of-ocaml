@@ -102,10 +102,14 @@ let rec compile_matrix fail values matrix =
   (* OR rule -> Compile([v], expanded_or_matrix); Compile(vs, rest_of_row) *)
   | (v::vs, [(({pat_desc=Tpat_or(_, _, _)} as p)::ps, act, g)]) ->
     let patterns = expand_ors p in
+    let new_fail = next_fail_count () in
     let (or_match, or_setup) = compile_matrix fail [v]
-      (List.map (fun p -> ([p], ((Compound.imm unit_value, []), []), None)) patterns) in
+      (List.map (fun p -> ([p], ((Compound.fail new_fail, []), []), None)) patterns) in
     let (rest, rest_setup) = compile_matrix fail vs [(ps, act, g)] in
-    (rest, or_setup @ (BEffect(or_match))::rest_setup)
+    (Compound.matchtry new_fail
+      (binds_to_anf or_setup (LinastExpr.compound or_match))
+      (binds_to_anf rest_setup (LinastExpr.compound rest)),
+     [])
 
   (* variable rule *)
   | (v::vs, matrix) when List.for_all

@@ -78,9 +78,7 @@ let rec init n =
 let n = 1000
 let m = 1000
 let a =
-  (* to avoid it being optimised away *)
   let l = ref [] in
-  (* Only create lists once, bulk of the work is calling splice *)
   let l1 = init n and l2 = init n in
   for i = 1 to m do l := splice (l1, l2) done;
   !l

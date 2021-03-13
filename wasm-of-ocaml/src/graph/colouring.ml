@@ -78,6 +78,12 @@ let build_stack graph =
     help (smallest::stack) (remove_node smallest graph) in
   help [] uncoloured_graph
 
+(* Just for debugging
+let print_graph graph =
+  List.iter (fun (i, c, l) -> Printf.printf "%li: " i;
+    List.iter (fun j -> Printf.printf "%li " j) l; Printf.printf "\n") graph
+*)
+
 (* swap slots are left out, so need the arity and num_swaps to correctly generate indicies *)
 let colour_node arity num_swaps graph node =
   let neighbours = (fun (_, _, l) -> l) (List.find (fun (i, _, _) -> i = node) graph) in

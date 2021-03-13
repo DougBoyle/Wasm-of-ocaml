@@ -6,24 +6,15 @@ open Bindstree
 open Linast
 open LinastUtils
 
-(* Compilerflags.use_colouring swaps between naive local allocation and using clash graph colouring.
-   Hence functionality for both methods is included here.
-   With colouring, use stack_counter and ignore stack_idx
-   Without colouring: use stack_idx and ignore stack_counter
+(* Register allocation always done assigning new slots then reducing by colouring later,
+   using a new slot every time avoids complications with needing to bind a variable to the same
+   slot when used across an OR pattern, as can guarentee that slot is only used by that variable. *)
 
-   For simplicity, stack_idx is still updated in many places even when colouring enabled *)
-type compile_env = {
-    binds : binding Ident.tbl;
-    stack_idx : int;
-}
+(* only information that needs to be tracked, stack_counter kept globally *)
+type compile_env = binding Ident.tbl ref
+let initial_env = ref Ident.empty
 
-let initial_env = {
-    binds = Ident.empty;
-    stack_idx = 0;
-}
-
-(* Unlike above, stack_counter uses separate locals wherever possible and leaves minimising this
-   up to clash graph colouring. *)
+(* stack_counter uses separate locals wherever possible and leaves minimising to clash graph colouring. *)
 let stack_counter = ref 0
 let new_local _ =
   let v = !stack_counter in
@@ -68,12 +59,18 @@ let next_export id =
       incr global_index;
       ret
 
+(* For checking if already set in different OR pattern branch *)
+let find_id_opt id env =
+  try
+    Some (Ident.find_same id (!env))
+  with Not_found ->
+    None
+
 let find_id id env =
   try
-    Ident.find_same id env.binds
+    Ident.find_same id (!env)
   with Not_found ->
     Format.fprintf Format.std_formatter "Compilebinds could not find binding for %a\n" Ident.print id;
-
     raise Not_found
 
 type work_element = {
@@ -112,7 +109,7 @@ let compile_function env args body tupled : closure_data =
   let global_vars, global_binds = Ident.fold_all (fun id bind (vars, tbl) -> match bind with
      |  MGlobalBind _ -> id::vars, Ident.add id bind tbl
      | _ -> vars, tbl
-    ) env.binds ([], Ident.empty) in
+    ) (!env) ([], Ident.empty) in
 
   let free_var_set = free_vars (Ident.Set.of_list (global_vars @ args)) body in
   let args, rest = if tupled then args, []
@@ -132,13 +129,7 @@ let compile_function env args body tupled : closure_data =
       Ident.add arg (MArgBind(Int32.of_int arg_idx)) acc)
       free_binds new_args in
   let idx = next_lift() in (* function index to access function in WebAssembly *)
-  (* Number of vars declared in body hence number of locals added.
-     ASSERTION: At least as large as final stack_idx when compiling.
-                If larger, just get unused slots. If too small, get out of bounds local accesses. *)
-  let func_env = {
-    binds=arg_binds;
-    stack_idx=0;
-  } in
+  let func_env = ref arg_binds in
   let worklist_item = {
     body=(match rest with [] -> body | _ -> LinastExpr.compound (Compound.mkfun rest body));
     env=func_env;
@@ -173,13 +164,15 @@ let rec compile_comp env c =
 
    (* start_bind is for the ident used in the loop, end_bind just remembers the end point of loop *)
     let start_bind = MLocalBind(Int32.of_int
-      (if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx)) in
+      ( new_local ())) in
     let end_bind = MLocalBind(Int32.of_int
-      (if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx + 1)) in
+      ( new_local () )) in
     (* end_bind doesn't need adding to environment as it only holds the loop limit, not a variable in body *)
-    let new_env = {binds=Ident.add id start_bind env.binds; stack_idx=env.stack_idx + 2} in
+
+    env := Ident.add id start_bind (!env);
+
     MFor(start_bind, compile_imm env start, dir, end_bind, compile_imm env finish,
-      compile_linast false new_env body)
+      compile_linast false env body)
   | CUnary(op, arg) ->
     MUnary(op, compile_imm env arg)
   | CBinary(op, arg1, arg2) ->
@@ -195,7 +188,9 @@ let rec compile_comp env c =
   | CGetTag(obj) ->
     MDataOp(MGetTag, compile_imm env obj)
   | CMatchTry (i, body1, body2) ->
-    MTry(i, compile_linast false env body1, compile_linast false env body2)
+    let body = compile_linast false env body1 in
+    let handler = compile_linast false env body2 in
+    MTry(i, body, handler)
   | CFunction(args, body) when List.mem Tupled (!(c.c_annotations)) ->
     MAllocate(MClosure(compile_function env args body true))
   | CFunction(args, body) ->
@@ -216,44 +211,51 @@ let rec compile_comp env c =
    Global only expected at toplevel, indicates that variable is exported (should change name). *)
 and compile_linast toplevel env expr =
  match expr.desc with
- | LSeq(hd, tl) -> (compile_comp env hd)::MDrop::(compile_linast toplevel env tl)
+ | LSeq(hd, tl) ->
+   (* Order important, as binds get updated mutable to handle variables passed through OR pattern *)
+   let head = compile_comp env hd in
+   let tail = compile_linast toplevel env tl in
+   head::MDrop::tail
  | LLetRec(binds, body) ->
    let get_loc idx ((id, global, compound) as bind) =
      if List.mem Tupled (!(compound.c_annotations)) then
        tupled_functions := Ident.Set.add id (!tupled_functions);
-     (if toplevel then
+     match find_id_opt id env with
+     | Some b -> (b, bind)
+     | None -> (if toplevel then
        match global with
        | Export -> MGlobalBind(next_export id)
        | Local | Mut -> MGlobalBind(next_global id)
     (* Should never see 'Global' if not toplevel *)
      else MLocalBind(Int32.of_int (
-       if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx + idx))),
+        new_local () ))),
      bind in
    let binds_with_locs = List.mapi get_loc binds in
-   let new_env = List.fold_left (fun acc (new_loc, (id, global, _)) -> (* - Should use global field?? *)
-       (* Cautious/simple approach - may end up using more stack variables than necessary.
-          This is unrelated to free vars. Determines the number of local slots to include in a function *)
-       {binds=Ident.add id new_loc acc.binds; stack_idx=acc.stack_idx +
-         match global with Export -> 0 | _ -> 1})
-       env binds_with_locs in
-       let wasm_binds = List.fold_left (fun acc (loc, (_, _, rhs)) ->
-           (loc, (compile_comp new_env rhs)) :: acc)
-           [] binds_with_locs in
-       MStore(List.rev wasm_binds) :: (compile_linast toplevel new_env body) (* Store takes a list?? *)
+
+   List.iter (fun (new_loc, (id, _, _)) ->
+     env := Ident.add id new_loc (!env)) binds_with_locs;
+
+   let wasm_binds = List.fold_left (fun acc (loc, (_, _, rhs)) ->
+     (loc, (compile_comp env rhs)) :: acc) [] binds_with_locs in
+   MStore(List.rev wasm_binds) :: (compile_linast toplevel env body) (* Store takes a list?? *)
  | LLet (id, global, bind, body) ->
    if List.mem Tupled (!(bind.c_annotations)) then
      tupled_functions := Ident.Set.add id (!tupled_functions);
-   let location = if toplevel then (match global with (* As above but only 1 element *)
-     | Export -> MGlobalBind(next_export id)
-     | Local | Mut -> MGlobalBind(next_global id))
-     (* Should never see 'Global' if not toplevel *)
-     else MLocalBind(Int32.of_int (
-       if (!(Compilerflags.use_colouring)) then new_local () else env.stack_idx)) in
-   (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
-   let new_env = {binds=Ident.add id location env.binds; stack_idx=env.stack_idx +
-    match global with Export -> 0 | _ -> 1} in
+   let location = match find_id_opt id env with
+     (* check this so that multiple binds to the same variable in OR patterns agree on index *)
+     | Some b -> b
+     | None ->
+       if toplevel then (match global with (* As above but only 1 element *)
+         | Export -> MGlobalBind(next_export id)
+         | Local | Mut -> MGlobalBind(next_global id))
+       (* Should never see 'Global' if not toplevel *)
+       else MLocalBind(Int32.of_int (new_local ())) in
+     (* only need another stack variable if the thing bound to wasn't a global. Reduces local vars in main *)
+
+   env := Ident.add id location (!env);
+
    let wasm_binds = [(location, (compile_comp env bind))] in
-   MStore(wasm_binds) :: (compile_linast toplevel new_env body)
+   MStore(wasm_binds) :: (compile_linast toplevel env body)
  | LCompound c -> [compile_comp env c]
 
 let compile_work_element({body; env} : work_element) =
@@ -272,7 +274,7 @@ let compile_remaining_worklist () =
     stack_counter := 0;
     let compiled_body = compile_work_element cur in
     {index=Int32.of_int index; arity=Int32.of_int arity; body = compiled_body;
-    stack_size = if (!(Compilerflags.use_colouring)) then (!stack_counter) else count_vars body;}::funcs in
+    stack_size =  (!stack_counter) ;}::funcs in
   List.rev (fold_left_worklist compile_one [])
 
 let transl_program (program : linast_expr) : binds_program =

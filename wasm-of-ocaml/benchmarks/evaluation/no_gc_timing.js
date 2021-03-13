@@ -25,7 +25,7 @@ if (process.argv.length == 3){
   let times = [];
 
   const filename = process.argv[2];
-  let simple_name = filename.replace(/^.*[\\\/]/, '');
+  let simple_name = filename.replace(/^.*[\\\/]/, '').replace(".wasm","");
   if (simple_name.length < 16){
       simple_name = simple_name + "\t";
   }

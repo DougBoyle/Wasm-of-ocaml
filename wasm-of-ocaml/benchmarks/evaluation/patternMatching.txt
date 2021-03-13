@@ -1,0 +1,31 @@
+Both done without GC and with all other optimisations enabled.
+Unoptimised pattern matching:
+splice             311.771 18.684  48048052        1073
+splice2            150.425 2.937   28000064        1204
+
+Optimised pattern matching:
+splice             314.056 3.589   48048052        1011
+splice2            128.711 20.195  28000064        1095
+132.704 13.610  28000064        1095
+
+File size notably reduced for each case,
+execution time marginally affected.
+
+
+splice:
+let rec splice = function
+  | [], ly -> ly
+  | lx, [] -> lx
+  | x::xs, y::ys -> x::y::(splice (xs, ys))
+
+called on two 1000 length lists (1000 times)
+
+
+splice2:
+let rec splice l1 l2 = match (l1, l2) with
+  | Nil, _ -> 0
+  | _, Nil -> 0
+  | ((One x, _)|(_, One x)) -> x
+  | Cons (x, xs), Cons (y, ys) -> x + y
+
+called on (Cons(1, Nil), One 2)  1 million times

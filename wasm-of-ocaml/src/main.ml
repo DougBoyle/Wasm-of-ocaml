@@ -89,7 +89,7 @@ let main () =
   let graph = optimise_graph graph in
 
   (* Reduce the number of locals used *)
-  let graph = if (!(Compilerflags.use_colouring)) then Colouring.colour_registers graph else graph in
+  let graph = Colouring.colour_registers graph in
 
   let wasm = OutputWasm.translate_to_wasm graph in
   Compilewasm.validate_module wasm;

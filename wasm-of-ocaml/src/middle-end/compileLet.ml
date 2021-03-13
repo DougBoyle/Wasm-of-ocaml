@@ -73,10 +73,11 @@ let rec compile_matrix ~exported fail values matrix =
   (* OR rule -> Compile([v], expanded_or_matrix); Compile(vs, rest_of_row) *)
   | (v::vs, [(({pat_desc=Tpat_or(_, _, _)} as p)::ps, act)]) ->
     let patterns = expand_ors p in
-    let (or_match, or_setup) = CompileMatch.compile_matrix fail [v] (* Need a compound for LinastExpr.seq *)
-      (List.map (fun p -> ([p], ((Compound.imm unit_value, []), []), None)) patterns) in
+    let new_fail = CompileMatch.next_fail_count () in
+    let or_match = compile_matrix ~exported fail [v]
+      (List.map (fun p -> ([p], LinastExpr.compound (Compound.fail new_fail))) patterns) in
     let rest = compile_matrix ~exported fail vs [(ps, act)] in
-    binds_to_anf ~exported or_setup (LinastExpr.seq or_match rest)
+    LinastExpr.compound (Compound.matchtry new_fail or_match rest)
 
   (* variable rule *)
   | (v::vs, matrix) when List.for_all

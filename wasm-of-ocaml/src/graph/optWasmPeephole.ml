@@ -16,7 +16,8 @@ let rec peephole = function
      If local i isn't used again, tee i will be remove but set i; get i would not be (appears to be live) *)
   | ({it=LocalSet ({it=i} as var)} as first)::({it=LocalGet {it=j}} as second)::rest when i = j ->
     merge_instrs first second;
-   {first with it = LocalTee var; succ=second.succ}::(peephole rest)
+    first.succ := !(second.succ); (* Need to preserve using the same reference *)
+   {first with it = LocalTee var}::(peephole rest)
 
   (* Remove get i; set i -- achieves nothing *)
   | ({it=LocalGet {it=i}} as first)::({it=LocalSet ({it=j})} as second)::rest when i = j ->

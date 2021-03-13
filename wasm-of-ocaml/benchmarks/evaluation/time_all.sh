@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 cd $(dirname $BASH_SOURCE)
 
-NO_GC=0
+NO_GC=1
 
 for file in ../out/*.wasm
 do

@@ -1,7 +1,11 @@
 #!/usr/bin/bash
-# Shared tests are: alltrees_7, arith_75, composition, funcrec, mergesort_500, nbody_100
-NO_GC=0
 
+NO_GC=1
+# put options for optimisation here. Choices are:
+# -Nopt-ir, -passes-ir, -Nopt-graph, -passes-graph, -Nopt-patterns
+OPTS=()
+
+# Shared tests are: alltrees_7, arith_75, composition, funcrec, mergesort_500, nbody_100
 cd $(dirname $BASH_SOURCE)
 for file in ../Ocaml/*.ml
 do

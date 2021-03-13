@@ -95,15 +95,19 @@ let primBinds : linast_setup list ref = ref []
 
 (* 10 was arbitrarily chosen as initial size *)
 let handler_envs : (int32, Ident.Set.t) Hashtbl.t = Hashtbl.create 10
+
 let update_handler_env i env =
   match Hashtbl.find_opt handler_envs i with
   | Some e -> Hashtbl.replace handler_envs i (Ident.Set.union e env)
   | None -> Hashtbl.add handler_envs i env
 (* Getting handler env removes it from the hashtbl, so never need an explicit reset between uses.
-   Never actually an issue as handler identifiers aren't reused, so compiler only does this once per handler. *)
+   Never actually an issue as handler identifiers aren't reused,
+   so compiler only does this once per handler. *)
 let get_handler_env i env = match Hashtbl.find_opt handler_envs i with
   | Some e -> Hashtbl.remove handler_envs i; Ident.Set.union env e
   | None -> env
+
+
 
 (* Env is variables bound in body of expression *)
 let rec free_vars env (e : linast_expr) =

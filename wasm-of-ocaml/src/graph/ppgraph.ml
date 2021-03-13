@@ -16,6 +16,10 @@ let print_next ppf instr =
     List.iter (fun instr -> if !spc then fprintf ppf " " else spc := true;
      fprintf ppf "%d " instr.id) (!(instr.succ))
 
+let rec print_var_list ppf (xs : Wasm.Ast.var list) = match xs with
+  | [] -> ()
+  | {it=x}::rest -> fprintf ppf "%li " x; print_var_list ppf rest
+
 let rec print_instr ppf instr = match instr.it with
   | Unreachable -> fprintf ppf "%d:Unreachable [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | Nop -> fprintf ppf "%d:Nop [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
@@ -24,9 +28,9 @@ let rec print_instr ppf instr = match instr.it with
   | Block (_, instrs) -> fprintf ppf "@[<2>(block@ %a)@]" print_block instrs
   | Loop (_, instrs) -> fprintf ppf "@[<2>(loop@ %a)@]" print_block instrs
   | If (_, body1, body2) -> fprintf ppf "@[<2>(if@ then@ %a@ else@  %a)@]" print_block body1 print_block body2
-  | Br _ -> fprintf ppf "%d:Br [%a]" instr.id print_live instr
-  | BrIf _ -> fprintf ppf "%d:BrIf [%a]" instr.id print_live instr
-  | BrTable _ -> fprintf ppf "%d:BrTable [%a]" instr.id print_live instr
+  | Br _ -> fprintf ppf "%d:Br [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | BrIf _ -> fprintf ppf "%d:BrIf [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | BrTable (l, {it=x}) -> fprintf ppf "%d:BrTable %a%li [%a] {last: %a, next: %a}" instr.id print_var_list l x print_live instr print_last instr print_next instr
   | Return -> fprintf ppf "%d:Return [%a]" instr.id print_live instr
   | Call _ -> fprintf ppf "%d:Call [%a]" instr.id print_live instr
   | CallIndirect _ -> fprintf ppf "%d:CallIndirect [%a]" instr.id print_live instr
