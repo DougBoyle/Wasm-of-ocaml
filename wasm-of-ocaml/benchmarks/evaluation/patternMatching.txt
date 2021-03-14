@@ -6,7 +6,6 @@ splice2            150.425 2.937   28000064        1204
 Optimised pattern matching:
 splice             314.056 3.589   48048052        1011
 splice2            128.711 20.195  28000064        1095
-132.704 13.610  28000064        1095
 
 File size notably reduced for each case,
 execution time marginally affected.
@@ -29,3 +28,32 @@ let rec splice l1 l2 = match (l1, l2) with
   | Cons (x, xs), Cons (y, ys) -> x + y
 
 called on (Cons(1, Nil), One 2)  1 million times
+
+From results below, no effect except where pattern matching significant i.e. mergesort
+-------- Separator for reading in file
+Unoptimised:
+alltrees_10             23.129  0.376   9454748 1418
+alltrees_7              0.619   0.090   264188  1418
+alltrees_9              6.643   0.247   2856960 1418
+arith_1000              45.161  1.330   12024   876
+arith_75                0.201   0.005   924     876
+composition             0.744   0.061   175312  2642
+funcrec                 0.398   0.050   64      1362
+mergesort_4000          0.674   0.006   308524  1377
+mergesort_500           0.114   0.009   42524   1377
+nbody_100               0.799   0.041   393260  4399
+nbody_1000              8.805   0.367   3885260 4399
+
+Optimised:
+alltrees_10             23.720  0.544   9454748 1418
+alltrees_7              0.606   0.046   264188  1418
+alltrees_9              6.673   0.353   2856960 1418
+arith_1000              45.073  0.935   12024   876
+arith_75                0.221   0.061   924     876
+composition             0.746   0.034   175312  2642
+funcrec                 0.403   0.063   64      1362
+mergesort_4000          0.675   0.022   308524  1314
+mergesort_500           0.113   0.012   42524   1314
+nbody_100               0.754   0.045   393260  4399
+nbody_1000              9.034   0.284   3885260 4399
+
