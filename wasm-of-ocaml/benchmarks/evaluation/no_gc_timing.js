@@ -8,15 +8,6 @@ const { performance } = require('perf_hooks');
 const readFile = util.promisify(fs.readFile);
 const exec = util.promisify(require('child_process').exec);
 
-// process.argv is a list of the command line arguments
-
-//const check_mem = require("./checkmemory");
-
-
-function log(v){
-    console.log(v);
-    return v;
-}
 
 let iters = 15;
 
@@ -35,7 +26,7 @@ if (process.argv.length == 3){
       for (let i = 0; i < iters; i++) {
           var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/no_gc_runtime.wasm');
           var module = await WebAssembly.compile(buffer);
-          var runtime = await WebAssembly.instantiate(module, {jsRuntime: {log: log}});
+          var runtime = await WebAssembly.instantiate(module);
 
           imports = {ocamlRuntime: runtime.exports};
           var buffer = await readFile(filename);

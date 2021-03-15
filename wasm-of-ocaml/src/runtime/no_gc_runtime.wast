@@ -1,6 +1,7 @@
 (module
   (type $0 (func (result i32)))
   (type $1 (func (param i32) (result i32)))
+
   (memory (export "mem") 1) ;; initially just a 1 page memory i.e. 64KB. Can use up to 4GB in Wasm (32-bit)
   (global $heap_top (mut i32) (i32.const 0))
 

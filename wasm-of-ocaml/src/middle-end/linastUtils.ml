@@ -83,6 +83,9 @@ let rec binds_to_anf ?(exported=[]) ?(mut=[]) binds body =
   List.fold_right (fun bind body ->
      match bind with
      | BEffect comp -> LinastExpr.seq comp body
+     (* For simple functions, value (argument) is x and pattern is also x,
+        so would otherwise introduce a bind to itself. Not necessary, and would otherwise cause errors *)
+     | BLet(id, {c_desc = CImm {i_desc = ImmIdent id'}}) when Ident.same id id' -> body
      | BLet(id, comp) -> LinastExpr.mklet id (get_global_flag exported mut id) comp body
      | BLetRec lets -> LinastExpr.mkletrec
        (List.map (fun (id, e) -> (id, get_global_flag exported mut id, e)) lets) body
