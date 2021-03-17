@@ -26,23 +26,24 @@ nbody_1000          0.357   0.032   131072  4145
 
 Grain (First timing information + filesize, then heap usage) (with GC):
 alltrees_7              36.855  24.675  4982
-alltrees_9              956.418 32.855  4982
+alltrees_9              965.889 44.636  4982
 alltrees_10             9874.379 118.163 4982
 arith_75                20.417  12.285  4436
 arith_1000              2815.692  885.255 4436
 composition             33.187  23.468  10874
-funcrec         56.751  11.468  7033
+funcrec                 56.751  11.468  7033
 mergesort_500           15.287  13.702  5277
-mergesort_4000           38.606  18.603  5277
+mergesort_4000          38.606  18.603  5277
 nbody_100               31.472  21.218  22977
-nbody_1000               507.450 50.056  22977
+nbody_1000              507.450 50.056  22977
 
 alltrees_7       648744
-alltrees_10       23920600
+alltrees_9       7143416
+alltrees_10      23920600
 arith_75         966376
 arith_1000       Error: Does not terminate
 composition      638112
-funcrec  2320
+funcrec          2320
 mergesort_500    272928
 mergesort_4000   2114400
 nbody_100        1127640
@@ -53,3 +54,25 @@ May want to verify some of the results, don't seem too accurate?! (expected more
 
 Possible latest version of grain fixed some error, now allowing larger test programs?
 When originally tested: arith failed above about 100, same for alltrees 8, mergesort 1000 etc.
+
+---------------------
+Grain NO GC (composition.gr fails with 'Decref' called when 0, due to 'reduce' in List library):
+alltrees_7              35.732  29.422  4642
+alltrees_9              152.620 33.116  4642
+arith_75                15.440  12.030  4092
+funcrec                 20.217  11.364  6463
+composition             ERROR
+mergesort_4000          22.091  12.586  5219
+mergesort_500           12.594  13.194  5218
+nbody_100               20.391  14.463  20447
+nbody_1000              99.654  28.859  20448
+
+alltrees_7       747200
+alltrees_9       8191984
+arith_75         966376
+funcrec          2384
+composition      ERROR: decref fail
+mergesort_4000   2114440
+mergesort_500    272968
+nbody_100        1178272
+nbody_1000       11665384

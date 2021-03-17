@@ -1,28 +1,28 @@
 Splice left out (see patternMatching.txt), not really representative of anything
 With latest version of GC, all optimisations, measured over 10 iterations:
 Filename          time: avg     std     heap    filesize
-alltrees_10        Error: Maximum stack size exceeded
 alltrees_7         2.711   0.299   131048  1743
 alltrees_9         89.076  1.710   1114088 1743
-arith_1000         117.062 1.914   32072   1220
+alltrees_10        Error: Maximum stack size exceeded
 arith_75           0.652   0.022   2472    1220
+arith_1000         117.062 1.914   32072   1220
 composition        2.327   0.311   65512   3489
 funcrec            2.203   0.083   192     1876
-mergesort_4000     Error: Maximum stack size exceeded
 mergesort_500      0.771   1.124   65512   1662
+mergesort_4000     Error: Maximum stack size exceeded
 nbody_100          2.933   0.542   65520   5408
 nbody_1000         22.996  0.596   65520   5408
 
 Without GC, all optimisations, measured over 10 iterations:
 Filename          time: avg     std     heap usage  filesize
-alltrees_10        20.358  0.547   8442476     1373
 alltrees_7         0.548   0.017   230556      1373
 alltrees_9         5.644   0.204   2532504     1373
-arith_1000         42.276  1.147   12024       876
+alltrees_10        20.358  0.547   8442476     1373
 arith_75           0.201   0.010   924         876
+arith_1000         42.276  1.147   12024       876
 composition        0.741   0.018   174496      2617
 funcrec            0.370   0.014   64          1362
-mergesort_4000     0.672   0.005   308508      1311
 mergesort_500      0.123   0.010   42508       1311
+mergesort_4000     0.672   0.005   308508      1311
 nbody_100          0.791   0.033   393260      4399
 nbody_1000         8.752   0.193   3885260     4399
