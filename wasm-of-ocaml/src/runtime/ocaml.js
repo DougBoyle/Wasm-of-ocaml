@@ -2,6 +2,9 @@ const util = require('util');
 const fs = require("fs");
 const readFile = util.promisify(fs.readFile);
 
+// Doesn't provide methods to create values to pass to OCaml,
+// and assumes values read out once returned, hence doesn't interact with GC
+
 function wrap_ptr(i, instance){
 	// 'View' (Int32Array) gets cleared whenever memory grows, so build a new view each time this is used
 	var mem = new Int32Array(instance.exports["$mem"].buffer);

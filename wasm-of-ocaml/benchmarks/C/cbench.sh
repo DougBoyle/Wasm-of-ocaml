@@ -15,7 +15,7 @@ do
      -Wl,--no-entry -Wl,--export=main -o out/$NAME.c.wasm $file
   fi
 done
-for file in out/*.wasm
-do
-    node ../runner.js $file
-done
+#for file in out/*.wasm
+#do
+#    node ../runner.js $file
+#done

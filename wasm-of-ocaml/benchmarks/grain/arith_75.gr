@@ -15,6 +15,5 @@ let phi = (n) => {
 
 let rec stackphi = (n) => if (n == 0) {0} else {phi(n) + stackphi(n - 1)}
 
-// Note: Actually just 75, seeming doesn't work for greater values
 let a = stackphi(75)
 export a

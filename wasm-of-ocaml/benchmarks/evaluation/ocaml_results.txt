@@ -1,3 +1,4 @@
+Splice left out (see patternMatching.txt), not really representative of anything
 With latest version of GC, all optimisations, measured over 10 iterations:
 Filename          time: avg     std     heap    filesize
 alltrees_10        Error: Maximum stack size exceeded
@@ -11,7 +12,6 @@ mergesort_4000     Error: Maximum stack size exceeded
 mergesort_500      0.771   1.124   65512   1662
 nbody_100          2.933   0.542   65520   5408
 nbody_1000         22.996  0.596   65520   5408
-splice             505.828 15.407  196576  1249
 
 Without GC, all optimisations, measured over 10 iterations:
 Filename          time: avg     std     heap usage  filesize
@@ -26,4 +26,3 @@ mergesort_4000     0.672   0.005   308508      1311
 mergesort_500      0.123   0.010   42508       1311
 nbody_100          0.791   0.033   393260      4399
 nbody_1000         8.752   0.193   3885260     4399
-splice             308.045 4.972   48048028    991

@@ -1,12 +1,55 @@
 JS (heap usage approximate so have both mean and sample variance):
-alltrees_10             45.574  10.572  15953469.333    1112120.891     14372
 alltrees_7              4.521   0.588   1441668.267     212377.442      14371
 alltrees_9              18.066  4.693   9314714.667     3857800.091     14371
-arith_1000              95.133  1.302   107902.400      7403.019        13678
+alltrees_10             45.574  10.572  15953469.333    1112120.891     14372
 arith_75                2.781   0.554   103890.133      6105.329        13676
+arith_1000              95.133  1.302   107902.400      7403.019        13678
 composition             11.931  1.249   1659785.600     251911.906      15021
 funcrec                 8.683   0.554   117938.667      7359.370        14128
-mergesort_4000          7.762   1.178   1523286.933     76897.648       29213
 mergesort_500           3.625   0.515   373056.000      7703.471        29212
+mergesort_4000          7.762   1.178   1523286.933     76897.648       29213
 nbody_100               3.297   0.460   970808.000      6360.370        15381
 nbody_1000              12.204  1.174   376132.267      278096.981      15382
+
+C:
+alltrees_7          0.303   0.042   196608  8207
+alltrees_9          2.774   0.110   1179648 8207
+alltrees_10         10.401  1.244   3670016 8207
+arith_75            0.222   0.046   0       984
+arith_1000          44.848  0.783   0       984
+composition         0.679   0.122   262144  11314
+funcrec             0.552   0.041   0       1351
+mergesort_500       0.167   0.144   131072  8431
+mergesort_4000      0.717   0.130   262144  8431
+nbody_100           0.075   0.025   131072  4145
+nbody_1000          0.357   0.032   131072  4145
+
+Grain (First timing information + filesize, then heap usage) (with GC):
+alltrees_7              36.855  24.675  4982
+alltrees_9              956.418 32.855  4982
+alltrees_10             9874.379 118.163 4982
+arith_75                20.417  12.285  4436
+arith_1000              2815.692  885.255 4436
+composition             33.187  23.468  10874
+funcrec         56.751  11.468  7033
+mergesort_500           15.287  13.702  5277
+mergesort_4000           38.606  18.603  5277
+nbody_100               31.472  21.218  22977
+nbody_1000               507.450 50.056  22977
+
+alltrees_7       648744
+alltrees_10       23920600
+arith_75         966376
+arith_1000       Error: Does not terminate
+composition      638112
+funcrec  2320
+mergesort_500    272928
+mergesort_4000   2114400
+nbody_100        1127640
+nbody_1000       11141104
+
+Limitations for grain (some of the larger cases don't have heap info yet):
+May want to verify some of the results, don't seem too accurate?! (expected more to fail)
+
+Possible latest version of grain fixed some error, now allowing larger test programs?
+When originally tested: arith failed above about 100, same for alltrees 8, mergesort 1000 etc.
