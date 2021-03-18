@@ -141,10 +141,6 @@ let leave_linast linast = match linast.desc with
         {linast with desc=LLet(id, global, compound, rewrite_tree mkleaf body rest)}
       | LLetRec (binds, body) -> {linast with desc=LLetRec(binds, rewrite_tree mkleaf body rest)}
     )
-  (* Not necessary as ident won't be reused once out of scope, but removing helps keep table small
-     TODO: By doing this, can't optimise bindings passed through an exit to a handler
-           (not yet done by pattern match).
-           Implicitly passing out values is starting to look like an issue, any way to avoid this scope issue? *)
   | LLet (id, global, compound, rest) when can_simplify_branch compound ->
     let branch = simplify_branch compound in
     let mkleaf = LinastUtils.LinastExpr.mklet id global in

@@ -23,14 +23,11 @@ let map_imm imm = match imm.i_desc with
     (match Ident.Tbl.find_opt replaced_idents id with Some i_desc -> {imm with i_desc} | None -> imm)
   | _ -> imm
 
-(* O(n), just keeping a table of identifiers, nothing complex so no need to clean up as we go
-let leave_linast linast = match linast.desc with
-  | LLet(id, _, body, rest) -> (match body.c_desc with (* remove from table *)
-     | CImm {i_desc=ImmConst c} -> Ident.Tbl.remove replaced_idents id
-     | _ -> ())
-  | _ -> (); linast
-*)
+let leave_linast linast = (match linast.desc with
+  (* remove from table, no effect if wasn't in table to begin with *)
+  | LLet(id, _, body, rest) -> Ident.Tbl.remove replaced_idents id
+  | _ -> ()); linast
 
 let optimise linast =
   Ident.Tbl.clear replaced_idents;
-  (LinastMap.create_mapper ~map_imm ~enter_linast ()) linast
+  (LinastMap.create_mapper ~map_imm ~enter_linast ~leave_linast ()) linast
