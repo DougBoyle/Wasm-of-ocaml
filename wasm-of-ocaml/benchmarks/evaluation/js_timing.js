@@ -14,7 +14,7 @@ const filesize = fs.statSync(filename).size
 let times = [];
 let heaps = []; // collect average statistics of both, since memoryUsage not exact
 
-let iters = 15;
+let iters = 20;
 
 for (let i = 0; i < iters; i++) {
     gc();
@@ -35,12 +35,12 @@ for (let i = 0; i < iters; i++) {
 
 const n = times.length;
 const t_mean = times.reduce((a, b) => a + b) / n;
-const t_std = Math.sqrt(times.map(x => Math.pow(x - t_mean, 2))
-    .reduce((a, b) => a + b) / (n - 1)); // n - 1 for sample variance
+const t_std = 2* Math.sqrt(times.map(x => Math.pow(x - t_mean, 2))
+    .reduce((a, b) => a + b) / (n*(n - 1))); // n - 1 for sample variance
 
 const h_mean = heaps.reduce((a, b) => a + b) / n;
-const h_std = Math.sqrt(heaps.map(x => Math.pow(x - h_mean, 2))
-    .reduce((a, b) => a + b) / (n - 1));
+const h_std = 2*Math.sqrt(heaps.map(x => Math.pow(x - h_mean, 2))
+    .reduce((a, b) => a + b) / (n*(n - 1)));
 
 console.log(simple_name + "\t" + t_mean.toFixed(3) + "\t" + t_std.toFixed(3)
     + "\t" + h_mean.toFixed(3) + "\t" + h_std.toFixed(3) + "\t" + filesize);

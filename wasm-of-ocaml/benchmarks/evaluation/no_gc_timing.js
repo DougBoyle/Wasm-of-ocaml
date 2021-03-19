@@ -9,7 +9,7 @@ const readFile = util.promisify(fs.readFile);
 const exec = util.promisify(require('child_process').exec);
 
 
-let iters = 15;
+let iters = 25;
 
 if (process.argv.length == 3){
 (async () => {
@@ -38,7 +38,7 @@ if (process.argv.length == 3){
           instance.exports["OCAML$MAIN"]();
           const millis = performance.now() - t0;
 
-          mem_usage = runtime.exports.malloc();
+          mem_usage = runtime.exports.malloc(0);
 
           // first couple of runs often about 2x slower,
           // so run several times and only record times once stable.
@@ -50,8 +50,9 @@ if (process.argv.length == 3){
 
       const n = times.length;
       const mean = times.reduce((a, b) => a + b) / n;
-      const std = Math.sqrt(times.map(x => Math.pow(x - mean, 2))
-          .reduce((a, b) => a + b) / (n - 1)); // n - 1 for sample variance
+      // 95% confidence interval in mean is +- 2 sigma/sqrt(n)
+      const std = 2 * Math.sqrt(times.map(x => Math.pow(x - mean, 2))
+          .reduce((a, b) => a + b) / (n * (n - 1))); // n - 1 for sample variance
 
       const filesize = fs.statSync(filename).size;
 

@@ -35,7 +35,7 @@ list init(int n, int m){
 }
 
 int main(){
-    int n = 500;
+    int n = 1000;
     int m = 100;
     list l1 = init(n, m);
     list l2 = init(n, m);

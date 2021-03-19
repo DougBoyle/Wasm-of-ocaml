@@ -30,12 +30,14 @@ let ir_passes = [
   ("const", OptConstants.optimise);
   ("fails", OptFails.optimise);
   ("cse",  OptCSE.optimise);
+
+  (* Copy propagation and CSE reveal additional cases where these can be applied *)
+  ("uncurry", OptTuple.optimise);
   ("inline", OptInline.optimise);
-  (* Where functions can't be inlined, see if they are always fully applied so can remove currying *)
-  ("tuples", OptTuple.optimise);
-  ("deadassign", OptDeadAssignments.optimise); (* Without dead assignment elimination, getting an error *)
-  (* CSE makes tail calls obvious, deadassign removes pointless functions *)
   ("tail calls", OptTailCalls.optimise);
+
+  (* All of the above optimisations may have made some values redundant now so they are removed *)
+  ("deadassign", OptDeadAssignments.optimise);
   ("clear", ClearAnnotations.clear); (* Ready for next analysis pass *)
 ]
 

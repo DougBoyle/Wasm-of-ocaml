@@ -1,28 +1,28 @@
 Splice left out (see patternMatching.txt), not really representative of anything
-With latest version of GC, all optimisations, measured over 10 iterations:
+With latest version of GC, all optimisations, measured over 20 iterations:
 Filename          time: avg     std     heap    filesize
-alltrees_7         2.711   0.299   131048  1743
-alltrees_9         89.076  1.710   1114088 1743
-alltrees_10        Error: Maximum stack size exceeded
-arith_75           0.652   0.022   2472    1220
-arith_1000         117.062 1.914   32072   1220
-composition        2.327   0.311   65512   3489
-funcrec            2.203   0.083   192     1876
-mergesort_500      0.771   1.124   65512   1662
-mergesort_4000     Error: Maximum stack size exceeded
-nbody_100          2.933   0.542   65520   5408
-nbody_1000         22.996  0.596   65520   5408
+alltrees_7              3.552   0.127   129240  1796
+alltrees_9              139.218 0.713   1354984 1796
+alltrees_10             Error: Maximum stack size exceeded
+arith_75                0.726   0.140   2472    1220
+arith_1000              115.347 0.707   32072   1220
+composition             2.397   0.120   65536   3587
+funcrec         2.130   0.023   192     1876
+mergesort_1000          0.930   0.042   131064  1670
+mergesort_4000          Error: Maximum stack size exceeded
+nbody_100               3.094   0.193   65520   5408
+nbody_1000              25.701  0.179   65520   5408
 
-Without GC, all optimisations, measured over 10 iterations:
+Without GC, all optimisations, measured over 20 iterations:
 Filename          time: avg     std     heap usage  filesize
-alltrees_7         0.548   0.017   230556      1373
-alltrees_9         5.644   0.204   2532504     1373
-alltrees_10        20.358  0.547   8442476     1373
-arith_75           0.201   0.010   924         876
-arith_1000         42.276  1.147   12024       876
-composition        0.741   0.018   174496      2617
-funcrec            0.370   0.014   64          1362
-mergesort_500      0.123   0.010   42508       1311
-mergesort_4000     0.672   0.005   308508      1311
-nbody_100          0.791   0.033   393260      4399
-nbody_1000         8.752   0.193   3885260     4399
+alltrees_7              0.593   0.005   264188  1418
+alltrees_9              6.417   0.113   2856960 1418
+alltrees_10             22.582  0.428   9454748 1418
+arith_75                0.207   0.007   924     876
+arith_1000              45.674  1.719   12024   876
+composition             0.763   0.003   175752  2682
+funcrec                 0.380   0.007   64      1362
+mergesort_1000          0.200   0.003   80524   1319
+mergesort_4000          0.677   0.008   308524  1319
+nbody_100               0.802   0.016   393260  4399
+nbody_1000              9.283   0.246   3885260 4399

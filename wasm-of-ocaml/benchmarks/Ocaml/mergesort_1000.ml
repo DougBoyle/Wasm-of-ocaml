@@ -16,7 +16,7 @@ let init n m =
     if n = 0 then [] else (rand m)::(help (n-1))
   in help n
 
-let n = 500 (* Appear to be limited by memory constraints of list in C Wasm *)
+let n = 1000 (* Appear to be limited by memory constraints of list in C Wasm *)
 let m = 100
 let l1 = init n m
 let l2 = init n m

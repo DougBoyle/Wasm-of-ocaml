@@ -15,7 +15,7 @@ const exec = util.promisify(require('child_process').exec);
 
 //const check_mem = require("./checkmemory");
 
-let iters = 15;
+let iters = 25;
 
 if (process.argv.length == 3){
 (async () => {
@@ -63,8 +63,8 @@ if (process.argv.length == 3){
 
       const n = times.length;
       const mean = times.reduce((a, b) => a + b) / n;
-      const std = Math.sqrt(times.map(x => Math.pow(x - mean, 2))
-          .reduce((a, b) => a + b) / (n - 1)); // n - 1 for sample variance
+      const std = 2*Math.sqrt(times.map(x => Math.pow(x - mean, 2))
+          .reduce((a, b) => a + b) / (n*(n - 1))); // n - 1 for sample variance
 
       // Also measure memory usage using the version of memory that tracks this
       const memory = new WebAssembly.Memory({initial: 2});

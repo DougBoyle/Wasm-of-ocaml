@@ -3,7 +3,7 @@
 NO_GC=1
 # put options for optimisation here. Choices are:
 # -Nopt-ir, -passes-ir, -Nopt-graph, -passes-graph, -Nopt-patterns
-OPTS=( -Nopt-graph -Nopt-ir )
+OPTS=(  )
 
 # Shared tests are: alltrees_7, arith_75, composition, funcrec, mergesort_500, nbody_100
 cd $(dirname $BASH_SOURCE)
@@ -19,4 +19,9 @@ do
   else
     ../../main.byte $file -d ../out -I ../out "${OPTS[@]}"
   fi
+  NAME=$(basename $file .ml)
+  ocamlfind ocamlc -o ../js/${NAME}.byte -I ../out -linkpkg -package js_of_ocaml,js_of_ocaml-ppx $file
+    js_of_ocaml ../js/${NAME}.byte
 done
+
+./time_all.sh

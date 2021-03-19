@@ -21,7 +21,7 @@ let init = n => m => {
   help(0)(n)
 }
 
-let n = 500
+let n = 1000
 let m = 100
 let l1 = init(n)(m)
 let l2 = init(n)(m)

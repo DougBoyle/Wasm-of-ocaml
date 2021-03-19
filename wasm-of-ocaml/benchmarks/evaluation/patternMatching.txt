@@ -1,11 +1,11 @@
 Both done without GC and with all other optimisations enabled.
 Unoptimised pattern matching:
-splice             311.771 18.684  48048052        1073
-splice2            150.425 2.937   28000064        1204
+splice          318.225 1.920   48048052        1073
+splice2         141.816 7.145   28000064        1214
 
 Optimised pattern matching:
-splice             314.056 3.589   48048052        1011
-splice2            128.711 20.195  28000064        1095
+splice          306.759 11.166  48048052        1011
+splice2         136.020 8.560   28000064        1105
 
 File size notably reduced for each case,
 execution time marginally affected.
@@ -32,28 +32,28 @@ called on (Cons(1, Nil), One 2)  1 million times
 From results below, no effect except where pattern matching significant i.e. mergesort
 -------- Separator for reading in file
 Unoptimised:
-alltrees_10             23.129  0.376   9454748 1418
-alltrees_7              0.619   0.090   264188  1418
-alltrees_9              6.643   0.247   2856960 1418
-arith_1000              45.161  1.330   12024   876
-arith_75                0.201   0.005   924     876
-composition             0.744   0.061   175312  2642
-funcrec                 0.398   0.050   64      1362
-mergesort_4000          0.674   0.006   308524  1377
-mergesort_500           0.114   0.009   42524   1377
-nbody_100               0.799   0.041   393260  4399
-nbody_1000              8.805   0.367   3885260 4399
+alltrees_7              0.603   0.005   264188  1418
+alltrees_9              6.287   0.090   2856960 1418
+alltrees_10             22.449  0.249   9454748 1418
+arith_75                0.206   0.005   924     876
+arith_1000              42.377  0.394   12024   876
+composition             0.768   0.008   175752  2682
+funcrec                 0.388   0.010   64      1362
+mergesort_1000          0.205   0.007   80524   1382
+mergesort_4000          0.695   0.009   308524  1382
+nbody_100               0.796   0.011   393260  4399
+nbody_1000              8.752   0.097   3885260 4399
 
 Optimised:
-alltrees_10             23.720  0.544   9454748 1418
-alltrees_7              0.606   0.046   264188  1418
-alltrees_9              6.673   0.353   2856960 1418
-arith_1000              45.073  0.935   12024   876
-arith_75                0.221   0.061   924     876
-composition             0.746   0.034   175312  2642
-funcrec                 0.403   0.063   64      1362
-mergesort_4000          0.675   0.022   308524  1314
-mergesort_500           0.113   0.012   42524   1314
-nbody_100               0.754   0.045   393260  4399
-nbody_1000              9.034   0.284   3885260 4399
+alltrees_7              0.593   0.005   264188  1418
+alltrees_9              6.417   0.113   2856960 1418
+alltrees_10             22.582  0.428   9454748 1418
+arith_75                0.207   0.007   924     876
+arith_1000              45.674  1.719   12024   876
+composition             0.763   0.003   175752  2682
+funcrec                 0.380   0.007   64      1362
+mergesort_1000          0.200   0.003   80524   1319
+mergesort_4000          0.677   0.008   308524  1319
+nbody_100               0.802   0.016   393260  4399
+nbody_1000              9.283   0.246   3885260 4399
 

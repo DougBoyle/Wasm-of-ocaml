@@ -16,7 +16,7 @@ const filesize = fs.statSync(filename).size
 let times = [];
 
 // TODO: Is not having 'warm up' period fair? Should do the same for Js, Grain, Wasm
-let iters = 10;
+let iters = 20;
 
 var heap;
 (async () => {
@@ -34,8 +34,8 @@ var heap;
     }
     const n = times.length;
     const t_mean = times.reduce((a, b) => a + b) / n;
-    const t_std = Math.sqrt(times.map(x => Math.pow(x - t_mean, 2))
-        .reduce((a, b) => a + b) / (n - 1)); // n - 1 for sample variance
+    const t_std = 2 * Math.sqrt(times.map(x => Math.pow(x - t_mean, 2))
+        .reduce((a, b) => a + b) / (n*(n - 1))); // n - 1 for sample variance
 
     console.log(simple_name + "\t" + t_mean.toFixed(3) + "\t" + t_std.toFixed(3)
         + "\t" + heap + "\t" + filesize);
