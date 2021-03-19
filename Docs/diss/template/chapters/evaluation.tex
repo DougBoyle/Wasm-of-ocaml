@@ -1,1 +1,43 @@
 \chapter{Evaluation}
+The aim of evaluation was to compare the performance of my compiler with existing alternatives for running code on the web, and measure the impact of the optimisations implemented. Performance was based on three metrics: 
+
+\begin{itemize}
+\item \textbf{Execution time}: This was measured by a JavaScript program for each of the alternatives being considered, which were run using Node.js. Timing information is gotten from the \verb|performance| interface, which has up to microsecond precision and is not affected by system time changes so is guaranteed to be monotonic. This is sampled over 20 runs of the program and the mean and 95\% confidence interval are stored. \\
+\item \textbf{Heap usage}: The amount of heap memory used was also collected by these scripts. Without garbage collection, my runtime allocates memory linearly so a call to allocate 0 bytes returns the total memory used. For the garbage collected allocator, I created a separate version which tracks the peak memory allocated, updating this on each memory allocation and accessible externally. 
+The Grain runtime's development build outputs similar memory tracing statistics, from which the amount of heap memory used can be obtained. Even after removing some of the unnecessary tracing, its overhead is significant so this was done separately to collecting timing information. For C, where the standard library is included in the WebAssembly output for memory allocation, \verb|sbrk(0)| returns the size of the WebAssembly linear memory. Lastly, for programs converted to JavaScript, the test script is run with the \verb|--expose-gc| option. This allows calling the garbage collector before the program is executed, and approximating the memory used by calling \verb|process.memoryUsage().heapUsed| before and after the program runs. This is an approximate value, so it is also averaged over 20 iterations.
+\item \textbf{Output file size}: This is easily obtained from the file system.
+
+\end{itemize}
+
+
+\section{Microbenchmarks}
+I wrote a set of test programs, each aiming to represent a different programming style to see how performance varied across applications. The programs were parameterised so that comparisons could also be made at different problem sizes too. Only a few instances of this are included in the data to keep the number of dimensions of comparison manageable, instead focusing more on other aspects. The microbenchmarks used were:
+
+\begin{itemize}
+\item \verb|alltrees|: Constructs a list of all binary trees of a given size, resulting in heavy memory usage and objects that exist for varying lifetimes.
+
+\item \verb|coprimes|: Computes Euler's totient function for all integers from 1 to \verb|n|, involving a large amount of integer arithmetic. This was based on the solution to problem 34 of the 99 Problems in OCaml \nocite{99-problems}, which is to implement Euler's totient function.
+
+\item \verb|composition|: Constructs a function which is the composition of a list of simple functions and maps it over a list, making heavy use of higher-order functions to define composition.
+
+\item \verb|func_record|: Compares three forms of parameterisation, using functions defined at the top-level of a program, using functions passed as arguments to another function, and using functions wrapped inside a record which is passed instead. This was based on an existing repository of OCaml benchmarks available on GitHub \nocite{chris00}.
+
+\item \verb|mergesort|: Implements mergesort, making heavy use of lists and pattern matching.
+
+\item \verb|nbody|: Solves the n-body, simulating the motion of planets for a number of time steps and making heavy use of floating point arithmetic. This was adapted from the benchmark program available in the Computer Language Benchmarks Game repository \nocite{benchmark-game}.
+\end{itemize}
+
+A couple other microbenchmarks were also used to demonstrate the worst-case behaviour some optimisations aim to avoid. These will be described later when the data for those optimisations is presented. 
+
+
+\section{Comparison Against Alternatives}
+Although most of the runtime for my compiler is written in WebAssembly, the garbage collected memory allocator is written in JavaScript due to its complexity and wanting to make several improvements to it. Therefore, the performance of my compiler is indicated with and without garbage collection, primarily to distinguish the overhead of calling between WebAssembly and JavaScript for each memory allocation. The data given is also for the optimised version of the compiler.
+
+\subsection{Execution Time}
+
+
+
+
+
+
+
