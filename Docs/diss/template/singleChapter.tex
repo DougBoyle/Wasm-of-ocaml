@@ -8,16 +8,24 @@
 \def\wordcount{\#\#\#\#\#}
 
 
-\usepackage{epsfig,parskip,setspace,tabularx,xspace}
+\usepackage{parskip,setspace,tabularx,xspace}
 
 \usepackage[pdfborder={0 0 0}]{hyperref}    % turns references into hyperlinks
 \usepackage[margin=25mm]{geometry}  % adjusts page layout
 \usepackage{graphicx}  % allows inclusion of PDF, PNG and JPG images
+
+\usepackage{epstopdf}
+\epstopdfsetup{outdir=./}
+
+\graphicspath{{figures/}}
+
 \usepackage{verbatim}
 \usepackage{docmute}   % only needed to allow inclusion of proposal.tex
 \usepackage{amsmath}
 
 \usepackage{dirtree}
+
+\usepackage{float}	
 
 %\includeonly{chapters/implementation}
 %\includeonly{diss.bib}
@@ -25,14 +33,13 @@
 \usepackage[backend=bibtex, sorting=none]{biblatex}
 \addbibresource{diss.bib}
 
-
-
 %% START OF DOCUMENT
 \begin{document}
 
 
-\setcounter{chapter}{2}
+\setcounter{chapter}{3}
 \include{chapters/evaluation}
+
 
 
 \end{document}

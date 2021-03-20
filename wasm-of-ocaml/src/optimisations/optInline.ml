@@ -53,7 +53,7 @@ let can_remove_if_inlined {local; applications; under_applications; other_uses} 
 let function_is_very_small {size} = size < 5 (* 5 chosen arbitrarily *)
 
 (* TODO: Track leaf nodes of call graph too i.e. doesn't make any other function calls *)
-let small_enough_and_in_budge {size} = size < 20 && (!budget) > 20
+let small_enough_and_in_budge {size} = size < 20 && (!budget) >= size
 
 let should_inline info = List.exists (fun heuristic -> heuristic info)
   [can_remove_if_inlined; function_is_very_small; small_enough_and_in_budge]

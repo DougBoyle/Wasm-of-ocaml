@@ -591,6 +591,20 @@ This optimisation requires that every call to the function can be identified pre
 This could also be done where a function always has more than one but not all of its arguments applied, but the benefit would not be as significant.
 
 
+\subsection{Inlining}
+Only non-recursive functions are inlined, enabling values to be propagated inside the function body and some expressions to be evaluated statically. This is done using some simple heuristics based on those described by Bonachea for the Titanium compiler\nocite{titanium}. First, functions with bodies containing at most 5 nodes in the IR tree are always inlined, as there is little cost in doing so and this handles very simple functions, such as accessing a field of a value or loading a mutable value. Also, if a function is not exported from the program and its only use is in a single application, this is also always inlined as the function definition can then be removed, so there is no net increase in code size.\\
+ Lastly, larger functions are considered for inlining if doing so does not exceed the budget for code size. The original size of the program is stored in terms of the number of nodes in the IR tree, and larger functions may only be inlined if the resulting program is less than 50\% larger than its initial size. This limit was found to be enough that useful inlining occurred but the output code size did not change significantly once optimisations on the inlined code were also performed.
+
+% TODO: Better justify these heuristics
+% Also use smarter heuristics like number of function calls the function being inlined makes, or if it is being called from within a loop or not (more calls, bigger impact)
+
+
+\subsection{Simplifying expressions and peephole optimisations}
+Lastly, several simple optimisations are made at the IR and WebAssembly level. Integer or floating point operations in the IR tree involving constants are evaluated at compile time. Similarly, a \verb|switch| or \verb|if| statement switching on a constant is replaced with the branch known to be taken. Both of these allow function applications to be simplified after they are inlined, reducing code size and execution time. 
+
+At the WebAssembly level, live variable analysis is used to identify unused assignments to variables that can be removed, in addition to being used for register assignment described previously. Peephole optimisations also simplify several common cases resulting from compiling each operation independently. For example, \verb|LocalSet i; LocalGet i| is replaced with \verb|LocalTee i|, and \verb|i32.const n; drop| is removed (\verb|i32.const 0; drop| is commonly seen where a unit valued expression is the first part of a sequence of expressions such as \verb|e1; e2|). These changes make clearer which values are actually used, which can allow further assignments to be removed by identifying them as assigning to dead variables.
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Garbage Collection}
 One of the last extensions to my project was to implement a garbage collector as part of the runtime system. Due to its complexity compared to the other runtime functions and going through several improvements, this was written in JavaScript and imported into the WebAssembly runtime rather than writing it in WebAssembly. I initially implemented a reference counting garbage collector, but changed to a tracing implementation to be able to collect cyclic data structures.
