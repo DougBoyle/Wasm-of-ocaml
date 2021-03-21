@@ -1,17 +1,17 @@
 Splice left out (see patternMatching.txt), not really representative of anything
 With latest version of GC, all optimisations, measured over 20 iterations:
 Filename          time: avg     std     heap    filesize
-alltrees_7              3.552   0.127   129240  1796
-alltrees_9              139.218 0.713   1354984 1796
-alltrees_10             Error: Maximum stack size exceeded
-arith_75                0.726   0.140   2472    1220
-arith_1000              115.347 0.707   32072   1220
-composition             2.397   0.120   65536   3587
-funcrec         2.130   0.023   192     1876
-mergesort_1000          0.930   0.042   131064  1670
-mergesort_4000          Error: Maximum stack size exceeded
-nbody_100               3.094   0.193   65520   5408
-nbody_1000              25.701  0.179   65520   5408
+alltrees_7              3.673   0.140   129240  1796
+alltrees_9              147.891 0.989   1354984 1796
+alltrees_10             1369.550 5.323   4451320 1796
+arith_75                0.773   0.141   2472    1248
+arith_1000              143.056 0.804   32072   1248
+composition             2.438   0.128   65536   3633
+funcrec                 2.486   0.063   192     1908
+mergesort_1000          5.090   0.127   131056  2106
+mergesort_3000          23.301  0.226   327640  2106
+nbody_100               3.231   0.205   65520   5408
+nbody_1000              27.737  0.157   65520   5408
 
 Without GC, all optimisations, measured over 20 iterations:
 Filename          time: avg     std     heap usage  filesize
@@ -22,7 +22,7 @@ arith_75                0.207   0.007   924     876
 arith_1000              45.674  1.719   12024   876
 composition             0.763   0.003   175752  2682
 funcrec                 0.380   0.007   64      1362
-mergesort_1000          0.200   0.003   80524   1319
-mergesort_4000          0.677   0.008   308524  1319
+mergesort_1000          1.088   0.021   518316  1663
+mergesort_3000          4.267   0.176   1786316 1663
 nbody_100               0.802   0.016   393260  4399
 nbody_1000              9.283   0.246   3885260 4399

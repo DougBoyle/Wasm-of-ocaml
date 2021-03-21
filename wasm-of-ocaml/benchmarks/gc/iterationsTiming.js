@@ -2,7 +2,7 @@ const util = require('util');
 const fs = require("fs");
 const { performance } = require('perf_hooks');
 // TODO: Switch this to select the implementation to use
-const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/old_memory.js");
+const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory.js");
 const readFile = util.promisify(fs.readFile);
 const exec = util.promisify(require('child_process').exec);
 
@@ -17,7 +17,7 @@ if (process.argv.length > 3){
   let times = [];
 
   for (let i = 0; i < iters; i++) {
-      const memory = new WebAssembly.Memory({initial: 2});
+      const memory = new WebAssembly.Memory({initial: 3});
       var memoryManager = new ManagedMemory(memory);
       var rtimports = {
           jsRuntime: {

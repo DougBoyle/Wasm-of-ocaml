@@ -137,12 +137,13 @@ let analyse_program linast =
   Becomes
 
   let rec f args* =    -- still recursive due to possibly having non tail-recursive calls too.
-    continue = true; result = 0; args = args*;
+    continue = true; result = 0;
     while continue {
       continue = false;
       result =
+        let args = args* in  -- allows keeping the assumption that values are immutable everywhere else
         ...
-        <args = args'; continue = true>
+        <args* = args'; continue = true>
     }
     result
 *)
@@ -190,29 +191,35 @@ and rewrite_compound_single f_id continue_id args compound = match compound.c_de
 
 (* Redefine function to be tail recursive on its own *)
 let rewrite_function_single f_id args body =
+
   (* Create new formal parameters for the function, as the original paramters
      will now be used as mutable locals rather than coming from function argument/closure *)
   let new_params = List.map (fun id -> Ident.create_local (Ident.name id)) args in
+  let mut_args = List.map (fun id -> Ident.create_local (Ident.name id)) args in
   let initial_binds = List.map (fun (arg, param) -> BLet(arg, Compound.imm (Imm.id param)))
-    (List.combine args new_params) in
+    (List.combine mut_args new_params) in
+  let while_binds = List.map (fun (arg, mut_arg) -> BLet(arg, Compound.imm (Imm.id mut_arg)))
+    (List.combine args mut_args) in
   let continue_id = Ident.create_local "continue"
   and result_id = Ident.create_local "result_mut"
   (* Need to bind the result to an immediate before LAssign can be used *)
   and temp_result_id = Ident.create_local "result" in
 
   let while_body =
-    binds_to_anf [BEffect(Compound.assign continue_id (Imm.const (Const_int 0)))]
+    (* binding of arg = mut_arg also marked as mutable, since we don't want to allow use of mutable
+       variable to leak into body of function *)
+    binds_to_anf ~mut:(args) ((BEffect(Compound.assign continue_id (Imm.const (Const_int 0))))::while_binds)
     (* Need to rewrite the body of the function so that it binds the result to 'result'.
        Uses 'rewrite_tree' previously defined in optConstants for pulling out guarenteed branches  *)
     (* Since CAssign takes an imm, first need to bind the result to a 'temp_reuslt_id' *)
     (OptConstants.rewrite_tree (LinastExpr.mklet temp_result_id Local)
-      (rewrite_body_single f_id continue_id args body)
+      (rewrite_body_single f_id continue_id mut_args body)
       (LinastExpr.compound (Compound.assign result_id (Imm.id temp_result_id)))) in
 
   (* Note - each ident has to first be assigned to by a Let expression, before LAssign can be used *)
   let new_body =
     (* Only place in the whole project ~mut is used. Custom function might be better? *)
-    binds_to_anf ~mut:(continue_id :: result_id :: args)
+    binds_to_anf ~mut:(continue_id :: result_id :: mut_args)
     ((BLet(continue_id, Compound.imm (Imm.const (Const_int 1)))) ::
      (BLet(result_id, Compound.imm unit_value)) ::
      initial_binds @

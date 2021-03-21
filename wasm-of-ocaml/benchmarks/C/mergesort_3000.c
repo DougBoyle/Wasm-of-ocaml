@@ -29,16 +29,35 @@ list merge(list l1, list l2){
     return cons(l2->head, merge(l1, l2->tail));
 }
 
+// results passed in to avoid having to deal with returning pairs
+void split (list *l1, list *l2, list l){
+    while (l != NULL){
+        list tmp = cons(l->head, *l1);
+        *l1 = *l2;
+        *l2 = tmp;
+        l = l->tail;
+    }
+}
+
+list mergesort(list l){
+  if (l == NULL || l->tail == NULL){
+    return l;
+  }
+  list l1 = NULL;
+  list l2 = NULL;
+  split(&l1, &l2, l);
+  return merge(mergesort(l1), mergesort(l2));
+}
+
 list init(int n, int m){
     if (n == 0) return NULL;
     else return cons(randm(m), init(n-1, m));
 }
 
 int main(){
-    int n = 4000;
-    int m = 100;
-    list l1 = init(n, m);
-    list l2 = init(n, m);
-    list l = merge(l1, l2);
-    return l->head; // to avoid merge being optimised away (check code generated)
+    int n = 3000;
+    int m = 10000;
+    list l = init(n, m);
+    list sorted_l = mergesort(l);
+    return sorted_l->head; // to avoid merge being optimised away (check code generated)
 }

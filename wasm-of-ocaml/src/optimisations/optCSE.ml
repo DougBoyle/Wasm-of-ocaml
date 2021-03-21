@@ -66,7 +66,8 @@ let common_expressions = (CompoundHashtbl.create(50) : Ident.t CompoundHashtbl.t
 let enter_linast linast = match linast.desc with
   (* Track known subexpressions and Idents that can be replaced *)
   (* TODO: Rather than replaced_idents - just introduct id = id' and leave it to copy propagation to simplify *)
-  | LLet(id, (Local | Export), body, _) -> (match CompoundHashtbl.find_opt common_expressions body.c_desc with
+  | LLet(id, (Local | Export), body, _) -> (
+    match CompoundHashtbl.find_opt common_expressions body.c_desc with
     | Some id' -> Ident.Tbl.add replaced_idents id id'
     | None -> if List.mem Immutable (!(body.c_annotations)) then
       CompoundHashtbl.add common_expressions body.c_desc id); linast

@@ -31,7 +31,6 @@ let init n m =
 
 (* 1k -> 1ms, 10k -> 17ms, 100k -> Stack size exceeded *)
 (* With GC: 1k -> 5ms, 5k -> 40ms, 6k -> Stack size exceeded (Should increase size of shadow stack?) *)
-let n = 1000 (* Appear to be limited by memory constraints of list in C Wasm *)
 let m = 10000
-let l = init n m
+let l = init iters m
 let sorted_l = mergesort l

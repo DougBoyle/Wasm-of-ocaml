@@ -21,7 +21,7 @@
 
     ;; check for overflow
     global.get $sp
-    i32.const 65536
+    i32.const  131072 ;; 65536 -- increased to 2 pages
     i32.gt_u
     if ;; overflow, trap
       call $stackOverflow ;; report overflow error

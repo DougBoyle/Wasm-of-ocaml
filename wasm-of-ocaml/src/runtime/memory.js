@@ -53,7 +53,9 @@ When moving to out of order list, pointers will no longer just point over the al
 // Cons: Freeing (removing/inserting) blocks from lists becomes more complex, have to check size of head of lists
 //       to determine if some free list pointers need changing to the new block or not
 
-const STACK_LIMIT = 16384 ;
+
+//
+const STACK_LIMIT = 16384 * 2;
 
 
 // Various values tracked as part of performance testing/justifying changes

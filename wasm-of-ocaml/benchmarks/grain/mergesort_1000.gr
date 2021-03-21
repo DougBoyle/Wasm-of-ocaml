@@ -4,6 +4,20 @@ let rec merge = (lx) => (ly) => {match ((lx, ly)){
   ([x, ...xs], [y, ...ys])  => if (x < y) {[x, ...(merge(xs)(ly))]} else {[y, ...(merge(lx)(ys))]}
 }}
 
+let rec split = (l1, l2, l) => {match (l){
+  [] => (l1, l2),
+  [x, ...xs] => split([x, ...l2], l1, xs)
+}}
+
+let rec mergesort = l => {match (l){
+  [] => [],
+  [x] => [x],
+  [x, ...xs] => {
+   let (l1, l2) = split([], [], l)
+   merge(mergesort(l1))(mergesort(l2))
+  }
+}}
+
 let a = 214013
 let c = 2531011
 let m = 65536
@@ -22,9 +36,7 @@ let init = n => m => {
 }
 
 let n = 1000
-let m = 100
-let l1 = init(n)(m)
-let l2 = init(n)(m)
-let l = merge(l1)(l2)
-
-export l
+let m = 10000
+let l = init(n)(m)
+let sorted_l = mergesort(l)
+export l, sorted_l

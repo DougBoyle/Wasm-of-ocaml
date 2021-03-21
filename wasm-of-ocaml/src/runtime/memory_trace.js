@@ -1,6 +1,6 @@
 // Newest version of memory, but with tracing of heap using for performance measurement
 
-const STACK_LIMIT = 16384 ;
+const STACK_LIMIT = 16384 * 2 ;
 
 // Various values tracked as part of performance testing/justifying changes
 class ManagedMemory {

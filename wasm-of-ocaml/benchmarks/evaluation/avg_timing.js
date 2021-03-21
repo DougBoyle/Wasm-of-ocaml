@@ -29,7 +29,7 @@ if (process.argv.length == 3){
 
   try {
       for (let i = 0; i < iters; i++) {
-          const memory = new WebAssembly.Memory({initial: 2});
+          const memory = new WebAssembly.Memory({initial: 3});
           var memoryManager = new ManagedMemory(memory);
           var rtimports = {
               jsRuntime: {
@@ -67,7 +67,7 @@ if (process.argv.length == 3){
           .reduce((a, b) => a + b) / (n*(n - 1))); // n - 1 for sample variance
 
       // Also measure memory usage using the version of memory that tracks this
-      const memory = new WebAssembly.Memory({initial: 2});
+      const memory = new WebAssembly.Memory({initial: 3});
       var memoryManager = new traced_memory.ManagedMemory(memory);
       var rtimports = {
           jsRuntime: {

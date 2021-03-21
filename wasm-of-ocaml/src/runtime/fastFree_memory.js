@@ -49,7 +49,7 @@ When moving to out of order list, pointers will no longer just point over the al
 // malloc tries each list in turn
 
 
-const STACK_LIMIT = 16384 ;
+const STACK_LIMIT = 16384 * 2 ;
 
 class ManagedMemory {
   constructor(memory) {

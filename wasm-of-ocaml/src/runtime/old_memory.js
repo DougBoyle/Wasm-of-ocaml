@@ -20,7 +20,7 @@ Last bit of size ptr = 1 indicates block is marked
 */
 
 
-const STACK_LIMIT = 16384 ;
+const STACK_LIMIT = 16384 * 2 ;
 
 class ManagedMemory {
   constructor(memory) {
