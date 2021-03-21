@@ -36,8 +36,8 @@ class ManagedMemory {
     // points to a free block at all times, unless the free list is empty
     this.freep = STACK_LIMIT;
 
-   // this.memory_used = 0;
-   // this.maxMemory = 0;
+    this.memory_used = 0;
+    this.maxMemory = 0;
     // size of block we are looking for when we decide to run GC
     // TODO: Come up with better conditions for when to run GC
     //   e.g. don't run again if stack pointer has barely moved or very few new objects allocated?
@@ -117,7 +117,7 @@ class ManagedMemory {
     this._refreshViews();
     this.setSize(ptr, pages << 14);
     // TODO: Disable when not debugging
-  //  this.memory_used += pages << 16;
+    this.memory_used += pages << 16;
     this.free(ptr);
   }
 
@@ -127,8 +127,8 @@ class ManagedMemory {
     // round up to align block
     // *2 to put in terms of 32-bit words rather than 64-bit headers
     const units = (((bytes + 8 - 1) >> 3) + 1)*2;
- //   this.memory_used += units * 4;
- //   this.maxMemory = Math.max(this.maxMemory, this.memory_used);
+    this.memory_used += units * 4;
+    this.maxMemory = Math.max(this.maxMemory, this.memory_used);
     // last block allocated exactly used up the last cell of the free list.
     // need to allocate more memory. Can't rely on 'free' since it expects freep to be defined
     if (this.freep == null){
@@ -194,7 +194,7 @@ class ManagedMemory {
 
   //  console.log("free:", blockPtr, "size is", sizeFreed);
 
-  //  this.memory_used -= this.getSize(blockPtr)*4;
+    this.memory_used -= this.getSize(blockPtr)*4;
 
     // special case when freep is null. Indicates that the block being freed is only free block in memory
     if (this.freep == null){

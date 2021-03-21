@@ -10,7 +10,7 @@ open Linast
 
 let clear_annotations annotations =
   annotations := List.filter
-    (function ImmutableBlock _ | TailCallOptimised | Tupled | MutableCopy -> true | _ -> false) (!annotations)
+    (function ImmutableBlock _ | TailCallOptimised | Tupled -> true | _ -> false) (!annotations)
 
 let map_imm imm =
   clear_annotations imm.i_annotations; imm

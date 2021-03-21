@@ -25,8 +25,6 @@ Still about 50% slower. Modified to use 2 whole pages instead.
 
 type list = Nil | Cons1 of int * list | Cons2 of int * int * list
 
-(* TODO: Work out issue with GCbench.ml causing ptrs to not be freed correctly? *)
-
 let longLivedList = ref Nil
 let shortFreedList = ref Nil
 let longFreedList = ref Nil

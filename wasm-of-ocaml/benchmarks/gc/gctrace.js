@@ -8,7 +8,7 @@ const exec = util.promisify(require('child_process').exec);
 
 if (process.argv.length > 2){
 (async () => {
-  const memory = new WebAssembly.Memory({ initial: 2 });
+  const memory = new WebAssembly.Memory({ initial: 3 });
   var memoryManager = new ManagedMemory(memory);
   var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
 	stackOverflow : memoryManager.stackLimitExceeded,
@@ -46,7 +46,7 @@ if (process.argv.length > 2){
 
 
       fs.writeFile(
-          __dirname + '/newTrees9.txt',
+          __dirname + '/altTrees9.txt',
 
           JSON.stringify(memoryManager.mallocSequence) + "\n" +
           JSON.stringify(memoryManager.freeSequence)  + "\n" +

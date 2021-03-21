@@ -12,9 +12,8 @@
 
 \usepackage[pdfborder={0 0 0}]{hyperref}    % turns references into hyperlinks
 \usepackage[margin=25mm]{geometry}  % adjusts page layout
-\usepackage{graphicx}  % allows inclusion of PDF, PNG and JPG images
-
-\usepackage{epstopdf}
+\usepackage{graphicx,epstopdf}
+%\epstopdfsetup{update} % only regenerate pdf files when eps file is newer
 \epstopdfsetup{outdir=./}
 
 \graphicspath{{figures/}}
@@ -26,6 +25,10 @@
 \usepackage{dirtree}
 
 \usepackage{float}	
+
+\usepackage{cprotect}
+
+\pdfminorversion=7
 
 %\includeonly{chapters/implementation}
 %\includeonly{diss.bib}

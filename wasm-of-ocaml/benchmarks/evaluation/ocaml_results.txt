@@ -1,20 +1,18 @@
 Splice left out (see patternMatching.txt), not really representative of anything
 With latest version of GC, all optimisations, measured over 20 iterations:
-Filename          time: avg     std     heap    filesize
-alltrees_7              3.673   0.140   129240  1796
-alltrees_9              147.891 0.989   1354984 1796
+alltrees_7              3.504   0.099   129240  1796
+alltrees_9              139.842 0.866   1354984 1796
 alltrees_10             1369.550 5.323   4451320 1796
 arith_75                0.773   0.141   2472    1248
-arith_1000              143.056 0.804   32072   1248
-composition             2.438   0.128   65536   3633
+arith_1000              137.876 0.665   32096   1344
+composition             2.400   0.117   65520   4337
 funcrec                 2.486   0.063   192     1908
-mergesort_1000          5.090   0.127   131056  2106
-mergesort_3000          23.301  0.226   327640  2106
-nbody_100               3.231   0.205   65520   5408
-nbody_1000              27.737  0.157   65520   5408
+mergesort_1000          4.878   0.086   131048  2293
+mergesort_3000          22.202  0.198   327632  2293
+nbody_100               3.079   0.155   65520   5408
+nbody_1000              25.358  0.100   65520   5408
 
 Without GC, all optimisations, measured over 20 iterations:
-Filename          time: avg     std     heap usage  filesize
 alltrees_7              0.593   0.005   264188  1418
 alltrees_9              6.417   0.113   2856960 1418
 alltrees_10             22.582  0.428   9454748 1418
@@ -23,6 +21,37 @@ arith_1000              45.674  1.719   12024   876
 composition             0.763   0.003   175752  2682
 funcrec                 0.380   0.007   64      1362
 mergesort_1000          1.088   0.021   518316  1663
-mergesort_3000          4.267   0.176   1786316 1663
+mergesort_3000          4.034   0.145   1786340 1798
 nbody_100               0.802   0.016   393260  4399
 nbody_1000              9.283   0.246   3885260 4399
+
+New GC Without Threshold:
+alltrees_10             1730.963  3.653   4447264 1796
+alltrees_7              3.635   0.112   128880  1796
+alltrees_9              175.266 0.986   1357168 1796
+arith_1000              135.150 3.944   32072   1248
+arith_75                0.757   0.146   2472    1248
+composition             2.327   0.101   65536   3633
+funcrec         2.396   0.028   192     1908
+mergesort_1000          4.870   0.126   131056  2106
+mergesort_3000          22.854  0.693   327640  2106
+nbody_100               3.466   0.228   65520   5408
+nbody_1000              25.833  0.452   65520   5408
+
+Old GC:
+alltrees_10             1777.262        93.643  3520656 1796
+alltrees_7              3.868   0.915   125936  1796
+alltrees_9              212.061 9.232   1047096 1796
+arith_1000              133.279 3.470   24048   1248
+arith_75                0.683   0.006   1848    1248
+composition             1.986   0.160   65544   3633
+funcrec                 2.465   0.065   128     1908
+mergesort_1000          3.379   0.041   131072  2106
+mergesort_3000          17.056  0.213   262152  2106
+nbody_100               1.755   0.093   65560   5408
+nbody_1000              14.579  0.175   65560   5408
+
+
+
+
+TODO: THESE VASTLY DIFFER FROM WHAT GcCollectData Gets

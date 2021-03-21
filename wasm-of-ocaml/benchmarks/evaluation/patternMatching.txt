@@ -1,11 +1,11 @@
 Both done without GC and with all other optimisations enabled.
 Unoptimised pattern matching:
-splice          318.225 1.920   48048052        1073
-splice2         141.816 7.145   28000064        1214
+splice          321.129 2.929   48048052        1073
+pattern         866.333 4.890   112000056       1142
 
 Optimised pattern matching:
-splice          306.759 11.166  48048052        1011
-splice2         136.020 8.560   28000064        1105
+splice          318.320 1.899   48048052        1011
+pattern         846.603 5.548   112000056       1033
 
 File size notably reduced for each case,
 execution time marginally affected.
@@ -20,14 +20,14 @@ let rec splice = function
 called on two 1000 length lists (1000 times)
 
 
-splice2:
+pattern:
 let rec splice l1 l2 = match (l1, l2) with
   | Nil, _ -> 0
   | _, Nil -> 0
   | ((One x, _)|(_, One x)) -> x
   | Cons (x, xs), Cons (y, ys) -> x + y
 
-called on (Cons(1, Nil), One 2)  1 million times
+called on each combination 1 million times
 
 From results below, no effect except where pattern matching significant i.e. mergesort
 -------- Separator for reading in file
@@ -39,8 +39,8 @@ arith_75                0.206   0.005   924     876
 arith_1000              42.377  0.394   12024   876
 composition             0.768   0.008   175752  2682
 funcrec                 0.388   0.010   64      1362
-mergesort_1000          0.205   0.007   80524   1382
-mergesort_4000          0.695   0.009   308524  1382
+mergesort_1000          1.068   0.011   518316  1719
+mergesort_3000          3.844   0.168   1786316 1719
 nbody_100               0.796   0.011   393260  4399
 nbody_1000              8.752   0.097   3885260 4399
 
