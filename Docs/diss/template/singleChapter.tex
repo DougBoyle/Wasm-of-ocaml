@@ -28,13 +28,22 @@
 
 \usepackage{cprotect}
 
+\usepackage{bytefield}
+\usepackage{ebproof}
+\usepackage{listings}
+ \lstset{
+  basicstyle=\ttfamily,
+  mathescape
+}
+
 \pdfminorversion=7
 
 %\includeonly{chapters/implementation}
 %\includeonly{diss.bib}
 
-\usepackage[backend=bibtex, sorting=none]{biblatex}
+\usepackage[backend=bibtex, sorting=none, urldate=iso8601]{biblatex}
 \addbibresource{diss.bib}
+\DeclareFieldFormat[misc]{title}{#1}
 
 %% START OF DOCUMENT
 \begin{document}
@@ -43,6 +52,6 @@
 \setcounter{chapter}{3}
 \include{chapters/evaluation}
 
-
+\printbibliography[title={Bibliography}]
 
 \end{document}

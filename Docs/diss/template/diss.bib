@@ -8,7 +8,7 @@
 	volume = {36},
 	number = {10},
 	issn = {0362-1340},
-	url = {https://doi.org/10.1145/507669.507641},
+	//url = {https://doi.org/10.1145/507669.507641},
 	doi = {10.1145/507669.507641},
 	abstract = {We present improvements to the backtracking technique of pattern-matching compilation. Several optimizations are introduced, such as commutation of patterns, use of exhaustiveness information, and control flow optimization through the use of labeled static exceptions and context information. These optimizations have been integrated in the Objective-Caml compiler. They have shown good results in increasing the speed of pattern-matching intensive programs, without increasing final code size.},
 	journal = {SIGPLAN Not.},
@@ -16,12 +16,15 @@
 	pages = {26–37},
 	numpages = {12}
 }
-@article{titanium,
+
+@misc{titanium,
 author = {Bonachea, Dan},
 year = {2001},
 month = {09},
 pages = {},
-title = {Method Inlining in the Titanium Compiler}
+title = {Method Inlining in the Titanium Compiler},
+url={http://titanium.cs.berkeley.edu/papers/bonachea-method-inlining.pdf},
+urldate = {2021-01-09}
 }
 
 @inproceedings{decisiontrees,
@@ -31,7 +34,7 @@ year = {2008},
 isbn = {9781605580623},
 publisher = {Association for Computing Machinery},
 address = {New York, NY, USA},
-url = {https://doi.org/10.1145/1411304.1411311},
+//url = {https://doi.org/10.1145/1411304.1411311},
 doi = {10.1145/1411304.1411311},
 abstract = {We address the issue of compiling ML pattern matching to compact and efficient decisions trees. Traditionally, compilation to decision trees is optimized by (1) implementing decision trees as dags with maximal sharing; (2) guiding a simple compiler with heuristics. We first design new heuristics that are inspired by necessity, a concept from lazy pattern matching that we rephrase in terms of decision tree semantics. Thereby, we simplify previous semantic frameworks and demonstrate a straightforward connection between necessity and decision tree runtime efficiency. We complete our study by experiments, showing that optimizing compilation to decision trees is competitive with the optimizing match compiler of Le Fessant and Maranget (2001).},
 booktitle = {Proceedings of the 2008 ACM SIGPLAN Workshop on ML},
@@ -53,15 +56,25 @@ abstract = {From the Publisher: This second editon describes C as defined by the
 }
 
 @misc{99-problems, 
- title={99 Problems (solved) in OCaml}, url={https://ocaml.org/learn/tutorials/99problems.html}, journal={OCaml}} 
+ title={99 Problems in OCaml}, url={https://ocaml.org/learn/tutorials/99problems.html}, urldate = {2020-11-07}} 
 
 
 @misc{chris00, 
-  title={Chris00/ocaml-benchmark}, url={https://github.com/Chris00/ocaml-benchmark}, journal={GitHub}, author={Chris00}} 
+  title={ocaml-benchmark}, url={https://github.com/Chris00/ocaml-benchmark}, author={Christophe Troestler}, urldate = {2021-02-15}} 
   
 @misc{benchmark-game,
- title={The Computer Language Benchmarks Game / benchmarksgame}, 
- url={https://salsa.debian.org/benchmarksgame-team/benchmarksgame/}, journal={GitLab}} 
+ title={The Computer Language Benchmarks Game}, 
+ url={https://salsa.debian.org/benchmarksgame-team/benchmarksgame/}, journal={GitLab}, urldate = {2021-02-15}} 
+ 
+ @misc{searchfox,
+ title={Searchfox indexing tool for Mozilla source code},
+ url={https://searchfox.org/mozilla-central/source/js/src/wasm},
+ urldate={2021-03-15}}
+ 
+ @misc{v8,
+ title={V8 JavaScript engine},
+ url={https://github.com/v8/v8/blob/master/src/wasm},
+ urldate={2021-03-15}}
 
 
 

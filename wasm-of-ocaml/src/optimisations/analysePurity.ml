@@ -47,12 +47,9 @@ let rec analyse_compound handlers compound = match compound.c_desc with
   (* Does anything about the imms need to be carried across? *)
   (* TODO: Should be adding Immutable annotation or copying? *)
   | CUnary (_, imm) -> (* copy_immutable_annotation [imm] compound.c_annotations; *)
-  (*  analyse_imm imm; *) (* TODO: Any reason for this? Not actually made use of *)
     add_annotation Immutable compound.c_annotations;
     add_annotation Pure compound.c_annotations
-  | CBinary (_, imm1, imm2) -> (* copy_immutable_annotation [imm1; imm2] compound.c_annotations; *)
-   (* analyse_imm imm1;
-    analyse_imm imm2; *)
+  | CBinary (_, imm1, imm2) ->
     add_annotation Immutable compound.c_annotations;
     add_annotation Pure compound.c_annotations
   (* TODO: Without more complex analysis of existing values (graph algorithm), can't infer about setfield *)
@@ -181,8 +178,8 @@ and analyse_linast handlers linast = match linast.desc with
     if mut <> Mut then Ident.Tbl.add ident_analysis id bind.c_annotations;
     analyse_linast handlers body;
     (* Should copy annotations of body, but Immutable/Pure are affected by evaluating binding.
-       TODO: Only care about if bind is Pure? Immutable or not handled by how body is evaluated *)
-    List.iter (function ((Pure|Immutable) as annot) -> if List.mem Pure (!(bind.c_annotations)) then
+       TODO: Only immutable if binding also immutable (e.g. 'let x = ... in x') *)
+    List.iter (function ((Pure|Immutable) as annot) -> if List.mem annot (!(bind.c_annotations)) then
       add_annotation annot linast.annotations
       | annot -> add_annotation annot linast.annotations)  (!(body.annotations))
   (* TODO: How to handle mutual recursion? Probably needs much more complex analysis, for now be pessimistic *)

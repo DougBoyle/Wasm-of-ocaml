@@ -1,30 +1,11 @@
 \chapter{Implementation}
 
-\section{Repository Overview}
-\dirtree{%
-.1 . 
-.2 src.
-.3 ocaml/\DTcomment{OCaml compiler's frontend for parsing/typing}.
-.3 middle-end/\DTcomment{Translation to IR}. 
-.3 optimisations/\DTcomment{IR optimisations}. 
-.3 codegen/\DTcomment{Translation from IR to WebAssembly flowgraph}. 
-.3 graph/\DTcomment{WebAssembly flowgraph representation and optimisations}. 
-.3 runtime. 
-.4 memory.js. 
-.4 runtime.wast. 
-.2 samples\DTcomment{Test programs for compiler input}. 
-.3 results.txt\DTcomment{Expected output of compiled WebAssembly}. 
-.3 test.js\DTcomment{Instantiate complied tests and compare outputs}. 
-.2 benchmarks.
-.3 OCaml/.
-.3 C/. 
-.3 Grain/.  
-.2 unit-tests/\DTcomment{Tests for isolated elements of translation/optimisation}.
-}
+In this project, I implement a compiler from OCaml to WebAssembly, primarily supporting the integer operations and all of OCaml's control-flow structures, besides exceptions. The front-end of the OCaml compiler produces a representation called the Typedtree. I translate this first to an intermediate representation I designed, and then to WebAssembly instructions. I also build a runtime system to execute the output code, and extend my project with several optimisations to the compiler and a garbage collector.
+
 
 \section{Linearised IR}
 % Reference for ANF?
-From OCaml's Typedtree data structure, the first pass of the compiler translates programs to be closer to administrative normal form (ANF), which linearises the syntax tree so that operands are always constants or identifiers, with the exception of control flow constructs such as if statements. Expressions are broken down into immediate, compound and linast (linearised AST) terms to achieve this. The general structure is given below, with some cases omitted.
+From OCaml's Typedtree data structure, the first pass of the compiler translates programs to be closer to administrative normal form (ANF), which linearises the syntax tree so that operands are always constants or identifiers, with the exception of control-flow constructs such as if statements. Expressions are broken down into immediate, compound and linast (linearised AST) terms to achieve this. The general structure is given below, with some cases omitted for brevity.
 
 \begin{verbatim}
 linast = compound 
@@ -56,7 +37,7 @@ tag = index = int
 %      f(v0, v1)
 %\end{verbatim}
 
-Temporary values are now explicit and the linear structure makes optimisations easier to implement in this form. Code which may execute zero or many times cannot be completely linearised, for example the branches of an if statement, as only one branch will actually be evaluated. 
+Temporary values are now explicit and the linear structure makes optimisations easier to implement. Code that may execute zero or many times cannot be completely linearised, for example, the branches of an if statement, as only one branch will actually be evaluated. 
 
 Given an expression in the Typedtree to translate to an immediate or compound term, the expression is recursively decomposed, returning a list of let bindings for any temporary values required in its computation and an immediate or compound term for its final value. In this way, an initial call to translate an expression to a linast term builds up a list of setup operations and a final compound term, then combines these into a tree by chaining the setup operations together, terminated by the final compound term.
 
@@ -70,7 +51,7 @@ Given an expression in the Typedtree to translate to an immediate or compound te
 \section{Pattern Matching}
 The linearised intermediate representation also compiles patterns in OCaml's \verb|Typedtree| datatype to the code required to match them and bind variables within patterns. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
 
-I chose to implement the backtracking pattern matching compiler described by Le Fessant and Maranget\nocite{ocamlpatternmatch}, which is also implemented in the OCaml compiler for its intermediate representation. A backtracking compiler minimises the size of the code generated, whereas a decision tree compiler may produce larger code but ensures that each pattern is examined at most once, and is the approach taken by the Grain compiler. When optimised, each approach typically has similar performance \nocite{decisiontrees} however backtracking compilers appear to be the more common approach, and guarantee linear code size.
+I chose to implement the backtracking pattern-matching compiler described by Le Fessant and Maranget \cite{ocamlpatternmatch}, which is also implemented in the OCaml compiler for its intermediate representation. A backtracking compiler minimises the size of the code generated, whereas a decision tree compiler may produce larger code but ensures that each pattern is examined at most once, and is the approach taken by the Grain compiler. When optimised, each approach typically has similar performance \cite{decisiontrees}, however backtracking compilers appear to be the more common approach, and guarantee linear code size.
 
 
 The idea is to have a vector of the values being matched, and a matrix representing the different cases and the action when each matches. An example of this is:
@@ -96,13 +77,13 @@ $\begin{pmatrix}
 \end{minipage}
 
 The algorithm given in the paper is made more complex by the range of syntax OCaml supports. %, and to a lesser extent by the fact the IR is linearised. 
-First, OCaml patterns can have guard statements which need to be tested if a pattern matches. Some of the compilation steps prefix additional variable bindings onto the actions, and the guard statement needs to be evaluated after these, but before any of the original action is evaluated. Therefore, each action $\to a$ is replaced with $\to a \ g \ b$ where $g$ is the optional guard expression and $b$ is the other bindings introduced.
+First, OCaml patterns can have guard statements, which need to be tested to see whether a pattern matches. Some of the compilation steps prefix additional variable bindings onto the actions, and the guard statement needs to be evaluated after these, but before any of the original action is evaluated. Therefore, each action $\to a$ is replaced with $\to a \ g \ b$ where $g$ is the optional guard expression and $b$ is the other bindings introduced.
 
-The base cases of this algorithm occur when we reach a matrix with either no rows or no columns of patterns. If there are no rows, we have run out of possibilities so pattern matching fails and backtracks to another branch. If there are no columns, we have successfully matched the whole pattern. We then output code testing the guard for each action from top to bottom of the matrix, executing the corresponding action if the guard succeeds. Either some row is not guarded, in which case it runs unconditionally if that is reached, or every row is guarded in which case we similarly backtrack if all guards are false.
+The base cases of this algorithm occur when we reach a matrix with either no rows or no columns of patterns. If there are no rows, we have run out of possibilities so pattern matching fails and backtracks to another branch. If there are no columns, we have successfully matched the whole pattern. We then output code testing the guard for each action from top to bottom of the matrix, executing the corresponding action if the guard succeeds. Either some row is not guarded, in which case it runs unconditionally if that is reached, or every row is guarded, in which case we similarly backtrack if all guards are false.
 
 There are four broad cases for when the matrix is non-empty:
 \begin{itemize}
-\item \textbf{Variable rule}: If the first column has just variable patterns, the corresponding binding of the first value in the values vector is added to each row's bindings, then the first column of the matrix is discarded, as is the now matched value of the value vector.
+\item \textbf{Variable rule}: If the first column has just variable patterns, the corresponding binding of the first value in the values vector is added to each row's bindings, then the first column of the matrix is discarded, as is the now-matched value of the value vector.
 \item \textbf{Constructor rule}: If the first column has just constructor patterns, several specialised matrices are produced, each removing incompatible rows and deconstructing the fields of the chosen constructor. The result of compiling each of these then forms the branches of a switch statement on the constructor tag. A default case captures any constructor with no corresponding rows, and fails so that matching backtracks. \\
 $
 \begin{pmatrix}
@@ -116,14 +97,14 @@ c'(\dots) & p^2_2 & \dots & p^2_n & \to & \dots \\
 $
 % OR variables are an issue even at this stage, mention difference to paper's approach here about extended scope
 \item \textbf{OR rule}: If there is just one row and it starts with an OR pattern \verb"(p1|...|pk)", a $k \times 1$ matrix is produced expanding out the OR pattern. %, with each row having an empty action. 
-The output is the result of compiling this matrix, sequenced with the result of compiling the rest of the original matrix. Simply duplicating the original row once for each case of the OR pattern would have duplicated all of the patterns in later columns. That could lead to exponential growth in code size, which backtracking compilation aims to avoid.
-\item \textbf{Mixture rule}: If no other case is applicable, the matrix is split into an upper and lower matrix where one of the other rules can be applied to the upper matrix. The matrices are compiled separately, with failure in the upper matrix resulting in a \verb|Fail i| instruction. This is handled by the \verb|try ... with (i) ...| construct which backtracks to try the lower matrix instead.
+The output is the result of compiling this matrix, sequenced with the result of compiling the rest of the original matrix. Simply duplicating the original row once for each case of the OR pattern would duplicate all patterns in later columns. That could lead to exponential growth in code size, which backtracking compilation aims to avoid.
+\item \textbf{Mixture rule}: If no other case is applicable, the matrix is split into an upper and lower matrix, where one of the other rules can be applied to the upper matrix. The matrices are compiled separately, with failure in the upper matrix resulting in a \verb|Fail i| instruction. This is handled by the \verb|try ... with (i) ...| construct, which backtracks to try the lower matrix instead.
 
 \end{itemize}
 
-This is how the paper describes the algorithm. In practice, OCaml has several different types that all fall under the ``constructor" rule and have to be handled separately:
+The explanation above is how the paper describes the algorithm. In practice, OCaml has several different types that all fall under the ``constructor" rule and have to be handled separately:
 \begin{itemize}
-\item \textbf{Constants}: Constants can be viewed as a datatype with infinitely many 0-arity constructors. For integers, these compile to a switch statement on the integer value, always have a default case that backtracks. For floating point constants, a switch statement cannot be used so these instead compile to a sequence of if-then-else tests.
+\item \textbf{Constants}: Constants can be viewed as a datatype with infinitely many 0-arity constructors. For integers, these compile to a switch statement on the integer value, always having a default case that backtracks. For floating-point constants, a switch statement cannot be used, so these instead compile to a sequence of if-then-else tests.
 % and this switch statement will always have a default case that backtracks, since it can never be exhaustive. The decision to implement this switch statement as a branch table or nested if-then-else statements is made at the WebAssembly generation stage based on how sparse the set of values is. \\
 %For floating point values, we must always use a chain of if-then-else tests so these are compiled as such at the IR level.
 % TODO: Talk about branch tables or not?
@@ -233,12 +214,13 @@ $
 
 
 \subsection{Optimisations to pattern matching}
-The above process is made more efficient by including auxiliary information, which is described here rather than waiting till the optimisations section.
+The above process is made more efficient by including auxiliary information. %, which is described here rather than waiting till the optimisations section.
 % Mention OR pattern change or not?
 
 
-First, the mixture rule can swap rows where they are incompatible. Patterns must be matched in top-to-bottom order, but this does not matter for two rows which do not overlap in the set of values they may match. Therefore, the mixture rule lifts up rows where safe to do so, trying to increase the size of the first matrix that can be handled by a single use of the constructor or variable rule. This decreases the number of splits from the mixture rule that are needed. \\
-As an example, these programs are equivalently but the constructor rule can only be applied to the first row on the left, but to the first two rows in the right:
+First, the mixture rule can swap rows where they are incompatible. Patterns must be matched in top-to-bottom order, but this does not matter for two rows which do not overlap in the set of values they may match. Therefore, the mixture rule lifts up rows where safe to do so, trying to increase the size of the first matrix that can be handled by a single use of the constructor or variable rule. This decreases the number of splits from the mixture rule that are needed. 
+
+As an example, these programs are equivalent, however the constructor rule can only be applied to the first row on the left, but to the first two rows in the right:
 
 \begin{minipage}{0.45\textwidth}
 \begin{verbatim}
@@ -257,12 +239,13 @@ match l1, l2 with
 \end{verbatim}
 \end{minipage}
 
-Another improvement is made by passing a boolean for exhaustiveness to the procedure. The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive. Exhaustiveness is unchanged by recursive calls, except for the mixture rule where the top matrix is never considered exhaustive. When a matrix is known to be exhaustive, switch statements can leave out cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
+Another improvement is made by passing a boolean for exhaustiveness to the procedure. The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive. Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. When a matrix is known to be exhaustive, switch statements can leave out cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
 
 
 
-Next, several other data structures are added to the procedure. They are all related so I describe each of them before explaining their benefit. \\
-The procedure is extended with a context, a pair of matrices of just patterns with no actions or guards. The first is called the prefix, remembering already matched structure, and the second is the fringe, the matrix of patterns used above to indicate patterns left to be matched. Together, these describe the possible values that may reach the point in the pattern matching code currently being produced. Initially there is just one row, where the prefix is empty and the fringe is \verb|_|, as nothing is known about the value being matched. The specialisation operations on matrices extend to contexts in the obvious way, for example with constructors ($\bullet$ separates the prefix and fringe):
+Next, several other data structures are added to the procedure. They are all related so I describe each of them before explaining their benefit. 
+
+The procedure is extended with a context, a pair of matrices of just patterns with no actions or guards. The first is called the prefix, remembering already matched structure, and the second is the fringe, the matrix of patterns used above to indicate patterns left to be matched. Together, these describe the possible values that may reach the point in the pattern-matching code currently being produced. Initially there is just one row, where the prefix is empty and the fringe is \verb|_|, as nothing is known about the value being matched. The specialisation operations on matrices extend to contexts in the obvious way, for example with constructors ($\bullet$ separates the prefix and fringe):
 
 $
 \begin{pmatrix}
@@ -277,11 +260,12 @@ $
 
 The procedure is also passed a list of reachable handlers. When the mixture rule splits a matrix into upper and lower parts $P$ and $Q$ and introduces handler $i$, then $P$ is complied with $(i, Q)$ added to its handler list, although only the patterns of $Q$ need to be remembered in the handler list, not the actions or guards. Again, operations on matrices are naturally extended to each matrix in the list. 
 
-Correspondingly, in addition to the code to match a matrix, the procedure returns a jump summary, a mapping from indices of enclosing handlers to the contexts in which those handlers will be jumped to. To compute this, where the algorithm inserts \verb|fail i| to backtrack, it also adds the current context to the jump summary for index \verb|i|, indicating that values of the form described by that context will trigger backtracking. For each index, the contexts of each branch are unioned at switch statements, amounting to concatenating the rows from each context. As jump summaries are returned out of nested calls, patterns are popped off the prefix of each context back to the fringe, to be consistent with the values matched up to that point in the process but now making the fringe more precise. \\
-If compiling the upper matrix in the mixture rule returns jump summary $\rho$, then when compiling the lower matrix $Q$ for handler $i$, the context $\rho(i)$ is used from the jump summary.\\
+Correspondingly, in addition to the code to match a matrix, the procedure returns a jump summary, a mapping from indices of enclosing handlers to the contexts in which those handlers will be jumped to. To compute this, where the algorithm inserts \verb|fail i| to backtrack, it also adds the current context to the jump summary for index \verb|i|, indicating that values of the form described by that context will trigger backtracking. For each index, the contexts of each branch are unioned at switch statements, amounting to concatenating the rows from each context. As jump summaries are returned out of nested calls, patterns are popped off the prefix of each context back to the fringe, to be consistent with the values matched up to that point in the process, but now making the fringe more precise. 
+If compiling the upper matrix in the mixture rule returns jump summary $\rho$, then when compiling the lower matrix $Q$ for handler $i$, the context $\rho(i)$ is used from the jump summary.
 
 
-The reachable handler list remembers which patterns each handler will try to match if exited to, and the contexts gotten from the jump summary provide some information on the structure of values which will trigger that handler. \\
+The reachable handler list remembers which patterns each handler will try to match if exited to, and the contexts obtained from the jump summary provide some information on the structure of values which will trigger that handler. 
+
 The first improvement is that, rather than always backtracking to the nearest handler, handlers guaranteed to fail can be skipped over. Since the matrices matched by reachable handlers are specialised as more specific cases are matched recursively, at a point where backtracking occurs some of those matrices may be empty. This indicates that the patterns matched by that handler are incompatible with the known structure of the value causing backtracking, so the procedure instead inserts a \verb|fail i| to the first handler \verb|i| with a non-empty matrix. Note that, where the mixture rule is needed multiple times to split up a matrix, it now makes sense to nest the handlers so that they are all available to jump to, maximising the opportunities to skip handlers.  
 
 Second, the lower matrix for a handler may not cover all constructor cases if some are covered by the upper matrix matched before backtracking. Naively, this would result in additional backtracking cases for the missing constructors, which we know will never occur. This is the purpose of taking the context from the jump summary. If some constructor is incompatible with the first column of the fringe for each row of the context, the value being matched will never be that constructor when the handler executes, so cases can be safely discarded to reduce code size. In some cases, switch statements may be reduced to a single case by this approach, in which case the test can be removed entirely.
@@ -391,11 +375,11 @@ After any optimisations on the IR are done, the linearised tree is lowered to We
 Identifiers are replaced with a datatype indicating the kind of variable being accessed, with free variables being stored in the closure of a function:\\
 \verb"binding = Global of int | Arg of int | Local of int | Closure of int"\\
 %whether that variable is accessed as a global variable, a function argument, a local variable of the function, or a free variable in the function's closure, with an integer index into the corresponding set of variables. \\
-Each let binding in a function's body generates a new local variable for that identifier. This results in a large number of local variables that is reduced after peephole optimisations on the generated WebAssembly are performed. The WebAssembly representation is stored with a flowgraph between instructions, a graph indicating which instructions may execute immediately before or after each instruction in a function. Live variable analysis is performed on this, identifying the points in a function where each local variable's current value could be used later. These points indicate regions where a variable cannot be overwritten. From this, a clash graph is constructed with edges between every pair of variables that are ever simultaneously live so cannot be allocated to the same local variable. A graph colouring heuristic then maps these local variables to a hopefully much smaller set of local variables and unused local variables are removed from the function.
+Each let binding in a function's body generates a new local variable for that identifier. This results in a large number of local variables that is reduced after peephole optimisations on the generated WebAssembly are performed. The WebAssembly representation is stored with a flowgraph between instructions, a graph indicating which instructions may execute immediately before or after each instruction in a function. Live-variable analysis is performed on this, identifying the points in a function where each local variable's current value could be used later. These points indicate regions where a variable cannot be overwritten. From this, a clash graph is constructed with edges between every pair of variables that are ever simultaneously live, so cannot be allocated to the same local variable. A graph-colouring heuristic then maps these local variables to a hopefully much smaller set of local variables, and unused local variables are removed from the function.
 %Initially, assignment of local variables was done following the scoping of the program, so each nested let binding would use one more local variable and a \verb|for| loop would use two, one for the loop variable and another to remember the upper limit of the loop the first time it is evaluated. \\
 %This was replaced with generating a new local variable for each identifier in the function, and keeping these distinct even when generating WebAssembly. Then, after performing peephole optimisations on the WebAssembly, I perform live variable analysis, which determines the points in the program where each local variable's value could be used later so cannot be overwritten. From this, I construct a clash graph with edges between every pair of variables that are ever simultaneously live so cannot be allocated to the same local variable. A graph colouring heuristic then maps these local variables to a hopefully much smaller set of local variables and unused local variables are removed from the function. % TODO: Better to describe register allocation and LVA somewhere else? Maybe even in preparation chapter?
 
-This register allocation process is necessary for lower level target languages where there is only a finite set of registers available. Although a WebAssembly function can be defined with arbitrarily many local variables, it is likely that a platform's WebAssembly implementation will use less memory by using fewer locals. Also, when garbage collection is described later, this directly affects the height of the shadow stack used to track local variables. Therefore, it is a useful optimisation over allocating local variables according to scoping, which will generally be much less efficient.
+This register-allocation process is necessary for lower-level target languages where there is only a finite set of registers available. Although a WebAssembly function can be defined with arbitrarily many local variables, it is likely that a platform's WebAssembly implementation will use less memory by using fewer locals \cite{v8, searchfox}. Also, when garbage collection is described later, this directly affects the height of the shadow stack used to track local variables. Therefore, it is a useful optimisation over allocating local variables according to scoping, which will generally be much less efficient.
 
 %After any optimisations are performed, the linearised tree is then compiled to a lower intermediate form. The tree is replaced with a list of instructions, and identifiers are resolved into integer indexes for argument, local, global or closure bound variables. 
 % Give more detail about blocks in WebAssembly
@@ -408,29 +392,72 @@ This register allocation process is necessary for lower level target languages w
 
 \section{Code Generation}
 
-Finally, the program is translated to WebAssembly code, with most operations mapping directly to fixed blocks of code that are concatenated together. Variable accesses need to be mapped to \verb|LocalGet| and \verb|GlobalGet| operations, and equivalent \verb|Set| instructions. \verb|Global i| maps directly to \verb|GlobalGet i|, and \verb|Arg i| maps to \verb|LocalGet i|, as function arguments are the first local variables in WebAssembly. Two additional ``swap" local variables are introduced in each function, needed to compile some operations to WebAssembly. For a function with \verb|n| arguments, we therefore compile \verb|Swap i| as \verb|LocalGet (n + i)| and \verb|Local i| as \verb|LocalGet (n + 2 + i)|. Lastly,  a free variable \verb|Closure i| compiles to a \verb|LocalGet 0| to get the closure pointer, then a \verb|Load| with an offset to that variable.
+Finally, the program is translated to WebAssembly code, with most operations mapping directly to fixed blocks of code that are concatenated together. Variable accesses need to be mapped to \verb|LocalGet| and \verb|GlobalGet| operations, and equivalent \verb|Set| instructions. \verb|Global i| maps directly to \verb|GlobalGet i|, and \verb|Arg i| maps to \verb|LocalGet i|, as function arguments are the first local variables in WebAssembly. Two additional ``swap" local variables are introduced in each function, needed to compile some operations to WebAssembly. 
+For example, if \verb|ar| evaluates to an array object and \verb|index| evaluates to the index being accessed, checking the index is within the bounds of the array and loading the value from that index emits the code below. Some steps have been omitted for brevity, such as removing tags from values, or multiplying the index by 4 to be a byte offset rather than a word offset.
+
+% TODO: Check this is aligned nicely with pages
+\begin{verbatim}
+ar; 
+LocalTee 0;
+Load;            // the size of the array is stored at its base address
+index; 
+LocalTee 1; 
+Compare GtU;     // size > index, unsigned comparison catches index < 0
+if
+  LocalGet 0;
+  LocalGet 1;
+  Add;
+  Load offset=8; // adjust for the start of the array storing its size
+else
+  trap 
+end
+\end{verbatim}
+
+Here locals 0 and 1 are the swap variables. The expressions \verb|ar| and \verb|index| could be free variables being loaded from a closure, in which case storing their values in local variables avoids repeated loads from memory. 
+ For a function with \verb|n| arguments, we therefore compile \verb|Swap i| as \verb|LocalGet (n + i)| and \verb|Local i| as \verb|LocalGet (n + 2 + i)|. Lastly,  a free variable \verb|Closure i| compiles to a \verb|LocalGet 0| to get the closure pointer, then a \verb|Load| with an offset to that variable.
 
 %%%%%%%%%%%%%%%%%%%%%
 
 %WebAssembly generation is then straightforward, as each of the constructs and primitive operators in my lower IR are all simple to implement. The variable bindings in the lower IR were separated into argument, local, global and closure bindings. Argument and global bindings translate directly to Local and Global operations respectively. The locals in a function are laid out as function arguments, then swap space locals used to implement some of the operations in WebAssembly, then locals allocated above for let bindings and loops. Therefore, local bindings are offset by the number of swap spaces and function arguments. The first argument to each function is its closure, so closure bindings first get local 0 then do a load from that address, with an offset selecting the correct variable from the closure. 
 
-I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append. These, along with the memory controlled by the memory allocator, are declared as imports into the compiled WebAssembly module. The module then exports each top level global variable as its name from the OCaml program, and each of the user defined functions. \\
-As explained below, integers and pointers are tagged to distinguish them, so I wrote a short JavaScript wrapper which interprets values accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
+I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append. These, along with the memory controlled by the memory allocator, are declared as imports into the compiled WebAssembly module. The module then exports each top-level global variable as its name from the OCaml program, and each of the user defined functions. 
+As explained below, integers and pointers are tagged to distinguish them, so I wrote a short JavaScript wrapper that interprets values accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
 
 % These are declared as imports to the WebAssembly module and each function index in my IR must be offset by the number of runtime functions imported. Additionally, the memory for the module is also imported from the runtime since it is managed by the allocation function from the runtime imports. Lastly, the global variables for each user variable declared at the top level of the OCaml program are exported, along with all functions from the module. Every function is exported so that values representing closures can be returned from WebAssembly and called. As integers are encoded by shifting them left by one, and so that pointers to closures can be used to call functions in WebAssembly from JavaScript, I added a JavaScript wrapper which uses knowledge of how values are represented in memory to be able to pass values back into compiled functions, or return integer values back to a JavaScript caller.
 
-Even before implementing a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are unused. I therefore tag integers as 10 or 00 by shifting them left one, closure pointers as 11, and other blocks from tuples or constructors as 01. The memory layout of these values is given below:
+Even before implementing a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are unused. I therefore distinguish the types of values by these last two bits. Closure pointers are tagged with 11, pointers to other objects in memory such as constructors are tagged with 01, and integers are tagged with 10 or 00 by shifting them left one, so odd  values now end in 10 and even values end in 00. 
 
-  \begin{tabular}{c|c|c|c|c|c|m{2cm}|} \cline{2-7}
-Constructor block &   variant tag  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements} } &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-7}
-Tuple/Record &   0  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements}} &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-4}
-Boxed float &  -1 & 0 & 64-bit float value      \\ \cline{2-4} \multicolumn{1}{c}{}  \\ \cline{2-7}
-Closure & function index  & arity &   \multicolumn{3}{c}{\hspace{2cm}{free variables}} &  \\ \cline{2-7} 
-\end{tabular}
+The layout of objects stored in memory is given below, where the column headers are byte offsets and the ``arity" field specifies the number of 32-bit values in ``elements"/``free variables". Since arguments and return values in WebAssembly are strongly typed, and polymorphic OCaml functions need supporting, all values are 32-bit integers that are decoded as pointers to data or functions, as just described. In particular, floating-point values need to be ``boxed'' in memory and represented as pointers to data blocks storing their value. The variant tag on data blocks goes from 0 to the number of variants of that type, so -1 is used as a special value to distinguish blocks storing a float value.\\
 
-Since arguments and return values in WebAssembly are strongly typed and polymorphic OCaml functions need supporting, all values are 32-bit integers which are decoded as pointers to data or functions as just described. In particular, floating point values need to be ``boxed'' in memory and represented as pointers to data blocks storing their value. The variant tag on data blocks goes from 0 to the number of variants of that type, so -1 is used as a special value to distinguish blocks storing a float value.
+%  \begin{tabular}{c|c|c|c|c|c|m{2cm}|} \cline{2-7}
+%Constructor block &   variant tag  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements} } &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-7}
+%Tuple/Record &   0  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements}} &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-4}
+%Boxed float &  -1 & 0 & 64-bit float value      \\ \cline{2-4} \multicolumn{1}{c}{}  \\ \cline{2-7}
+%Closure & function index  & arity &   \multicolumn{3}{c}{\hspace{2cm}{free variables}} &  \\ \cline{2-7} 
+%\end{tabular}
 
-The arity field in closures indicates the number of free variables. \verb|compare| is undefined on function values, but the arity is still needed for garbage collection so that pointers stored as free variables in closures can be searched. This field is unnecessary for floating point values, which are distinguished by having a tag of -1, but is included and set to 0 so that garbage collection can search each of these blocks for pointers in the same way, by first looking at the arity field then checking that many subsequent fields. A float contains no pointers, hence the field is set to 0 so that the following 64-bits are not misinterpreted.
+
+\hspace{-1cm}
+\begin{bytefield}[bitformatting={\small\bfseries},bitwidth=1.6em, leftcurly=.]{22}
+\bitheader{0,4,8,16} \\
+
+\begin{leftwordgroup}{float}
+\bitbox{4}{-1} & \bitbox{4}{0} & \bitbox{8}{64-bit float value} &	\bitbox[]{6}{} \end{leftwordgroup} \\
+\text{}\\
+\begin{leftwordgroup}{Constructor}
+ \bitbox{4}{variant tag} & \bitbox{4}{arity} & \bitbox{14}{elements}  \end{leftwordgroup}  \\
+\text{} \\
+\begin{leftwordgroup}{Tuple/Record}
+\bitbox{4}{0} & \bitbox{4}{arity} & \bitbox{14}{elements}  \end{leftwordgroup}  \\
+\text{}\\
+\begin{leftwordgroup}{Closure}
+\bitbox{4}{function index} & \bitbox{4}{arity} & \bitbox{14}{free variables}  \end{leftwordgroup}  \\
+    \end{bytefield}
+
+
+
+
+The arity field in closures indicates the number of free variables. \verb|compare| is undefined on function values, but the arity is still needed for garbage collection so that pointers stored as free variables in closures can be searched. This field is unnecessary for floating-point values, which are distinguished by having a tag of -1, but is included and set to 0 so that garbage collection can search each of these blocks for pointers in the same way, by first looking at the arity field then checking that many subsequent fields. A float contains no pointers, hence the field is set to 0 so that the following 64 bits are not misinterpreted.
 
 %Although not strictly necessary, an arity field is included for both floating point values and closures. In the case of floating point values, it is always 0, and for closures it is the number of free variables. For floating point values, this ensures the 64-bit float value is aligned, which may improve memory access performance, and a floating point value can be treated as any other data block by the garbage collector, as the block will be inspected and the arity field indicates that we do not need to inspect the block further for other pointers. \\
 %In the case of closures, we need to know the number of free variables for garbage collection, so that pointers stored in the block can be followed in the marking algorithm. This again means all pointers can be treated uniformly by the garbage collector, checking first the arity field and then any potential pointer fields within the block, as indicated below:
@@ -441,17 +468,20 @@ The arity field in closures indicates the number of free variables. \verb|compar
 %, the variant tag is guaranteed to be a non-negative integer. Therefore, as floats need to be``boxed'' and stored in memory as a data block, -1 was used to identify floats, which are stored similarly to . This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
 
 \section{Optimisations}
+
+One of the extensions for my project was to implement optimisations once I had a working compiler. Three main optimisation passes were added: Function inlining, uncurrying and tail-call optimisation. Several cleanup passes were also implemented, propagating values to reveal further optimisations, and removing inefficiencies at both the IR and WebAssembly level by detecting dead code.
+
 \subsection{Tail calls}
-Tail call optimisation is important in functional languages, since loops in a functional language are written as recursive functions, so a naive implementation for a large number of iterations can easily exhaust the available stack space. This is avoided by wrapping the body of the function in an imperative while loop and replacing the tail call with code that saves the arguments the function would have been called with and updates a variable to say the loop should not exit yet. This is extended to mutually tail recursive functions by additionally storing which function should be called next when a tail call is reached.
+Tail-call optimisation is important in functional languages, since loops in a functional language are written as recursive functions, so a naive implementation for a large number of iterations can easily exhaust the available stack space. This is avoided by wrapping the body of the function in an imperative while loop and replacing the tail call with code that saves the arguments the function would have been called with and updates a variable to say the loop should not exit yet. This is extended to mutually tail-recursive functions by additionally storing which function should be called next when a tail call is reached.
 
 % Don't need so much detail?
-There is first an analysis pass to construct a call graph of just the tail calls in recursive functions. Nodes in the graph correspond to recursive functions, with each node having edges to the functions it tail calls. This is done conservatively, so if a function makes a tail call with a function variable that cannot be identified as a particular function, no edge is added.  Tail call optimisations only apply to fully applied curried functions, so we also discard any over or under-applied call sites.
+There is first an analysis pass to construct a call graph of just the tail calls in recursive functions. Nodes in the graph correspond to recursive functions, with each node having edges to the functions it tail calls. This is done conservatively, so if a function makes a tail call with a function variable that cannot be identified as a particular function, no edge is added.  Tail-call optimisations only apply to fully applied curried functions, so we also discard any over or under-applied call sites.
 
 
 %The optimisation is done in two passes, the first of which just identifies which functions to tail call optimise. As the linearised tree for the program is traversed, we keep track of whether a function call at the current point in the tree would be a tail call (rather than being the body of a let binding, sequence of loop).
 %This allows us to mark every potential call site optimisation in the program and to construct a call graph consisting of just tail calls between procedures.
 
-As detailed below, tail call optimising a recursive function increases its size, and the optimisation is more expensive for mutually tail recursive functions as each function must be split in two. Therefore, this call graph is iteratively pruned to identify functions worth optimising. Functions with no tail calls are removed from the graph, as are functions which only make tail calls to themselves so should be optimised in isolation. Once this process converges, we have the set of functions to make mutually tail recursive. Tail calls between these functions will then be rewritten to avoid making additional function calls.
+As detailed below, tail-call optimising a recursive function increases its size, and the optimisation is more expensive for mutually tail-recursive functions, as each function must be split in two. Therefore, this call graph is iteratively pruned to identify functions worth optimising. Functions with no tail calls are removed from the graph, as are functions that only make tail calls to themselves, hence should be optimised in isolation. Once this process converges, we have the set of functions to make mutually tail recursive. Tail calls between these functions will then be rewritten to avoid making additional function calls.
 
 %
 %% Body could be a tail call, not that we currently are a tail call
@@ -480,21 +510,21 @@ while graph changing:
 \end{verbatim}
 %There is little to gain from rewriting a function which makes no tail calls, so these are not optimised and hence no other function can optimise tail calls to them. Due to the added code bloat of optimising a function for mutually recursive tail calls rather than just tail calls to itself, a function which could only optimise calls to itself is optimised separately and tail calls from other functions to it are also removed. This leaves us with all other functions benefiting from being made mutually tail recursive.\\
 
-When deciding on this method for choosing which functions to tail-call optimise on their own or as mutually recursive functions, I studied how the Grain complier implements this analysis. In doing so, I identified a bug where it would wrongly optimise certain tail calls, and submitted an issue on GitHub detailing this which has since been corrected. % Cite github issue?
+When deciding on this method for choosing which functions to tail-call optimise on their own or as mutually recursive functions, I studied how the Grain complier implements this analysis. In doing so, I identified a bug where it would wrongly optimise certain tail calls, and submitted an issue on GitHub\footnote{https://github.com/grain-lang/grain/issues/506} detailing this, which has since been corrected. % Cite github issue?
 
 % TODO: Better to just give pseudocode and leave out the details?
-For a function \verb|f| taking argument \verb|x| which is to be made mutually recursive on its own, we create new variables \verb|result|, \verb|continue| and \verb|x'|. The argument of \verb|f| is changed to be \verb|x'| and the body of \verb|f| is replaced with an assignment \verb|x = x'| and a while loop on the \verb|continue| variable. This loop sets \verb|continue| to false and \verb|result| to the result of evaluating the original body of \verb|f|. A tail call \verb|f(y)| is replaced with \verb|x = y; continue = true|. This will therefore execute the body of \verb|f| again with the new argument each time a tail call occurs. When the loop eventually exists, \verb|result| is the value the function returns. When \verb|f| is a curried function with multiple arguments, a new variable is created for each argument.
+For a function \verb|f| taking argument \verb|x| which is to be made mutually recursive on its own, we create new variables \verb|result|, \verb|continue| and \verb|x'|. The argument of \verb|f| is changed to be \verb|x'| and the body of \verb|f| is replaced with an assignment \verb|x = x'| and a while loop on the \verb|continue| variable. This loop sets \verb|continue| to false and \verb|result| to the result of evaluating the original body of \verb|f|. A tail call \verb|f(y)| is replaced with \verb|x = y; continue = true|. This will therefore execute the body of \verb|f| again with the new argument each time a tail call occurs. When the loop eventually exits, \verb|result| is the value the function returns. When \verb|f| is a curried function with multiple arguments, a new variable is created for each argument.
 % Mention that linearised tree may need to be rewritten
 
-\begin{minipage}{0.3\textwidth}
+\begin{minipage}{0.24\textwidth}
 \begin{verbatim}
 let rec f x = 
   ...
   f(y)
 \end{verbatim}
 \end{minipage}
-\hfill $\Longrightarrow$ \hfill
-\begin{minipage}{0.6\textwidth}
+ $\Longrightarrow$ \hfill
+\begin{minipage}{0.6\textwidth}  % SLIGHTLY INACCURATE, REALLY AN EXTRA SET OF MUTABLE VARIABLES TO KEEP MUTABLE VALUES DISTINCT (but this doesn't make sense if the function only has 1 argument, as in this example)
 \begin{verbatim}
 let rec f x' = 
   continue = true; result = 0; x = x';
@@ -509,70 +539,42 @@ let rec f x' =
 \end{verbatim}
 \end{minipage}
 
-Above we were able to include the body of the function in the new function. For mutually tail recursive functions, the while loop must execute one of a number of mutually recursive functions so this is not possible. Instead, the body of \verb|f| is moved to a new function \verb|_f| taking a unit argument and the new function \verb|f| just executes a while loop, calling a function selected by a variable \verb|next|, set at each tail call. \verb|next|, \verb|continue| and \verb|result| are all shared global variables in this case, so they can be set by different functions. A shared set of global variables is also used to pass arguments at tail calls, and their values are bound to the original function variables when \verb|_f| executes.
+Above we were able to include the body of the function in the new function. For mutually tail-recursive functions, the while loop must execute one of a number of mutually recursive functions so this is not possible. Instead, the body of \verb|f| is moved to a new function \verb|_f| taking a unit argument and the new function \verb|f| just executes a while loop, calling a function selected by a variable \verb|next|, set at each tail call. \verb|next|, \verb|continue| and \verb|result| are all shared global variables in this case, so they can be set by different functions. A shared set of global variables is also used to pass arguments at tail calls, and their values are bound to the original function variables when \verb|_f| executes.
 % Give pseudocode for this too?
 
-% Describe graphs
+\begin{minipage}{0.24\textwidth}
+\begin{verbatim}
+let rec f x = 
+  ...
+  g(y)
 
+and g x = 
+  ...
+  f(z)
+\end{verbatim}
+\end{minipage}
+ $\Longrightarrow$ \hfill
+\begin{minipage}{0.65\textwidth}
+\begin{verbatim}
+let arg = 0; continue = false; result = 0; next = 0;
 
-\subsection{Copying expressions, variables and constants}
-As OCaml is a mostly functional language, local variables in the IR are only assigned to once (excluding variables introduced specially for tail call optimisation, which are marked as mutable and ignored), making these optimisations relatively straightforward. 
+let rec f x' = 
+  continue = true; next = _f; arg = x';
+  while (continue){
+    continue = false;
+    result = next();
+  }
+  result
 
-% TODO: Describe IR structure in more detail e.g. imm/compond/linast and labelled of nodes as Local|Export|Mutable
-First, the program is scanned and each \verb|let x = Constant c| or \verb|let x = Ident y| binding is added to a table. % (unless \verb|x| is one of the variables introduced by tail call optimisations and is therefore mutable). 
-These are ``immediate" values in the linearised IR and indicate bindings that do no real work. Whenever a variable \verb|x| present in the table is used, it is replaced with its known value. 
+and _f () = 
+  let x = arg;
+  ...
+  arg = y; continue = true; next = _g;
 
-This is also extended to values passed through immutable memory, such as tuples, constructor fields or some record fields. During translation to the IR, these expressions in OCaml's \verb|Typedtree| are translated to the \verb|Block| expression in the IR, and tagged with an \verb|ImmutableBlock l| annotation, where \verb|l| is a boolean list indicating which of the block's fields are immutable. \\
-When the IR tree is analysed, the variables or constants stored in the immutable fields of a block are added to that node as another annotation. A table mapping variables to annotations records this when the block is bound to a variable, so this propagates to any uses of the variable too. This information is also approximated at branches such as \verb|if| and \verb|switch| statements, by taking the intersection of the known fields when each branch returns a block. For example, \verb|let p = if cond then (x, y) else (x, z)| would annotate the \verb|if| node and hence also \verb|p| with that fact that its first field will be \verb|x|. \\
-When an immutable field of a block is accessed as \verb|Field(x, i)|, if this annotation is present on \verb|x| and contains its element at index \verb|i|, the node is replaced with the known constant/variable to propagate this value through the program.
+... similarly for g and _g ...
+\end{verbatim}
+\end{minipage}
 
-% Could have done some sort of flow based analysis here but didn't, do I want to?
-%That alone is not enough to detect fixed values being propagated through memory. There are four sources of memory blocks in the OCaml Typedtree (ignoring floats, which are treated as constants until later stages, and closures, which are hidden in this representation): constructors, tuples, arrays and records. Of these, constructor and tuple fields are always immutable and record fields are unless specified as mutable. Therefore, during translation to the IR, although all of these are mapped to a single \verb|Block| structure, constructors, tuples and records are annotated with a list of booleans for which of their fields are immutable. We also annotate the nodes for these blocks with the constants or variables stored to each of those immutable fields. 
-% Describe this process in more detail? Relates to constant propagation too.
-% TODO: Could just describe by data-flow equations?
-% Doing this across function calls would require CFA, which gets complex when not talking about function values
-%While traversing the IR tree, variable bindings copy these annotations to a table mapping identifiers to annotations, which are copied back onto nodes in the tree where these variables are used. Then, when a \verb|Field(x, i)| node is encountered, if such an annotation is present on \verb|x| then we check if element \verb|i| of the list is immutable. If so, the field access is replaced with the variable or constant known to be stored there. \\
-%Where possible, this information is also preserved across branches by taking the intersection of lists present on each branch if they exist. For example, consider the program \verb|let p = if cond then (x, y) else (x, z) in p[0]|. We would annotate the nodes forming each of the pairs, then the node corresponding to the \verb|if| statement would be annotated with the list \verb|[Some x, None]| and this would be used to identify \verb|p[0]| as \verb|x|.
-% Annotations not carried across function arguments/results, would get a lot more complicated and need to make some approximations to ensure termination
-
-As well constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression which does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table of common expressions. Identifying such expressions is done by the effects analysis described below. Then, whenever such expressions are encountered in the IR tree and are present in the table, they are replaced by the identifier known to hold that value. So that variables are only reused when in scope, each entry is removed from the table after the subtree below its binding is searched.
-
-These passes tend to result in unused variables due to expressions being replaced with their known values. Therefore, after all of these passes have been performed,  dead assignments are identified as variable assignments that are never used. Of these, ones that have no side effects can then be removed. \\
-These optimisations also increase the number of cases found for tail call optimisation. Where a function \verb|f| is assigned to another variable \verb|g| and that is used instead, tail call optimisation will not identify which function is being called by \verb|g|. These optimisations replace some such cases with using \verb|f| directly, in which case the function can now be identified and the call will be considered for tail call optimisation.
-
-% Doing things in copy propagation/CSE doesn't make much difference overall
-
-% TODO:
-% CSE, evaluating simple expressions, optimising branches and dead assignments
-%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%
-
-% TODO: Make side effect analysis iterative to solve functions?
-\subsection{Effects analysis}
-OCaml is an impure language, so analysis of side effects is necessary to determine when expressions can be safely replaced or removed as above. This is done using the following annotations on nodes in the IR tree:
-
-\verb"annotation ::= ... | Pure | Immutable | Latent of annotation list"
-
-\verb|Pure| identifies expressions that do not modify program state, making them safe for dead assignment elimination to remove. Of the pure expressions, \verb|Immutable| identifies expressions that will return the same value each time they are evaluated, so common subexpression elimination can remove repeated occurrences of such expressions.
-
-For the purpose of removing dead assignments, creating a block in memory is considered pure as it could be immediately garbage collected if unused, and immutable if every field of the block is immutable. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. 
-
-For branches in \verb|if| and \verb|switch| statements, %the condition/switch argument is always an integer variable or constant, so
- the annotations on the overall statement are the intersection of the annotations on each branch, therefore safely underestimating these properties. That is, the expression is only pure if all branches are pure.
-
-%Due to the IR being linearised, the argument to an if or switch statement is always an immutable integer variable, so these expressions are immutable/pure if each possible branch is, which is easy to check. \\
-% Describe in terms of annotations?
-Functions are the most interesting case since the function definition itself is pure and immutable, but the body of the function may cause latent side effects when the function is called. After analysing the body of the function, the annotations of the body are copied into a \verb|Latent| annotation and the function is annotated with this as well as \verb|Pure| and \verb|Immutable|. This wrapping of annotations is repeated for each curried argument. \\
-The reverse occurs at function application, unwrapping the \verb|Latent| annotation as the analysis of each argument application. If at any point in unwrapping these, the function is not also marked as \verb|Pure| or \verb|Immutable|, the missing annotation is removed from the final annotations of the application node. This accounts for any side effects in partially evaluating the function, such as for \verb|let f x = (z := 5; (fun y -> x + y))|. Here, \verb|f 1 2| is valid as \verb|f 1| returns a function. Although the returned function is pure and will be annotated with \verb|Latent {Pure, Immutable}|, the first application is impure so the application node is not marked as being a pure expression.
-
-%The last case of interest is functions. Defining a function causes no immediate side effects so is both pure and immutable, but we still need to capture the latent effects incurred if that function executes. This is done by first analysing the function body, then attaching a third property to the function node in the tree to indicate the latent behaviour of the function body. This latent effect property can also be nested to describe the behaviour of curried function applications. \\
- %At a function application, if this annotation is present then it is unwrapped once for each argument to get the purity/immutability of the result of that application, assuming that the pure and immutable properties are present each time the latent effects are unwrapped. If there is a level of latent effects not containing the pure/immutable property, that means we have a function which performs some side effect then returns another function, so the results is not considered pure/immutable accordingly. Also, if the latent effects property is not present, then the function assigned to the variable being applied could not be determined and nothing is assumed about its behaviour. % This rules out inferring properties of recursive functions, which in general is a good idea to preserve termination behaviour. Also, most dead/common expressions are the result of compiler optimisations, and it is rare for these to be recursive function calls
-% Handling of purity properties passed through memory is similar to long description below, only worth mentioning in one place. 
-% TODO: We don't actually care about the immutability of linast terms, they aren't CSE optimised are they? Instead just rely on each compound being replaced?
 
 
 
@@ -584,37 +586,178 @@ The reverse occurs at function application, unwrapping the \verb|Latent| annotat
 %Unfortunately, the overhead of checking and modifying the number of arguments remaining on each function application, and the fact we still need to copy closures often enough, mean that this change did not improve any of the metrics and in some cases could increase both the filesize and memory usage by about 20\%, despite now having fewer functions defined.
 % GO FIND THIS DATA!
 
-A curried function of many arguments is implemented in WebAssembly as several functions, where all but the last function just constructs the closure to the next function, copying across free variables in the closure and the curried argument. \\
-This is made more efficient for functions that are not exported and are always called with all of their curried arguments.  In this case, we can replace the set of curried functions with one function that takes all of its arguments as a tuple, and update the calling sites accordingly. Rather than actually creating a tuple in memory and passing that to the function (as in a function like \verb|f (x, y) = x + y|), the WebAssembly function takes multiple arguments directly, saving on memory usage. \\
-Such functions and calls to them are tagged with an annotation in the IR tree, so that translation to WebAssembly can distinguish them from function definitions/calls using curried arguments. \\
-This optimisation requires that every call to the function can be identified precisely, since some other call that is not annotated would be compiled to a function call passing one argument at a time, which would be incorrect. For this reason, the optimisation is only done when every occurrence of the function variable is an application, so it is never bound to another variable or passed between functions. The compiler then relies on copy propagation described previously to transform cases such as  \verb|let g = f in g(1,2)| to direct uses of \verb|f| and removing \verb|g|, allowing \verb|f| to be optimised. \\
+A curried function of many arguments is implemented in WebAssembly as several functions, where all but the last function just constructs the closure to the next function, copying across free variables in the closure and the curried argument. 
+
+This is made more efficient for functions that are not exported and are always called with all of their curried arguments.  In this case, we can replace the set of curried functions with one function that takes all of its arguments as a tuple, and update the calling sites accordingly. Rather than actually creating a tuple in memory and passing that to the function (as in a function like \verb|f (x, y) = x + y|), the WebAssembly function takes multiple arguments directly, saving on memory usage. 
+
+Such functions and calls to them are tagged with an annotation in the IR tree, so that translation to WebAssembly can distinguish them from function definitions/calls using curried arguments. 
+
+This optimisation requires that every call to the function can be identified precisely, since some other call that is not annotated would be compiled to a function call passing one argument at a time, which would be incorrect. For this reason, the optimisation is only done when every occurrence of the function variable is an application, so it is never bound to another variable or passed between functions. The compiler then relies on copy propagation, described below, to transform cases such as  \verb|let g = f in g(1,2)| to direct uses of \verb|f| and removing \verb|g|, allowing \verb|f| to be optimised. 
+
 This could also be done where a function always has more than one but not all of its arguments applied, but the benefit would not be as significant.
 
 
 \subsection{Inlining}
-Only non-recursive functions are inlined, enabling values to be propagated inside the function body and some expressions to be evaluated statically. This is done using some simple heuristics based on those described by Bonachea for the Titanium compiler\nocite{titanium}. First, functions with bodies containing at most 5 nodes in the IR tree are always inlined, as there is little cost in doing so and this handles very simple functions, such as accessing a field of a value or loading a mutable value. Also, if a function is not exported from the program and its only use is in a single application, this is also always inlined as the function definition can then be removed, so there is no net increase in code size.\\
- Lastly, larger functions are considered for inlining if doing so does not exceed the budget for code size. The original size of the program is stored in terms of the number of nodes in the IR tree, and larger functions may only be inlined if the resulting program is less than 50\% larger than its initial size. This limit was found to be enough that useful inlining occurred but the output code size did not change significantly once optimisations on the inlined code were also performed.
+Only non-recursive function applications are inlined, allowing values to be propagated inside the function body and some expressions to be evaluated by the compiler. This is done using some simple heuristics based on those described by Bonachea for the Titanium compiler \cite{titanium}. 
+
+First, functions with bodies containing at most 5 nodes in the IR tree are always inlined, as there is little cost in doing so and this handles very simple functions, such as accessing a field of a record or loading a mutable value. Also, if a function is not exported from the program and its only use is in a single application, this is also always inlined as the function definition can then be removed, so there is no increase in code size.
+ Lastly, larger functions are considered for inlining if doing so does not exceed the budget for code size. The original size of the program is stored in terms of the number of nodes in the IR tree, and larger functions may only be inlined if the resulting program is less than 50\% larger than its initial size. This limit was found to be enough that useful inlining occurred without the output code size increasing significantly once optimisations on the inlined code were performed.
 
 % TODO: Better justify these heuristics
 % Also use smarter heuristics like number of function calls the function being inlined makes, or if it is being called from within a loop or not (more calls, bigger impact)
 
 
-\subsection{Simplifying expressions and peephole optimisations}
-Lastly, several simple optimisations are made at the IR and WebAssembly level. Integer or floating point operations in the IR tree involving constants are evaluated at compile time. Similarly, a \verb|switch| or \verb|if| statement switching on a constant is replaced with the branch known to be taken. Both of these allow function applications to be simplified after they are inlined, reducing code size and execution time. 
+\subsection{Copying expressions, variables and constants}
+As OCaml is a mostly functional language, local variables in the IR are only assigned to once (excluding variables introduced specially for tail-call optimisation, which are marked as mutable and ignored), making these optimisations relatively straightforward. 
 
-At the WebAssembly level, live variable analysis is used to identify unused assignments to variables that can be removed, in addition to being used for register assignment described previously. Peephole optimisations also simplify several common cases resulting from compiling each operation independently. For example, \verb|LocalSet i; LocalGet i| is replaced with \verb|LocalTee i|, and \verb|i32.const n; drop| is removed (\verb|i32.const 0; drop| is commonly seen where a unit valued expression is the first part of a sequence of expressions such as \verb|e1; e2|). These changes make clearer which values are actually used, which can allow further assignments to be removed by identifying them as assigning to dead variables.
+% TODO: Describe IR structure in more detail e.g. imm/compond/linast and labelled of nodes as Local|Export|Mutable
+First, the program is scanned and each \verb|let x = Constant c| or \verb|let x = Ident y| binding is added to a table. % (unless \verb|x| is one of the variables introduced by tail call optimisations and is therefore mutable). 
+These are ``immediate" values in the linearised IR and indicate bindings that do no real work. Whenever a variable \verb|x| present in the table is used, it is replaced with its known value. 
+
+This is also extended to values passed through immutable memory, such as tuples, constructor fields or some record fields. During translation to the IR, these expressions in OCaml's \verb|Typedtree| are translated to the \verb|Block| expression in the IR, and tagged with an \verb|ImmutableBlock l| annotation, where \verb|l| is a boolean list indicating which of the block's fields are immutable. 
+
+When the IR tree is analysed, the variables or constants stored in the immutable fields of a block are added to that node as another annotation. A table mapping variables to annotations records this when the block is bound to a variable, so this propagates to any uses of the variable too. This information is also approximated at branches, such as \verb|if| and \verb|switch| statements, by taking the intersection of the known fields when each branch returns a block. For example, \verb|let p = if cond then (x, y) else (x, z)| would annotate the \verb|if| node and hence also \verb|p| with that fact that its first field will be \verb|x|. 
+When an immutable field of a block is accessed as \verb|Field(b, i)|, if this annotation is present on \verb|b| and contains its element at index \verb|i|, the node is replaced with the known constant/variable to propagate this value through the program.
+
+% Could have done some sort of flow based analysis here but didn't, do I want to?
+%That alone is not enough to detect fixed values being propagated through memory. There are four sources of memory blocks in the OCaml Typedtree (ignoring floats, which are treated as constants until later stages, and closures, which are hidden in this representation): constructors, tuples, arrays and records. Of these, constructor and tuple fields are always immutable and record fields are unless specified as mutable. Therefore, during translation to the IR, although all of these are mapped to a single \verb|Block| structure, constructors, tuples and records are annotated with a list of booleans for which of their fields are immutable. We also annotate the nodes for these blocks with the constants or variables stored to each of those immutable fields. 
+% Describe this process in more detail? Relates to constant propagation too.
+% TODO: Could just describe by data-flow equations?
+% Doing this across function calls would require CFA, which gets complex when not talking about function values
+%While traversing the IR tree, variable bindings copy these annotations to a table mapping identifiers to annotations, which are copied back onto nodes in the tree where these variables are used. Then, when a \verb|Field(x, i)| node is encountered, if such an annotation is present on \verb|x| then we check if element \verb|i| of the list is immutable. If so, the field access is replaced with the variable or constant known to be stored there. \\
+%Where possible, this information is also preserved across branches by taking the intersection of lists present on each branch if they exist. For example, consider the program \verb|let p = if cond then (x, y) else (x, z) in p[0]|. We would annotate the nodes forming each of the pairs, then the node corresponding to the \verb|if| statement would be annotated with the list \verb|[Some x, None]| and this would be used to identify \verb|p[0]| as \verb|x|.
+% Annotations not carried across function arguments/results, would get a lot more complicated and need to make some approximations to ensure termination
+
+As well as constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression that does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table of common expressions. Identifying such expressions is done by the effects analysis described below. Then, whenever such expressions are encountered in the IR tree and are present in the table, they are replaced by the identifier known to hold that value. So that variables are only reused when in scope, each entry is removed from the table after the subtree below its binding is searched.
+
+These passes tend to result in unused variables due to expressions being replaced with their known values. Therefore, after all of these passes have been performed,  dead assignments are identified as variable assignments that are never used. Of these, those that have no side effects can then be removed. 
+These optimisations also increase the number of cases found for tail-call optimisation. Where a function \verb|f| is assigned to another variable \verb|g| and that is used instead, tail call optimisation will not identify which function is being called by \verb|g|. These optimisations replace some such cases with using \verb|f| directly, in which case the function can now be identified and the call will be considered for tail-call optimisation.
+
+
+% TODO: Make side effect analysis iterative to solve functions?
+\subsection{Effects analysis}
+OCaml is an impure language, so analysis of side effects is necessary to determine when expressions can be safely replaced or removed as above. This is done using the following annotations on nodes in the IR tree:
+
+\verb"annotation ::= ... | Pure | Immutable | Latent of annotation list"
+
+\verb|Pure| identifies expressions that do not modify program state, making them safe for dead-assignment elimination to remove. Of the pure expressions, \verb|Immutable| identifies expressions that will return the same value each time they are evaluated, so common-subexpression elimination can remove repeated occurrences of such expressions.
+
+
+
+%%%%% !!! Creating a block only immutable if all fields immutable, else other bits of code trying to set/read fields would cause issues for CSE
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+The algorithm is summarised by the inference rules and functions below. $P$ and $I$ represent pure and immutable, and $L(F)$ represents a function having latent behaviour described by $F$. $\Gamma$ is a mapping of both variables and handler indices to analyses. The variable rule for \verb|x| $\not \in \Gamma$ is used when \verb|x| is a function argument or recursive function, in which case nothing is assumed about its latent effects, so side effects are safely over-approximated. Where branches may occur, the intersection of analyses is taken.
+
+The function \verb|seq| encodes that the latent effects of \verb|e; e'| are those of \verb|e'|, but the expression is only pure/immutable if both \verb|e| and \verb|e'| are. The function \verb|app| encodes the same for unwrapping the analysis of latent effects as a function is applied. 
+
+% Cases left out: Handler jumps, unary/binary operations
+% For simplicity, ignores the propagation of 'Fields' analysis happening at the same time, as this generally isn't useful
+% Only case it is useful is if we have 'if p then (f1, f2) else (f3, f4)', can't propagate the Idents themselves but can propagate effect analysis
+\begin{prooftree}
+\hypo{ $\lstinline{x}$\   : F \in \Gamma}
+\infer1{\Gamma \vdash \  $\lstinline{x}$\   : F \cup \{P, I\}}
+\end{prooftree} \hfill
+\begin{prooftree}
+\hypo{ $\lstinline{x}$ \ \not \in \Gamma}
+\infer1{\Gamma \vdash \  $\lstinline{x}$\   : \{P, I\}}
+\end{prooftree} \hfill
+\begin{prooftree}
+\hypo{ \Gamma \vdash\  $\lstinline{e}$ \ : F}
+\hypo{ \Gamma, x:F \vdash \ $\lstinline{e'}$\  : F'}
+\infer2{\Gamma \vdash\   $\lstinline{let x = e in e'}$ \ :\ $\lstinline{seq}$(F, F')}
+\end{prooftree}\hfill \\
+
+\begin{prooftree}
+\hypo{ \Gamma \vdash \  $\lstinline{e}$\  : F}
+\infer1{\Gamma \vdash\   $\lstinline{fun x -> e}$\   : \{P, I, L(F)\}}
+\end{prooftree}\hfill
+\begin{prooftree}
+\hypo{ \Gamma \vdash \  $\lstinline{e}$\  : F}
+\hypo{ \Gamma, f:\{P, I, L(F)\} \vdash \ $\lstinline{e'}$\  : F'}
+\infer2{\Gamma \vdash\   $\lstinline{let rec f x = e in e'}$\   :  F'}
+\end{prooftree} \\
+
+ \begin{prooftree}
+\hypo{ \Gamma \vdash\  $\lstinline{f}$\ : F}
+\hypo{ $\lstinline{app}$\  F\ $\lstinline{args}$\ = F'}
+\infer2{\Gamma \vdash \ $\lstinline{f(args)}$\  : F'}
+\end{prooftree} \hfill
+\begin{prooftree}
+\hypo{F = \{P, I\}$ if each field is immutable else $\{P\}}
+\infer1{\Gamma \vdash\    $\lstinline{Block (tag, args)}$\  :  F}
+\end{prooftree} 
+ \\
+
+\begin{prooftree}
+\infer0{\Gamma \vdash   \ $\lstinline{SetField (e, i, e')}$ \ :  \{\}}
+\end{prooftree} \hfill
+\begin{prooftree}
+\hypo{F = \{P, I\}$ if field \lstinline{i} of \lstinline{e} is immutable else $\{P\}}
+\infer1{\Gamma \vdash\    $\lstinline{Field (e, i)}$\  :  F}
+\end{prooftree}\hfill \\
+
+ \begin{prooftree}
+\hypo{ \Gamma \vdash\  $\lstinline{e}$ \ : F}
+\hypo{ \Gamma \vdash\  $\lstinline{e'}$\  : F'}
+\infer2{\Gamma \vdash\   $\lstinline{if p then e else e'}$ \ :  F \cap F'}
+\end{prooftree} 
+\hfill\begin{prooftree}
+\hypo{ \Gamma \vdash  \ $\lstinline{e}$\ : F}
+\hypo{ \Gamma \vdash\  $\lstinline{e'}$\ : F'}
+\infer2{\Gamma \vdash \  $\lstinline{e; e'}$\ : \ $\lstinline{seq}$(F, F')}
+\end{prooftree}\\
+
+\begin{prooftree}
+\hypo{ \Gamma, i:F' \vdash  \ $\lstinline{e}$\ : F}
+\hypo{ \Gamma \vdash\  $\lstinline{e'}$\ : F'}
+\infer2{\Gamma \vdash \  $\lstinline{try e with (i) -> e'}$\ :  F \cap F'}
+\end{prooftree}\hfill
+\begin{prooftree}
+\hypo{i : F \in \Gamma}
+\infer1{\Gamma \vdash\   $\lstinline{fail i}$ \ :  F }
+\end{prooftree}\hfill 
+\begin{prooftree}
+\infer0{\Gamma \vdash \  $\lstinline{c}$\   : \{P, I\}}
+\end{prooftree} \\
+
+\begin{lstlisting}
+let seq (F1, F2) =  F2 $\setminus$ ($\{P, I\}\ \setminus$ F1)
+
+let rec app F = function
+  | [] -> F
+  | arg::args -> 
+    if $L$(F') $\in$ F:
+      seq (F, app F' args)
+    else: $\{\}$
+\end{lstlisting}
+
+For the purpose of removing dead assignments, creating a block in memory is considered pure as it could be immediately garbage collected if unused. If every field is immutable, then creating the block is also considered immutable, since two instances pointing to a shared copy is indistinguishable from having two separate blocks. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. This therefore relies on the propagation of \verb|ImmutableBlock| annotations described previously, left out here to avoid further complicating the inference rules.
+
+Using a linearised IR has resulted in simpler rules in some cases. For example, the condition of an \verb|if| statement is always a variable or constant so has no side effects, hence it is ignored by that rule.
+
+The \verb|Latent| annotation is used for functions, since a function definition itself is pure and immutable, but the body of the function may cause latent side effects when the function is called. The rules for functions therefore wrap the annotations of the body in a \verb|Latent| annotation, and this is repeated for each curried argument. These annotations are unwrapped again when a function is applied. If the analysis of latent effects is unknown, for example, because the function applied is an argument to the current function (\verb|f| in \verb|map f lst|), then nothing is assumed about the result. Also, if at any point in unwrapping applications the function is not also marked as \verb|Pure| or \verb|Immutable|, then neither is the application node. This accounts for any side effects in partially evaluating the function, such as for \verb|let f x = (z := 5; (fun y -> x + y))|. Here, \verb|f 1 2| is valid as \verb|f 1| returns a function. Although the returned function is pure and will be annotated with \verb|Latent {Pure, Immutable}|, the first application is impure so the application node is not marked as being a pure expression.
+
+
+
+\subsection{Simplifying expressions and peephole optimisations}
+Lastly, several simple optimisations are made at the IR and WebAssembly level. Integer or floating-point operations in the IR tree involving constants are evaluated during compilation. Similarly, a \verb|switch| or \verb|if| statement switching on a constant is replaced with the branch that would be taken. Both of these help simplify function applications after they are inlined, reducing code size and execution time. 
+
+At the WebAssembly level, in addition to being used for register allocation, live-variable analysis identifies assignments to variables that are unused so can be removed. Peephole optimisations also simplify several common cases resulting from compiling each operation independently. For example, \verb|LocalSet i; LocalGet i| is replaced with \verb|LocalTee i|, and \verb|i32.const n; drop| is removed (\verb|i32.const 0; drop| is commonly seen where a unit valued expression is the first part of a sequence of expressions \verb|e1; e2|). These changes lead to a more precise analysis of which values are actually used by a program, allowing further assignments to be removed by identifying them as assigning to dead variables.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Garbage Collection}
-One of the last extensions to my project was to implement a garbage collector as part of the runtime system. Due to its complexity compared to the other runtime functions and going through several improvements, this was written in JavaScript and imported into the WebAssembly runtime rather than writing it in WebAssembly. I initially implemented a reference counting garbage collector, but changed to a tracing implementation to be able to collect cyclic data structures.
+One of the last extensions to my project was to implement a garbage collector as part of the runtime system. Due to its complexity compared to the other runtime functions and going through several improvements, this was written in JavaScript and imported into the WebAssembly runtime rather than writing it in WebAssembly. I initially implemented a reference-counting garbage collector, but changed to a tracing implementation to be able to collect cyclic data structures.
 
 % TODO: Talk about Wasm proposal for reference types/garbage collection?
 
 \subsection{Shadow stack}
 A tracing collector marks all objects reachable from pointers on the call stack and global variables, then collects all allocated unmarked objects. However, the stack in WebAssembly cannot be directly inspected, so only the current function's local variables are accessible. The solution to this is to implement a shadow stack, reserving a section of WebAssembly's linear memory for storing copies of local variables from the call stack. The only bookkeeping required is a pointer to the top of the shadow stack, which moves up and down as functions are called and return.
 
-Although only pointer values need to be stored on the shadow stack, identifying pointers requires propagating type information through all stages of the compiler and would still be imprecise for polymorphic functions. Instead, all local variable assignments in functions first copy the new value to the corresponding slot on the shadow stack, and checking which values are pointers is left till when garbage collection runs. This additional store on every local variable update is one of the main overheads of implementing garbage collection.
+Although only pointer values need to be stored on the shadow stack, identifying pointers requires propagating type information through all stages of the compiler and would still be imprecise for polymorphic functions. Instead, all local variable assignments in functions first copy the new value to the corresponding slot on the shadow stack, and checking which values are pointers is left until garbage collection runs. This additional store on every local-variable update is one of the main overheads of implementing garbage collection.
 
 
 % TODO: Move to preparation chapter!
@@ -628,18 +771,19 @@ Although only pointer values need to be stored on the shadow stack, identifying 
 
 
 \subsection{Simple memory allocator}
-The garbage collector can be split into two components, one which provides \verb|malloc| and \verb|free| functions for manual memory allocation, and the other which implements the mark and sweep algorithm on top of this to decide which blocks to free. 
+The garbage collector can be split into two components, one that provides \verb|malloc| and \verb|free| functions for manual memory allocation, and the other that implements the mark and sweep algorithm on top of this to decide which blocks to free. 
 
-I initially implemented the first part following the algorithm described in K\&R\nocite{k_and_r}. A cyclic linked list called the free list is maintained, chaining together all of the free blocks in memory, and the runtime keeps a pointer to some block in the list. Each block has an 8 byte header containing the size of the block and a pointer to the start of the next block. % Dont bother mentioning alignment?
-As all values in compiled programs are 32-bit integers or 64-bit floats, blocks are always aligned to at least 4 bytes so the least significant bits of each field are unused, leaving space for an allocated and marked flag. 
+I initially implemented the first part following the algorithm described in K\&R \cite{k_and_r}. A cyclic linked list, called the free list, is maintained, chaining together all of the free blocks in memory, and the runtime keeps a pointer to some block in the list. Each block has an 8-byte header containing the size of the block and a pointer to the start of the next block. % Dont bother mentioning alignment?
+As all values in compiled programs are 32-bit integers or 64-bit floats, blocks are always aligned to at least 4 bytes, so the least significant bits of each field are unused, leaving space for an allocated and marked flag. 
 
-\verb|malloc| scans the free list until the first large enough block is found. Either the whole block is allocated if it is a perfect fit, else the size of the block is reduced and just the tail end of it is allocated. If there are no large enough blocks, the garbage collector is called. If that frees a large enough block then the list is scanned again, otherwise the WebAssembly memory is grown and a block allocated from the new space.
+\verb|malloc| scans the free list until the first large-enough block is found. Either the whole block is allocated if it is a perfect fit, else the size of the block is reduced and just the tail end of it is allocated. If there are no large-enough blocks, the garbage collector is called. If that frees a large-enough block then the list is scanned again, otherwise the WebAssembly memory is grown and a block allocated from the new space.
 %When a block is requested, the algorithm is first-fit so the list is scanned for the first block large enough for the allocation. If less than one header size larger than the size requested, the block is removed from the list, marked as allocated, and returned. Otherwise, the size of the block is reduced and just the tail end of the block is returned. 
 
 
 \verb|free| also scans the free list until the last unallocated block before the block being freed is found. The freed block is then inserted here in the list, keeping blocks in the free list in memory order. If it is adjacent to the block before or after it in the free list, the blocks are merged into one large block to reduce fragmentation.
 
-The mark and sweep algorithm then determines which blocks to free. When invoked, the shadow stack is scanned and each block pointed to is marked and put onto a stack. This stack is maintained using the pointer fields in the headers of blocks, which are otherwise meaningless for allocated blocks not in the free list. A depth first search is then done, examining the fields of each object for pointers. When a pointer to an unmarked block is found, that block is marked and added to the stack. \\
+The mark and sweep algorithm then determines which blocks to free. When invoked, the shadow stack is scanned and each block pointed to is marked and put onto a stack. This stack is maintained using the pointer fields in the headers of blocks, which are otherwise meaningless for allocated blocks not in the free list. A depth first search is then done, examining the fields of each object for pointers. When a pointer to an unmarked block is found, that block is marked and added to the stack. 
+
 The sweep part of the algorithm then walks over all blocks in memory using the size field in each block, clearing marked flags and freeing allocated blocks that were not marked and are therefore unreachable.
 
 % TODO: Massively cut down details, don't need such low level information, especially as it is described in K&R
@@ -648,7 +792,7 @@ The sweep part of the algorithm then walks over all blocks in memory using the s
 %
 %The initial implementation of \verb|malloc| and \verb|free| was taken from K\&R, although inefficiencies in this were resolved later. \cite{k_and_r} % https://kremlin.cc/k&r.pdf - The C Programming Language, Kernighan and Ritchie
 %The runtime maintains a free list where each cell is an unallocated block of memory, with its size and a pointer to the next block in an 8 byte header. All memory allocations are kept aligned to the header size so not all bits of the size and pointer fields are required, leaving space for an allocated and marked flag. The list is circular and initially contains just one large block for the whole of memory. \\
-%When a block is allocated, the free list is scanned until the first large enough block is found then either that whole block is allocated if it is a perfect fit, else the block is shrunk and just the tail end of it is allocated. If no large enough block can be found, the runtime attempts to grow the WebAssembly memory and treats that as a new free block.
+%When a block is allocated, the free list is scanned until the first large-enough block is found then either that whole block is allocated if it is a perfect fit, else the block is shrunk and just the tail end of it is allocated. If no large-enough block can be found, the runtime attempts to grow the WebAssembly memory and treats that as a new free block.
 %
 %When a block is freed, we again scan down the free list until the last unallocated block before the block being freed is found (if the block being freed is at the start of memory, this unallocated block will be the free block at the highest address). The block being freed is then inserted into the list and merged with the block on either side of it if those are also free. This helps to reduce fragmentation and ensures that the free list is always kept in memory order.\\
 %
@@ -659,22 +803,32 @@ The sweep part of the algorithm then walks over all blocks in memory using the s
 
 
 \subsection{Optimised malloc and free}
-The implementation above requires \verb|malloc| and \verb|free| to both walk along the free list, either to find a large enough block or to find where to insert a freed block. \verb|free| can be made to always run in constant time, as can \verb|malloc| for the majority of calls.
+The implementation above requires \verb|malloc| and \verb|free| to both walk along the free list, either to find a large-enough block or to find where to insert a freed block. \verb|free| can be made to always run in constant time, as can \verb|malloc| for the majority of calls.
 
-First, an additional 8 byte trailer is included in each free block, used as shown below. A flag indicating that a block is allocated is now kept in the unused bits of the size field in both the header and trailer. The free list is now doubly linked but is no longer made circular. 
+First, an additional 8 byte trailer is added to each block, used as shown below, with the flags A = allocated, M = marked. A block's size, and whether it is allocated or not, is now accessible from either end of the block. The free list is doubly linked but is no longer made circular. 
+
+\hspace{-0.8cm}
+\begin{bytefield}[bitformatting={\small\bfseries},bitwidth=1.1em, leftcurly=.]{34}
+\begin{leftwordgroup}{Free block}
+\bitbox{7}{last tralier ptr} & \bitbox{1}{A} \bitbox{7}{size} & \bitbox{1}{0} & \bitbox{2}{\dots} & \bitbox{7}{size} & \bitbox{1}{0}  &	\bitbox{7}{next header ptr} & \bitbox{1}{A} \end{leftwordgroup} \\
+\text{}\\
+\begin{leftwordgroup}{Allocated block}
+\bitbox{7}{marked stack ptr} & \bitbox{1}{A}  & \bitbox{7}{size} & \bitbox{1}{M}  & \bitbox{2}{\dots} & \bitbox{7}{size} & \bitbox{1}{0}  &	\bitbox{7}{unused} & \bitbox{1}{A} \end{leftwordgroup} 
+    \end{bytefield}
 
 
-  \begin{tabular}{c|c|c|c|c|c|} \cline{2-6}
-Free block: &  previous trailer ptr & size & $\dots$ & size & next header ptr \\ \cline{2-6} \multicolumn{1}{c}{}  \\ \cline{2-6}
-Allocated block: &  marked stack ptr  & size & $\dots$ & size & unused \\ \cline{2-6}
-\end{tabular}
+
+%  \begin{tabular}{c|c|c|c|c|c|} \cline{2-6}
+%Free block: &  previous trailer ptr & size & $\dots$ & size & next header ptr \\ \cline{2-6} \multicolumn{1}{c}{}  \\ \cline{2-6}
+%Allocated block: &  marked stack ptr  & size & $\dots$ & size & unused \\ \cline{2-6}
+%\end{tabular}
 
 %This is enough to be able to free a block without scanning the free list. The pointer to the block being freed is equivalently a pointer to the end of the adjacent block before it, and the size field of the block gives the position of the block immediately after it. As there is an allocated bit and size field in both the header and trailer of all blocks, the procedure checks if either of these adjacent blocks is free. If the block above is free, it is removed from its position in the free list and merged with the block being freed by updating the size fields. If the block below is free, the block being freed is merged with it, again updating the size fields and moving the trailer to the new end of the block. Otherwise, the freed block still needs to be included in the free list, which is done by inserting it onto the front of the list. 
 
 This is enough to be able to free a block without scanning the free list. From just the freed block's address, the procedure gets its size and checks the allocated flags of the blocks either side of it, which is possible since the block before has its size and allocated flag in its trailer. This determines if either block should be merged with the one being freed. Also, since the list is doubly linked, each adjacent free block has a pointer to its successor and predecessor block so can be removed from the middle of the free list without traversing the list. If neither block is merged, the newly freed block is inserted at the front of the free list, which means that the free list no longer keeps blocks in address order.
 
-The cost of \verb|malloc| comes from scanning the free list for a large enough block. The solution to this is binning blocks into separate free lists based on their size, so scanning for a free block can skip searching any lists of blocks that will all be too small. All but the last bin fit exact sizes starting from the smallest possible allocation, then the last bin holds all larger blocks. The compiler supports limited array operations, so the size of most allocations is determined by user defined datatypes and the number of free variables in functions. Often both are relatively small hence a large proportion of freed blocks are placed in the fixed size bins.  
-There is now an array of free list pointers, and \verb|malloc| scans each list in turn searching for a block, starting from the earliest bin that could contain a large enough block. The rest of the algorithm is mostly unchanged, except that \verb|free| must insert freed blocks into the correct free list, and shrinking blocks when allocating or merging blocks when freeing means that free blocks sometimes move between lists.
+The cost of \verb|malloc| comes from scanning the free list for a large-enough block. The solution to this is binning blocks into separate free lists based on their size, so scanning for a free block can skip searching any lists of blocks that will all be too small. All but the last bin fit exact sizes starting from the smallest possible allocation, then the last bin holds all larger blocks. The compiler supports limited array operations, so the size of most allocations is determined by user-defined datatypes and the number of free variables in functions. Often both are relatively small hence a large proportion of freed blocks are placed in the fixed size bins.  
+There is now an array of free list pointers, and \verb|malloc| scans each list in turn searching for a block, starting from the earliest bin that could contain a large-enough block. The rest of the algorithm is mostly unchanged, except that \verb|free| must insert freed blocks into the correct free list, and shrinking blocks when allocating or merging blocks when freeing means that free blocks sometimes move between lists.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -684,22 +838,44 @@ There is now an array of free list pointers, and \verb|malloc| scans each list i
 
 
 % Give reference for binning? And suggestion of sizes to use?
-%The expensive part of \verb|malloc| is needing to scan down the free list until a large enough block is found. 
+%The expensive part of \verb|malloc| is needing to scan down the free list until a large-enough block is found. 
 %This can be avoided by splitting the free list into several lists, each for a specific range of sizes, and then having an array of pointers to the start of each list. 
 %% TODO: Be specific about sizes chosen and justification e.g. http://gee.cs.oswego.edu/dl/html/malloc.html
 %Freed blocks are therefore put into a bin based on their size. The first several bins fit blocks of exact sizes, starting from the minimum possible block size. There are then a few bins which fit ranges that double in size with each bin, then one last bin for any larger sizes. 
 %As my compiler supports very limited array operations, the size of blocks allocated by a program is primarily determined by the complexity of datatypes defined and the number of free variables in functions. In many cases, these are relatively small so the fixed size bins make up most of the allocations. \\
-%With these bins, allocation scans from the earliest bin of large enough size until it finds a non-empty bin, and allocates the first large enough block in that list. In cases where the block found is significantly larger than required, an extra check is introduced that the remaining block has not shrunk to a size where it needs to move bin. \\
+%With these bins, allocation scans from the earliest bin of large-enough size until it finds a non-empty bin, and allocates the first large-enough block in that list. In cases where the block found is significantly larger than required, an extra check is introduced that the remaining block has not shrunk to a size where it needs to move bin. \\
 %The only change to the \verb|free| function for this optimisation is the determine which bin a block needs to be placed in based on its size after possibly merging with free blocks adjacent to it.
 % TODO: Include the 'list of lists' diagram!
 
-A characteristic observed from tracing the behaviour of memory intensive test programs is that, until garbage collection fails to free a suitable block and memory has to be grown, the garbage collector typically has diminishing returns each invocation as the set of long-lived objects grows. This results in there being less memory available over time and the garbage collector being called increasingly frequently. Memory grows in multiples of WebAssembly pages, which are 64KiB. Across several test programs, once the memory being freed drops below about 1KiB, the garbage collector start being called very frequently and almost always results in memory growing eventually. Therefore, another optimisation was to grow memory whenever this threshold is crossed, even if a block large enough for the requested allocation is found. This doesn't affect the amount of memory used, as memory almost always grows anyway after this point, but all of the objects freed by several frequent calls to the garbage collector are now collected in a single pass when this large block of memory is next used up, reducing the overhead of garbage collection.
+A characteristic observed from tracing the behaviour of memory-intensive test programs is that, until garbage collection fails to free a suitable block and memory has to be grown, the garbage collector typically has diminishing returns each invocation as the set of long-lived objects grows. This results in there being less memory available over time and the garbage collector being called increasingly frequently. Memory grows in multiples of WebAssembly pages, which are 64KiB. Across several test programs, once the memory being freed drops below about 1KiB, the garbage collector start being called very frequently and almost always results in memory growing eventually. Therefore, another optimisation was to grow memory whenever this threshold is crossed, even if a block large enough for the requested allocation is found. This doesn't affect the amount of memory used, as memory almost always grows anyway after this point, but all of the objects freed by several frequent calls to the garbage collector are now collected in a single pass when this large block of memory is next used up, reducing the overhead of garbage collection.
 
 
+\newpage
+\section{Summary}
+This chapter has described the components of my compiler and the decisions made while writing it. A wide range of OCaml programs that do not use the module language can be compiled to WebAssembly, and executed using JavaScript. I have also described the extensions made to the project, adding a garbage collector and several optimisation passes, which will be evaluated in the next chapter. The original goal was to support the comparison, boolean, integer and list operations from the standard library, which has been achieved and extended with the reference and basic floating-point operations.
 
 
-
-
+\section{Repository Overview}
+\dirtree{%
+.1 . 
+.2 src.
+.3 ocaml/\DTcomment{OCaml compiler's frontend for parsing/typing}.
+.3 middle-end/\DTcomment{Translation to IR}. 
+.3 optimisations/\DTcomment{IR optimisations}. 
+.3 codegen/\DTcomment{Translation from IR to WebAssembly flowgraph}. 
+.3 graph/\DTcomment{WebAssembly flowgraph representation and optimisations}. 
+.3 runtime. 
+.4 memory.js. 
+.4 runtime.wast. 
+.2 samples\DTcomment{Test programs for compiler input}. 
+.3 results.txt\DTcomment{Expected output of compiled WebAssembly}. 
+.3 test.js\DTcomment{Instantiate complied tests and compare outputs}. 
+.2 benchmarks.
+.3 OCaml/.
+.3 C/. 
+.3 Grain/.  
+.2 unit-tests/\DTcomment{Tests for isolated elements of translation/optimisation}.
+}
 
 
 

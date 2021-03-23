@@ -31,6 +31,10 @@ module CompoundHash = struct
           List.length imms1 = List.length imms2 && List.for_all
           (fun ({i_desc=desc1}, {i_desc=desc2}) -> desc1 = desc2) (List.combine imms1 imms2)
         | CGetTag {i_desc=desc1}, CGetTag {i_desc=desc2} -> desc1 = desc2
+        | CApp({i_desc=desc1}, args1), CApp({i_desc=desc2}, args2) ->
+            List.length args1 = List.length args2 &&
+            desc1 = desc2 && List.for_all
+          (fun ({i_desc=desc1}, {i_desc=desc2}) -> desc1 = desc2) (List.combine args1 args2)
         (* Due to unique indents, would need alpha-conversion test to determine function equality *)
         | _ -> false (* TODO: Why not define equality for Linasts? Gets too exhaustive?
                               Note - will end up storing compounds that cannot be used?
@@ -53,6 +57,9 @@ module CompoundHash = struct
           (fun hash {i_desc} -> hash lxor Hashtbl.hash i_desc)
           (Hashtbl.hash i lxor Hashtbl.hash "MakeBlock") imms
         | CGetTag {i_desc} -> Hashtbl.hash "GetTag" lxor Hashtbl.hash i_desc
+        | CApp ({i_desc}, args) -> List.fold_left
+          (fun hash {i_desc} -> hash lxor Hashtbl.hash i_desc)
+          (Hashtbl.hash i_desc lxor Hashtbl.hash "App") args
         | desc -> Hashtbl.hash desc (* Don't want to be putting these items in the HashTbl *)
 end
 
@@ -68,9 +75,12 @@ let enter_linast linast = match linast.desc with
   (* TODO: Rather than replaced_idents - just introduct id = id' and leave it to copy propagation to simplify *)
   | LLet(id, (Local | Export), body, _) -> (
     match CompoundHashtbl.find_opt common_expressions body.c_desc with
-    | Some id' -> Ident.Tbl.add replaced_idents id id'
+    | Some id' ->
+   (*  Printf.printf "Replaced %s with %s\n" (Ident.name id) (Ident.name id'); *)
+     Ident.Tbl.add replaced_idents id id'
     | None -> if List.mem Immutable (!(body.c_annotations)) then
-      CompoundHashtbl.add common_expressions body.c_desc id); linast
+     ((* (Printf.printf "Remembered %s\n" (Ident.name id); *)
+      CompoundHashtbl.add common_expressions body.c_desc id)); linast
   (* Replace common expressions that aren't in bindings *)
   | LSeq (compound, body) -> (match CompoundHashtbl.find_opt common_expressions compound.c_desc with
     | Some id -> {linast with desc=LSeq (Compound.imm (Imm.id id), body)}
