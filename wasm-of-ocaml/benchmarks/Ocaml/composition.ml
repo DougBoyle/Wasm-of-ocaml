@@ -1,7 +1,5 @@
 (* Tries to show the profile cost of composing small functions.
 https://github.com/Chris00/ocaml-benchmark/blob/master/examples/composition.ml
-Actual package has a 'throughput' function which runs code for a specified number of seconds.
-Just use a for loop for this.
 *)
 
 (* Small functions: permutations of [0 .. n-1] *)
@@ -52,8 +50,6 @@ let make_perms (* : int -> (int -> int) list * (int list -> int list -> unit) li
 let () =
   let ncomp = 100 in
   let p_f, p_v = make_perms ncomp in
-  (* Goes through performing a large collection of list manipulations.
-     Huge memory allocation due to using lists, array version not currently possible. *)
   let v = init n (fun k -> k) in
   let do_f () =
     let f = fold_left (fun f f0 -> (fun k -> f0(f k))) (fun k -> k) p_f in

@@ -26,5 +26,4 @@ tailcall a=120
 tailcall2 a=0 b=0 c=1 d=0
 // an empty line means the program will be executed but no values checked (just tests GC)
 trees
-gcManyPages
 inlining x=9 z=12 a=5

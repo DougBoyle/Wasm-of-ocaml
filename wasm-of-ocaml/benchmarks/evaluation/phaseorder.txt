@@ -64,4 +64,4 @@ nbody_100               0.782   0.014   393260  4399
 nbody_1000              8.675   0.164   3885260 4399
 
 
-NOTE: OUT OF DATE FOR MERGESORT!
+NOTE: out of date for mergesort

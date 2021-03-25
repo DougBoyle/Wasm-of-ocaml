@@ -1,3 +1,6 @@
+// Tries to show the profile cost of composing small functions.
+// https://github.com/Chris00/ocaml-benchmark/blob/master/examples/composition.ml
+
 import List from "list"
 let a = 214013
 let c = 2531011

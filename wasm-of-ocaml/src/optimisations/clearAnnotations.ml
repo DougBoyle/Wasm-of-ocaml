@@ -1,11 +1,5 @@
 (* After optimisation passes complete, some annotations may no longer be valid.
    Filter the annotations on each term to just those that should be preserved. *)
-(*
-Annotations left unchanged:
-  ImmutableBlock - property of the term that block came from i.e. tuple/record/array
-
-All other annotations will be added again when optimisation pass repeated, so don't preserve them.
-*)
 open Linast
 
 let clear_annotations annotations =

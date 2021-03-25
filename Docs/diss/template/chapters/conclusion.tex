@@ -1,1 +1,29 @@
 \chapter{Conclusion}
+
+This project met its success criteria, implementing the core OCaml language with integer, boolean, comparison and list operations, as well as all of OCaml's control flow and pattern-matching constructs, besides exceptions.
+I also implemented extensions in each of the three directions identified at the start of the project. The language supported was extended with references as well as basic array and floating point operations, and using the OCaml front-end allowed me to support other concepts such as only exporting an interface from WebAssembly specified by an accompanying .mli file.
+Several optimisations were implemented, including function inlining, uncurrying and tail-call optimisation, as well as cleanup passes at both the IR and WebAssembly level.
+I also extended the runtime system with a mark-and-sweep garbage collector, overcoming not being able to scan the WebAssembly stack by implementing a shadow stack in the linear memory. 
+Past projects compiling functional languages to WebAssembly have mentioned garbage collection as an extension that was not implemented, so this project has achieved something new in that respect.
+
+
+
+Whilst I managed to work at a steady pace both during term time and in the breaks, always staying on track or ahead of schedule, my original timetable did not account for me being able to allocate much more time to the project during the breaks.
+This led to me being about three weeks ahead of schedule at the start of Lent term, which meant I had lots of time to work on extensions, but had to come up with new goals for when I wanted to complete components by, that could have been present in my initial plan.
+
+
+\section{Future work}
+First, there are still several features of OCaml not supported by my compiler. Implementing more of the standard library would allow supporting operations on additional types, such as 32 and 64-bit integers and strings.
+Similarly, although the basic array syntax is supported, not having the Array library implmented in WebAssembly severely limits what can be achieved with arrays.
+
+Another point is that my compiler currently implements the 32-bit version of OCaml, in that integers are always 31 bits. 
+Whilst WebAssembly memory is currently limited to 4GB, being able to build the compiler to work with 63-bit integers, as is the case for building the official OCaml compiler on 64-bit system, may be beneficial to some programs.
+
+Lastly, there are still many aspects where performance could be optimised. Evaluation revealed that the compiler performs poorly with imperative code, which could be improved by more flow-directed analysis capable of inferring properties about mutable variables stored as references.
+One optimisation made in the OCaml compiler which I did not get round to implementing is identifying references that are effectively used just as mutable local variables, and representing them as such rather than forcing them to be stored in memory.
+This requires ensuring the variable cannot leak out of the function, done by escape analysis. Control-flow analysis would also make the use of functions more precise, increasing the opportunities for inlining or tail-call optimisation.
+Additionally, the garbage collector is implemented in JavaScript rather than WebAssembly, and I suspect translating this into WebAssembly to avoid the switch between WebAssembly and JavaScript at each memory allocation would significantly reduce the overhead of garbage collection.
+It could also be improved to use more complex garbage collection techniques, such as a generational collector which divides objects into short-lived objects collected frequently, and long-lived objects collected less often. I suspect this would introduce additional challenges relating the the WebAssembly stack being inaccessible.
+
+
+

@@ -5,9 +5,7 @@ NO_GC=0
 # -Nopt-ir, -passes-ir, -Nopt-graph, -passes-graph, -Nopt-patterns
 OPTS=( )
 
-# Shared tests are: alltrees_7, arith_75, composition, funcrec, mergesort_500, nbody_100
 cd $(dirname $BASH_SOURCE)
-#for file in ../Ocaml/*.ml
 for file in ../Ocaml/*.ml
 do
   # avoid compiling specific tests
@@ -22,7 +20,8 @@ do
   fi
   NAME=$(basename $file .ml)
   ocamlfind ocamlc -o ../js/${NAME}.byte -I ../out -linkpkg -package js_of_ocaml,js_of_ocaml-ppx $file
-    js_of_ocaml ../js/${NAME}.byte
+  js_of_ocaml ../js/${NAME}.byte
+  rm ../Ocaml/${NAME}.cmo
 done
 
 ./time_all.sh

@@ -1,4 +1,3 @@
-(* Refs not implemented from stdlib so have to do explicitly *)
 type 'a ref = {mutable content : 'a}
 let x = {content = 0}
 let _ = for i = 1 to 10 do x.content <- x.content + i done

@@ -1,8 +1,8 @@
 (*
-  Propagate known values for tags/fields of blocks in memory. Very restricted form of CFA-0.
+  Propagate known values for tags/fields of blocks in memory.
   Annotations are used by OptConstants to replace 'GetField' or 'GetTag' with their known values.
   If block is not used anywhere else, dead assignment elimination will avoid the memory allocation entirely.
-  TODO: Worth implementing greater form of CFA-0? Would mean needing another graph representation? Do lower down?
+  TODO: Could extend to do flow-directed analysis to allow analysing some mutable fields too, or CFA across functions
 *)
 open Linast
 
@@ -129,7 +129,6 @@ and analyse_linast linast = match linast.desc with
     copy_annotations body.annotations linast.annotations
   | LCompound compound -> ()
 
-(* Specific to constants for now *)
 let analyse linast =
   Ident.Tbl.clear known_tags;
   Ident.Tbl.clear known_fields;

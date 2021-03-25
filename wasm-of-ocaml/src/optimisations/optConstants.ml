@@ -4,7 +4,6 @@
 open Linast
 open Asttypes
 
-(* TODO: Update eval_unary/binary if other types ever need supporting for the same ops *)
 let eval_unary = function
   | (Not, Const_int i) -> Const_int (if i > 0 then 0 else 1) (* 0=false, 1=true *)
   (* integer *)
@@ -19,11 +18,10 @@ let eval_unary = function
   | _ -> failwith "Type mismatch between constant and operator"
 
 let eval_binary = function
-  (* Type checking should have ensured we never see 1 int 1 float *)
+  (* Type checking should have ensured we never see 1 int, 1 float *)
   (* floats have to be handled separately (except for testing physical equality),
      since they should be compared by value, not by their strings (representation in Asttypes) e.g. 2.0 = 2.00.
-     Writing equality tests of floats in real programs is a bad practice.
-     May not behave exactly as OCaml in case of NaNs *)
+     Writing equality tests of floats in real programs is a bad practice. *)
   | (Eq, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) = (Float.of_string str2) then 1 else 0)
   | (Neq, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) <> (Float.of_string str2) then 1 else 0)
   | (LT, Const_float str1, Const_float str2) -> Const_int (if (Float.of_string str1) < (Float.of_string str2) then 1 else 0)
@@ -77,8 +75,6 @@ let leave_compound compound = match compound.c_desc with
     (try {compound with c_desc=CImm {imm1 with i_desc=ImmConst (eval_binary (op, c1, c2))}}
      with Division_by_zero -> compound) (* Leave runtime division-by-zero error till runtime *)
 
-  (* Do actual changing of tree structure here so that analyse.ml can just be a side-effect function *)
-  (* Separates analysis from optimisations *)
   | CGetTag imm -> (match List.find_opt (function Tag _ -> true | _ -> false) (!(imm.i_annotations)) with
     | Some (Tag i) -> {compound with c_desc=CImm (LinastUtils.Imm.const (Asttypes.Const_int i))}
     | None -> compound
@@ -91,7 +87,7 @@ let leave_compound compound = match compound.c_desc with
           | Some (Some imm) -> {compound with c_desc=CImm imm}
           | _ -> compound)
       | _ -> failwith "Filter failed to find just FieldImms")
-  (* No use looking at ArrayGet, can't yet make any guarentees about the field *)
+  (* Can't optimise ArrayGet as the field is mutable *)
   | _ -> compound
 
 (* ------------- Dead branch elimination ------------- *)
@@ -105,6 +101,7 @@ let can_simplify_branch = function
   | {c_desc=CSwitch(_, [_], None)} -> true
   | _ -> false
 
+(* Branch with statically known case *)
 let simplify_branch = function
   | {c_desc=CIf({i_desc=ImmConst (Asttypes.Const_int i)}, branch1, branch2)} -> if i > 0 then branch1 else branch2
   | {c_desc=CSwitch(_, [(_, body)], None)} -> body
@@ -127,8 +124,7 @@ let rec rewrite_tree mkleaf branch rest = match branch.desc with
   | LLetRec (binds, body) -> LinastUtils.LinastExpr.mkletrec binds (rewrite_tree mkleaf body rest)
 
 let leave_linast linast = match linast.desc with
-  (* Dead branches - good idea to do in same pass as optConstants or not? *)
-  (* Branches optimised at linast level as tree may need 're-linearising'. By of if statement is linast *)
+  (* Branches optimised at linast level as tree may need 're-linearising' once body of branch extracted *)
   | LCompound compound when can_simplify_branch compound -> simplify_branch compound
   (* May need to 're-linearise' the tree now that we have pulled a Linast_expr out of a compound *)
   | LSeq (compound, rest) when can_simplify_branch compound ->

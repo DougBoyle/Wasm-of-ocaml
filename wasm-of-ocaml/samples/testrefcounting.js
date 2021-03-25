@@ -2,35 +2,6 @@ let mem = new WebAssembly.Memory({initial : 2});
 const manager = require(process.env.OCAML_TO_WASM_RT + "/memory.js");
 let memmanager = new manager.ManagedMemory(mem);
 
-/*
-Testing low level allocator
-let allocator = memmanager.allocator;
-
-console.log(memmanager.uview.slice(0, 8));
-
-let size = memmanager.uview.byteLength;
-console.log(size);
-let block1 = allocator.malloc(50);
-let block2 = allocator.malloc(80);
-let block3 = allocator.malloc(40);
-console.log(block1, block2, block3);
-// REMEMBER: BYTES VS WORDS AS POINTERS
-console.log(memmanager.uview.slice((block3>>2) - 2));
-console.log(memmanager.uview.slice(0, 8));
-
-console.log(allocator.freep);
-allocator.free(block2);
-console.log(memmanager.uview.slice((block3>>2) - 2));
-console.log(memmanager.uview.slice(0, 8));
-allocator.free(block3);
-console.log(memmanager.uview.slice((block3>>2) - 2));
-console.log(memmanager.uview.slice(0, 8));
-
-let block4 = allocator.malloc(132000);
-console.log(block4);
-console.log(memmanager.uview.slice((block3>>2) - 2));
-console.log(memmanager.uview.slice(0, 8));
-*/
 let block1 = memmanager.malloc(12);
 memmanager.uview[(block1>>2) + 1] = 1; // contains 1 element
 memmanager.uview[(block1>>2) + 2] = memmanager.incRef(20); // integer 10

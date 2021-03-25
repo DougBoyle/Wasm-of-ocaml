@@ -21,14 +21,8 @@ const filesize = fs.statSync(filename).size
 
 let times = [];
 
-// TODO: Is not having 'warm up' period fair? Should do the same for Js, Grain, Wasm
 let iters = 20;
 
-// just does timings
-// want option to enable doing memory instead
-// also care about disabling GC?
-
-//var heap;
 if (process.argv.length < 4){
     console.log("Must pass both filename and mode")
 }

@@ -15,7 +15,6 @@ const filesize = fs.statSync(filename).size
 
 let times = [];
 
-// TODO: Is not having 'warm up' period fair? Should do the same for Js, Grain, Wasm
 let iters = 20;
 
 var heap;

@@ -12,25 +12,19 @@ let ident_analysis = (Ident.Tbl.create 50 : annotations Ident.Tbl.t)
 let add_annotation annot annotations = if not (List.mem annot (!annotations)) then
   annotations := annot::(!annotations)
 
-(* If all Idents involved are immutable, mark compound as immutable too e.g. Unary/Binop/GetField *)
-(* TODO: Not used *)
-let copy_annotation annot from_annots to_annots =
-  if List.mem annot (!from_annots) then to_annots := annot::(!to_annots)
-
 let copy_immutable_annotation imms annotations =
   if List.for_all (fun imm -> List.mem Immutable (!(imm.annotations))) imms then
     annotations := Immutable::(!annotations)
 
 (* Updates the annotations on imm *)
 let analyse_imm imm = match imm.i_desc with
-  (* Assume imm doesn't already have any annotations on it *)
+  (* Assumes imm doesn't already have any annotations on it *)
   | ImmIdent id -> (match Ident.Tbl.find_opt ident_analysis id with
     (* Must copy original annotations in the list of annotations gets modified *)
     | Some annotations -> imm.i_annotations <- annotations
     (* Unseen ident, possibly a function argument (nothing assumed, would need to anlayse all calls) *)
     | None -> ())
   | ImmConst _ ->  add_annotation Immutable imm.i_annotations;
-     (* Is this necessary? *)
      add_annotation Pure imm.i_annotations
 
 let rec analyse_compound handlers compound = match compound.c_desc with
@@ -44,9 +38,7 @@ let rec analyse_compound handlers compound = match compound.c_desc with
   | CMatchFail (-1l) -> () (* Could mark expression as failing - no different to just constant folding the trap *)
   | CMatchFail i -> compound.c_annotations <- List.assoc i handlers (* annotation of the handler it jumps to *)
   (* Currently all unary/binary operations are pure/immutable result *)
-  (* Does anything about the imms need to be carried across? *)
-  (* TODO: Should be adding Immutable annotation or copying? *)
-  | CUnary (_, imm) -> (* copy_immutable_annotation [imm] compound.c_annotations; *)
+  | CUnary (_, imm) ->
     add_annotation Immutable compound.c_annotations;
     add_annotation Pure compound.c_annotations
   | CBinary (_, imm1, imm2) ->
@@ -54,7 +46,6 @@ let rec analyse_compound handlers compound = match compound.c_desc with
     add_annotation Pure compound.c_annotations
   (* TODO: Without more complex analysis of existing values (graph algorithm), can't infer about setfield *)
   | CSetField _ -> ()
-  (* Only require that field to be immutable, not the whole thing. What to check for? *)
   | CField (imm, idx) ->
     analyse_imm imm;
     List.iter
@@ -62,17 +53,16 @@ let rec analyse_compound handlers compound = match compound.c_desc with
     (* The ith element of Fields only contains annotations if that field of the block is immutable,
        see MakeBlock case below. In this case, value cannot have been overwritten so must be the same,
        with the same properties e.g. being immutable, pure, etc. since getting the field doesn't change that. *)
-    (* TODO: Make use of fact that nth failing => case can never occur.
-             Applies to lines 69 and 76. Needs a Impossible annotation *)
+    (* TODO: Make use of fact that nth failing => case can never occur. Needs a Impossible annotation *)
     (function Fields l -> (match List.nth_opt l idx with
            | Some annotations -> compound.c_annotations <- annotations
            | None -> ())
       | _ -> ()) (!(imm.i_annotations));
     add_annotation Pure compound.c_annotations
   | CArraySet _ -> ()
-  | CArrayGet _ -> add_annotation Pure compound.c_annotations (* Cant guarentee anything about fields without more analysis *)
+  | CArrayGet _ -> add_annotation Pure compound.c_annotations (* Mutable fields so can't guarantee anything else *)
   (* Must not set annotations on mutable fields, could be set to another ident in future *)
-  (* TODO: More complex analysis, can mark as immutable if only the immutable fields of it are ever used *)
+  (* can mark as immutable if only the immutable fields of it are ever used *)
   | CMakeBlock (_, imms) ->
     List.iter analyse_imm imms;
     List.iter
@@ -91,12 +81,10 @@ let rec analyse_compound handlers compound = match compound.c_desc with
   | CIf (_, body1, body2) ->
     analyse_linast handlers body1;
     analyse_linast handlers body2;
-    (* TODO: Literally want intersection, may want to do recursively for Field annotation
-             e.g. true -> [Pure, _] and false -> [Pure, _, _] should preserved field0 = Pure *)
+    (* TODO: intersection, may want to do recursively for Field annotation
+             e.g. true -> [Pure, _] and false -> [Pure, _, _] could preserved field0 = Pure *)
     List.iter (fun annot -> if List.mem annot (!(body2.annotations)) then
       add_annotation annot compound.c_annotations) (!(body1.annotations))
-  (* TODO: May not be neccessary to take intersection? e.g. Pure -> Immutable for While loops,
-           but should that be enforced by evaluation of body anyway? *)
   | CWhile (cond, body) ->
     analyse_linast handlers cond;
     analyse_linast handlers body;
@@ -104,14 +92,13 @@ let rec analyse_compound handlers compound = match compound.c_desc with
       add_annotation annot compound.c_annotations) (!(cond.annotations));
     if List.mem Pure (!(compound.c_annotations)) then add_annotation Immutable compound.c_annotations
 
-  (* Only care about linast? Or imms too? *)
   | CFor (_, _, _, _, body) ->
     analyse_linast handlers body;
     (* May add an Immutable annotation after so need to copy *)
     compound.c_annotations <- ref (!(body.annotations));
     if List.mem Pure (!(compound.c_annotations)) then add_annotation Immutable compound.c_annotations
 
-  (* Intersection of each possible result - Should also do smarter intersection like in For *)
+  (* Intersection of each possible result *)
   | CSwitch (_, cases, default) ->
     List.iter (fun (_, body) -> analyse_linast handlers body) cases;
     (match default with Some body -> analyse_linast handlers body | None -> ());
@@ -120,44 +107,32 @@ let rec analyse_compound handlers compound = match compound.c_desc with
     compound.c_annotations <- ref (List.fold_left (fun annots (_, body) ->
       List.filter (fun annot -> List.mem annot annots) (!(body.annotations))) (!(body.annotations)) cases)
 
-  (* TODO: Semantics not quite correct. Fail within body should be treated as anything, since result never returned,
-           and output should be intersection of result of body and handle. Need an Any annotation and merge_annots function *)
   | CMatchTry (i, body, handle) ->
     analyse_linast handlers handle;
     analyse_linast ((i, handle.annotations)::handlers) body;
     compound.c_annotations <- body.annotations
 
-  (* 'Pure' on a Linast => no term has any side effects.
-     'Pure' on a function Field => function has no side effects (body is pure)
-     (function definition itself is always pure/immutable)
-     Similarly Immutable - doesn't rely on any external side effects
-     e.g. 'fn x => x + 5' is both,
-     'fn x => field(0, global_ref)' is pure but mutable (result can change),
-     'fn x => setfield(0, global_ref, x)' is neither *)
   (* Can't analyse function body in terms of arguments, so its analysis assumes all arguemnts are mutable
      etc. hence no point in analysing here. *)
   (* Any properties guarenteed about function body are also guarenteed about its application.
-     Need to unroll currying in analysis however *)
+     Need to unroll currying in analysis *)
   (* Due to how analysis propagates, side effect within a function will prevent analysis of a pure function
      return value from propagating out of the function if first one is over-applied *)
   | CApp (f, args) ->
     analyse_imm f;
     compound.c_annotations <- List.fold_left
      (fun func_annots arg ->
-       (* TODO: Could be slightly more precise e.g. If all applications are pure but not always Immutable *)
-       if List.mem Pure (!func_annots) && List.mem Immutable (!func_annots)
-       then (* extract known properties of function result *)
-         (* Latent is identical to Fields annotation, different name just used for clarity i.e. side effects *)
-         List.fold_left (fun annots -> (function (Latent [body]) -> body | _ -> annots)) (ref []) (!func_annots)
-       else (* function has side effect so not a simple curried argument application, don't extract properties *)
-         ref [])
+       let latent_analysis =
+         List.fold_left (fun annots -> (function (Latent [body]) -> body | _ -> annots)) (ref []) (!func_annots) in
+       ref (List.filter (function ((Pure|Immutable) as annot) -> List.mem annot (!func_annots) | _ -> true)
+           (!latent_analysis)))
      f.i_annotations args
 
-  (* Assume the worst of each argument, don't try to analyse everywhere the function is called from *)
+  (* Not performing CFA, so can't infer latent effects of function arguments, will only be marked as pure/immutable *)
   (* Creating a closure is always pure/immutable so pass body as Latent annotation *)
   | CFunction (args, body) ->
     analyse_linast handlers body;
-    (* Encodes currying by nesting fields. Each partial function is pure/immutable *)
+    (* Each partial function is pure/immutable *)
     let function_annotations =
       (List.fold_left (fun annots _ -> ref [Pure; Immutable; Latent [annots]]) body.annotations args) in
     (* Need to remember if function has been tail call optimised/expects args as a tuple *)
@@ -168,22 +143,21 @@ let rec analyse_compound handlers compound = match compound.c_desc with
     compound.c_annotations <- function_annotations
   | CAssign _ -> ()
 
-(* Annotations of a linast ARE the annotations of the corresponding subterm (compound/smaller linast)
-   so must be copied not shared during analysis of compounds *)
+(* Annotations of a linast point to the annotations of the corresponding subterm (compound/smaller linast)
+   so must be copied, not shared, during analysis of compounds *)
 and analyse_linast handlers linast = match linast.desc with
   (* Add analysis of binds to ident_analysis. Set overall linast analysis to combination of bind/body *)
   | LLet(id, mut, bind, body) ->
     analyse_compound handlers bind;
-    (* Only store annalysis for idents that can't change. Mutable indents introduced by Tail Call Optimisation *)
+    (* Only store annalysis for idents that can't change. Mutable assignments introduced by Tail Call Optimisation *)
     if mut <> Mut then Ident.Tbl.add ident_analysis id bind.c_annotations;
     analyse_linast handlers body;
-    (* Should copy annotations of body, but Immutable/Pure are affected by evaluating binding.
-       TODO: Only immutable if binding also immutable (e.g. 'let x = ... in x') *)
+    (* Should copy annotations of body, but Immutable/Pure are affected by evaluating binding. *)
     List.iter (function ((Pure|Immutable) as annot) -> if List.mem annot (!(bind.c_annotations)) then
       add_annotation annot linast.annotations
       | annot -> add_annotation annot linast.annotations)  (!(body.annotations))
-  (* TODO: How to handle mutual recursion? Probably needs much more complex analysis, for now be pessimistic *)
-  (* i.e. by analysing before adding idents to tbl, all idents assumed to be impure, less useful *)
+  (* function variables not added to the table of Idents, so nothing assumed about the latent effects/termination
+     of recursive function. Could extend to find an iterative solution, like strictness analysis *)
   | LLetRec(binds, body) ->
     List.iter (fun (_, _, bind) -> analyse_compound handlers bind) binds;
     List.iter (fun (id, _, bind) -> Ident.Tbl.add ident_analysis id bind.c_annotations) binds;

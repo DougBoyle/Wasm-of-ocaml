@@ -7,27 +7,6 @@ Optimised pattern matching:
 splice          318.320 1.899   48048052        1011
 pattern         846.603 5.548   112000056       1033
 
-File size notably reduced for each case,
-execution time marginally affected.
-
-
-splice:
-let rec splice = function
-  | [], ly -> ly
-  | lx, [] -> lx
-  | x::xs, y::ys -> x::y::(splice (xs, ys))
-
-called on two 1000 length lists (1000 times)
-
-
-pattern:
-let rec splice l1 l2 = match (l1, l2) with
-  | Nil, _ -> 0
-  | _, Nil -> 0
-  | ((One x, _)|(_, One x)) -> x
-  | Cons (x, xs), Cons (y, ys) -> x + y
-
-called on each combination 1 million times
 
 From results below, no effect except where pattern matching significant i.e. mergesort
 -------- Separator for reading in file

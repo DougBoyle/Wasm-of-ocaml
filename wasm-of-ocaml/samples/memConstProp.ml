@@ -14,7 +14,7 @@ Before:
           case tag 1:
            (let
              (cstr_arg/91 = compound/89.(0) --- Replaced with x and compound/95. Use existing locals rather than
-              cstr_arg/92 = compound/89.(1) --- accessing memory again. TODO: cstr_arg/92 should be dead assigment?
+              cstr_arg/92 = compound/89.(1) --- accessing memory again.
               v/86 = cstr_arg/91)
              v/86)
           default: (fail 0)))

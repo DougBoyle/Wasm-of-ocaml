@@ -29,8 +29,8 @@
     else ;; no overflow, do nothing
     end
   )
-  (func $exit_fun (export "exit_fun") (param $size i32) ;; TODO: FIND A BETTER SOLUTION
-  ;; Because gc will assume every pointer in stack is live, an outdated stack pointer that hasn't yet been
+  (func $exit_fun (export "exit_fun") (param $size i32)
+  ;; Because gc will assume every pointer in stack is live, an old stack pointer that hasn't yet been
   ;; overwritten causes problems as it could now point to the middle of a freshly allocated data block,
   ;; and attempting to tag that would modify actual values in memory
     (local $old i32) (local $new i32)

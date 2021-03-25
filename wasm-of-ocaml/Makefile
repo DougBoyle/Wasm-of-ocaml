@@ -34,6 +34,9 @@ cleanout:
 	rm benchmarks/js/*.byte
 	rm benchmarks/grain/out/*.wasm
 	rm benchmarks/C/out/*.wasm
+	rm benchmarks/gc/*.wasm
+	rm benchmarks/Ocaml/*.cmo
+	rm samples/out/*
 interfaces:
 	for f in benchmarks/Ocaml/*.mli ; do \
 	  ocamlc $$f ; \

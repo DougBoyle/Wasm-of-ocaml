@@ -42,9 +42,7 @@ function check(memManager){
     let ptr = stack_limit;
     while ( ptr < mem_top){
         let size = memManager.uview[ptr + 1];
-        let next = memManager.uview[ptr];
         let tag = memManager.uview[ptr + 2];
-   //     console.log("block", ptr, "size", size, "next", next, "tag", tag);
         if (tag == 2){
             allocated.push(ptr);
         } else if (tag == 0){

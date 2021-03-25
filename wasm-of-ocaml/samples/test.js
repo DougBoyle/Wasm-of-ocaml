@@ -6,9 +6,6 @@ const exec = util.promisify(require('child_process').exec);
 
 let fileList = __dirname + "/results.txt";
 
-// process.argv is a list of the command line arguments
-
-//const check_mem = require("./checkmemory");
 
 if (process.argv.length > 2){
 (async () => {
@@ -31,16 +28,7 @@ if (process.argv.length > 2){
 	  var instance = await WebAssembly.instantiate(module, imports);
 	  instance.exports["OCAML$MAIN"]();
 	  console.log(instance.exports);
-//	  console.log(instance.exports.y.value);
-//	  console.log(instance.exports.z.value);
-	 // console.log(imports.ocamlRuntime.alloc(0));
 
-	  // TODO: Just for checking garbage collecting working
-	  console.log("pages allocated:", memory.buffer.byteLength >> 16 );
-	  console.log("remaining memory allocated at end:", memoryManager.memory_used);
-//	  console.log(memoryManager.uview.slice(instance.exports.x.value >> 2));
-//	  console.log(memoryManager.uview.byteLength);
-//	  console.log(instance.exports.x.value);
   } catch (err) {
     console.log(err);
     console.log(err.message);

@@ -1,8 +1,5 @@
 #!/usr/bin/bash
 cd $(dirname $BASH_SOURCE)
-# Need to be careful using -O3, can delete code if it realises it isn't being used
-# can also inline functions to realise they always return a constant
-# But then isn't that just a good optimisation? Should check output wasm and run at several levels
 for file in *.c
 do
   NAME=$(basename $file .c)

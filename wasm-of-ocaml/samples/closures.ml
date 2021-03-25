@@ -1,7 +1,6 @@
 (*
    Globals shouldn't be put into closures.
-   (all other optimisations should be turned off to test this, prevents constant propagation)
- *)
+*)
 let a = 5
 let b = 10
 let f x = b + a

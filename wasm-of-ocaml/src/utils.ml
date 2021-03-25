@@ -1,4 +1,4 @@
-(* Utility functions used in various files - usually based on an extension package list BatList *)
+(* Utility functions used in various files - usually based on an extension package BatList *)
 
 (* Fold left but with an added integer argument *)
 let rec fold_lefti f e l =

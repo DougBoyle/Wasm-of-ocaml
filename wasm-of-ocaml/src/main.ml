@@ -32,8 +32,8 @@ let ir_passes = [
   ("cse",  OptCSE.optimise);
 
   (* Copy propagation and CSE reveal additional cases where these can be applied *)
-  ("uncurry", OptTuple.optimise);
- (* ("inline", OptInline.optimise); *)
+  ("uncurry", OptUncurry.optimise);
+  ("inline", OptInline.optimise);
   ("tail calls", OptTailCalls.optimise);
 
   (* All of the above optimisations may have made some values redundant now so they are removed *)

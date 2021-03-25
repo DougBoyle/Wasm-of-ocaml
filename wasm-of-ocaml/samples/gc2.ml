@@ -5,11 +5,9 @@
 
   Demonstrates intended point when inlining/tailcalls disabled and all Graph optimisations disabled.
   May not have the same effect with those optimisations also taking place (e.g. dead assignments may be eliminated).
-  (Known to not need collector when all IR optimisations enabled. Disabling IR optimisations then requires GC)
 *)
 
-(* Can collect circular objects! *)
-(* Simple way to create circular object by closing the loop after object created *)
+(* Can collect circular objects *)
 type selfref = {x : int; link : link ref}
 and link = Nil | Ref of selfref
 

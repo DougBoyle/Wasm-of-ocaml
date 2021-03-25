@@ -1,4 +1,4 @@
-(* Adaptation of the more complicated version mentioned in the paper *)
+(* Adaptation of the example pattern given in https://dl.acm.org/doi/pdf/10.1145/507669.507641 *)
 type lst = Nil | One of int | Cons of int * lst
 
 let f l1 l2 = match (l1, l2) with

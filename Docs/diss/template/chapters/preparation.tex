@@ -1,34 +1,110 @@
 \chapter{Preparation} % Typically a mix of background info and initial steps of actual implementation
 % Written as if none of the project has actually happened yet? Or written as a reflection of thoughts at the time i.e. I decided that this would be the best choice
-Before implementing the compiler, I researched techniques used by other compilers to handle similar language constructs, particularly the more complex features of OCaml not looked at during the IB compilers course. I also considered which best practices to use to ensure that each stage of the project was managable and to identify difficulties early on.
 
-\section{Starting Point}
+% TODO: Figure out best way to order sections
+
+Before implementing my compiler, I researched the structure of WebAssembly programs and the intermediate representations used by the OCaml compiler, as well as possible optimisations to implement. I also considered which best practices to use to ensure that each stage of the project was manageable and to identify difficulties early on.
+
+\section{Starting point}
+Starting the project, my experience with OCaml was limited to the IB Compiler Construction course and studying the OCaml compiler, looking at the data structures used and the ASTs generated for some short programs. I decided to build my project on the front-end of the OCaml compiler, after type-checking has been performed, since there would be no benefit in reproducing this code. This was chosen rather than a later intermediate representation in the OCaml compiler, since the next lower representation, the Lambda language, introduces some unnecessary structuring and operations that would not be necessary for the subset of OCaml I aimed to support. 
+
+I had read parts of the WebAssembly specification to understand the range of instructions available, and compiled a short C program to WebAssembly to check that I was able to run some of the tools involved.
+Many languages can now be compiled to WebAssembly, although lots of tools are still works in progress. I chose to compare my compiler against compiling C to WebAssembly, since this appears to be the best supported method for producing WebAssembly code. I also compared against Grain \cite{grain}, since this is a functional language similar to OCaml, and its official compiler emits WebAssembly. I had not heard of Grain before starting the project, so learnt the language from its documentation pages while setting up the tools at the start of my project. Lastly, I considered the performance of the Js\_of\_ocaml tool to produce JavaScript from OCaml code instead, since this is currently the most well known way to run OCaml on the web.
+
+The only example I could find of a compiler from OCaml to WebAssembly was another Part II project from 2020, which worked from the parsed AST produced by the OCaml compiler. By instead working from the typed AST of the compiler, I was able to include a greater subset of OCaml.
+
+% Mention backups
+
+\section{Research undertaken}
+For implementing my compiler, I first looked at the approaches taken with the OCaml compiler's Lambda intermediate language, and the structure of the Grain compiler. Looking at how translation is done in the OCaml compiler helped to verify that I understood the semantics of the layer I was translating from, as well as deciding the best way to handle specific elements such as the primitive operations OCaml provides. Grain uses a very different intermediate representation, where operations are linearised so that the arguments to operations are always constants or variables, rather than nested expressions. Comparing the two representations helped me to decide on my own intermediate representation for the subset of OCaml I was supporting.
+
+%Grain is a much newer language and is still quickly growing. It supports a subset of OCaml's features but with its own syntax. As it is a much simpler langauge, this was easier to study for working out how to structure translation as a whole, in particular the collections of utility functions I might need for working with my intermediate representation. 
+
+\subsection{Optimisations}
+For selecting optimisations to implement, I looked at both the part IB Compiler Construction \cite{IB-compilers} and part II Optimising Compilers \cite{optimising-compilers} courses for explanations of a range of optimisations. The Grain compiler also implements a few optimisation passes, which were helpful to read through and understand. Additionally, there are multiple approaches to pattern-matching and the Grain and OCaml compilers differ in the approaches taken. The OCaml compiler implements a backtracking algorithm, which aims to minimise the size of the pattern-matching code produced, whereas the Grain compiler implements a decision-tree algorithm which ensures each pattern is examined at most once. Each implementation references papers on the technique it uses \cite{ocamlpatternmatch, decisiontrees}, which were useful in deciding the approach to take and in implementing pattern-matching for my IR.
+The main optimisations I chose to implement were:
+\begin{itemize}
+\item \textbf{Constant/Copy propagation}: Where a constant value or another variable is bound to a variable which will not be overwritten, subsequent uses of that variable can be replaced with its known value. This can result in the binding being unused if all uses of the variable are removed, and propagates values through the program to identify further optimisations.
+
+\item \textbf{Dead code elimination}: Where a variable is unused (possible due to the previous optimisation) and the value bound to it does not contain side-effects, that binding can be safely removed to reduce code size and execution time.
+
+\item \textbf{Constant folding}: Constant expressions in the program such as \verb|1+2| can be evaluated at compile time. The same holds for statically resolving branching statements such as \verb|if false then e else e'|.
+
+\item \textbf{Tail-call optimisation}: Rewriting tail-recursive functions to use a \verb|while| loop rather than making recursive calls avoids activation frames building up on the call stack, potentially resulting in an error if the available stack space is exceeded.
+
+\item \textbf{Function inlining}: Where the function being called can be identified, the application can be replaced by substituting in the body of the function. This can help identify further optimisations, possibly at the cost of increasing code size.
+
+\item \textbf{Uncurrying}: Where a function is always applied with several curried arguments, these can be passed as a tuple rather than constructing a closure for each argument in turn, as described by Bloss, Hudak and Young \cite{uncurry}. 
+
+\end{itemize}
+
+% WHAT ABOUT RESEARCH FOR GARBAGE COLLECTION?!?
+
+% MENTION SUPPORT FOR WASM ON MOST MODERN BROWSERS?
+
+\subsection{WebAssembly}
+The majority of my preparation before the start of the project was familiarising myself with the structure of WebAssembly.
+This was done by reading the WebAssembly specification \cite{wasm} as well as some useful articles on how the difference components of a WebAssembly module interact \cite{wasm-article}.
+
+WebAssembly is a strongly-typed stack-based language, where each module additionally has a linear memory, a heap which can be grown in multiples of 64KiB pages and accessed by 32-bit pointers. As shown by the example in my introduction, WebAssembly supports nested blocks of instructions, in the form of \verb|Block|, \verb|If| and \verb|Loop| constructs. It has a restrictive form of control flow, only allowing branches out of enclosing blocks rather than arbitrary jumps. A \verb|Br i| instruction branches to the label of the \verb|i|$^{\text{th}}$ enclosing block (indexed from 0). For a \verb|Block| or \verb|If|, the corresponding label is after the nested instructions (after the else case of an \verb|If|), whereas it is just before the nested instructions for a \verb|Loop|, therefore allowing code to loop. Additionally, a branch to the outermost level of a function acts as a return statement. As well as \verb|Br i|, it has a conditional \verb|Br_if i| instruction too, and branch tables indexed by an argument on the stack.
+
+%WebAssembly is strongly typed, and has four primitive types for 32 and 64-bit integers and floats. Blocks therefore have types, and instructions within a block are unable to access values put on the stack before the start of the block, except for however many .
+
+% Mention the difficulties of garbage collection and the use of shadow stack
+The stack is managed implicitly, which is an issue for garbage collection since it means there is no way to scan the stack to discover which objects in memory are reachable. For this reason, garbage collection was left as an extension due to the challenges surrounding it. One way to solve this is to maintain a shadow stack in the linear memory, keeping a copy of each pointer stored on the stack so that this can be scanned instead. 
+
+\section{Requirements analysis}
+For this project to be considered a success, my compiler must be able to translate OCaml programs that use just the integer, boolean, comparison and list standard library operations, and do not use the module or object layers of the language or exceptions. This defines the minimum subset of the language I intend to support. 
+
+I will collect data measuring the performance of the code output by my compiler, allowing it to be compared with alternative methods for running code on the web.  Hopefully, this will demonstrate some advantage compared to Js\_of\_ocaml, since WebAssembly being a strongly typed binary format is expected to allow it to execute faster than equivalent JavaScript, when compiling a strongly typed language such as OCaml.
+
+As an extension, I plan to implement optimisations in my compiler to help achieve this advantage. I also hope to extend the range of OCaml programs supported by my compiler, and extend the runtime system with a garbage collector, which is not a part of my core requirements due to the challenges anticipated with garbage collection in WebAssembly.
 
 
 
-\section{Research Undertaken}
-For implementing a minimal working compiler, I first looked at the approaches taken with the OCaml compiler's Lambda intermediate langauge, and the structure of the Grain compiler. Looking at how translation is done in the OCaml compiler helped to verify that I understood the semantics of the layer above I was translating from, as well as deciding the best way to handle translation of specific elements such as the primitive operations OCaml provides. Grain is a much newer language and is still quickly growing. It supports a subset of OCaml's features but with its own syntax. As it is a much simpler langauge, this was easier to study for working out how to structure translation as a whole, in particular the collections of utility functions I might need for working with my intermediate representation. 
+\section{Software engineering methodology}
 
-For selecting optimisations to implement, I looked at both the part IB Compilers and part II Optimising Compilers courses for explanations of a range of optimisations. The Grain compiler also implements a few optimisation passes which were helpful to read through and understand. Additionally, there are multiple approaches to pattern matching and the Grain and OCaml compilers differ in the approaches taken. The OCaml compiler implements a backtracking algorithm, which aims to minimise the size of the pattern matching code produced, whereas the Grain compiler implements a decision tree algorithm which ensures each pattern is examined at most once. Both approaches are then heavily optimised to improve the alternate factor. Each compiler references papers on the technique it uses % TODO: Include references? Or leave more till the implementation stage? e.g. Backtracking vs decision tree
-and these were useful references when it came to optimising my own compiler. 
+My project can be separated into several stages that had to be completed in sequence, following the stages of a typical compiler pipeline. Starting from the output of the OCaml compiler's type-checker, I had to translate this to a suitable intermediate representation, and then to WebAssembly, which was done in two smaller steps. I also built a runtime system, which was designed in parallel with the back-end of the compiler. Lastly, optimisations were added to the middle-end once I have a working compiler. 
 
-\section{Software Engineering Strategy}
-The implementation of the compiler can be cleanly separated into building a minimal working compiler, and adding optimisations on top of that. The first of these lends itself to an incremental development strategy, as a compiler can be split into several key stages where the interface from one stage to the next significantly affects the complexity of the next stage. A compiler is typically divided into a front-end for parsing and type-checking, a middle-end for translation to a suitable intermediate representation and performing optimisations, and a back-end for generating WebAssembly code. I ultimately determined that my compiler should have two separate IRs, and so worked through these stages one at a time, starting from the typed output of the OCaml compiler front-end. 
+This structure lends itself to the Kanban methodology, which is an incremental approach to software development I have used before on team projects. This allowed splitting the work into manageable tickets, building on the project incrementally. Having a list of tasks in progress or blocked by other components, updated regularly, meant that elements of the project were not forgotten about and I could keep track of how long each task was taking, identifying where something needed to be split into smaller elements if necessary. The tickets also provided a means of grouping ideas or issues with the piece of work they affected, and I could add more tickets to the backlog as the project progressed and it became clearer what else needed implementing.
+
+Both the project and dissertation were backed up to GitHub on a daily basis, and continually synced with OneDrive. At the start of the project, I also checked that I could run the tools required, such as the OCaml and Grain compilers, on the MCS machines. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%The implementation of the compiler can be cleanly separated into building a minimal working compiler, and adding optimisations on top of that. The first of these lends itself to an incremental development strategy, as a compiler can be split into several key stages where the interface from one stage to the next significantly affects the complexity of the next stage. A compiler is typically divided into a front-end for parsing and type-checking, a middle-end for translation to a suitable intermediate representation and performing optimisations, and a back-end for generating WebAssembly code. I ultimately determined that my compiler should have two separate IRs, and so worked through these stages one at a time, starting from the typed output of the OCaml compiler front-end. 
 
 % Also added language features this way
-After achieving a working compiler, iterative design becomes far more practical since I cannot accurately predict the benefit of different optimisations without repeated data collection on a range of benchmarks. For both stages of development, I decided to use a Kanban board to keep track of tasks. % By associating segments of work to numbered tickets, it would be easier to find specific changes once far into the project. 
-By keeping a backlog of tickets, this was an easy way to track extra features that needed implementing as I developed the compiler, and to keep ideas and issues grouped by the piece of work they affected. It also meant that I could see how long I had been working on each ticket, which was useful for identifying the tasks I needed to dedicate more time to or subdivide into more manageable tasks.
+%After achieving a working compiler, iterative design becomes far more practical since I cannot accurately predict the benefit of different optimisations without repeated data collection on a range of benchmarks. For both stages of development, I decided to use a Kanban board to keep track of tasks. % By associating segments of work to numbered tickets, it would be easier to find specific changes once far into the project. 
+%By keeping a backlog of tickets, this was an easy way to track extra features that needed implementing as I developed the compiler, and to keep ideas and issues grouped by the piece of work they affected. It also meant that I could see how long I had been working on each ticket, which was useful for identifying the tasks I needed to dedicate more time to or subdivide into more manageable tasks.
 
-\section{Testing}
+%\subsection{Tooling}
+
+\subsection{Testing}
 % Primarily test-driven development with Ocaml unit test samples for each feature. Sort of an integration test
 % TODO: Specific unit tests for mock IR programs to check specific components e.g. free vars, number of locals needed
 % More specific tests to check that optimisations handle complex cases correctly.
-Language features were added to the compiler using test driven development. Before adding a new primitive or language construct, a simple OCaml program would be written using that feature and the output of the OCaml top-level on that file would be recorded. Once the feature was implemented, a short piece of JavaScript would compile and run each of these test programs and compare their output to what was expected. This ensured that any edge cases I though of both before and during implementing the feature could be recorded and tested, and these then became regression tests as future features or optimisations were added.
+Language features were added to the compiler following test driven development. Before adding a new primitive or language construct, a simple OCaml program would be written using that feature and the output of the OCaml interpreter on that file would be recorded. 
+I wrote a script to compile and run each of these programs, comparing their output with the expected values obtained when the test was written. This allowed checking that each new feature was implemented correctly, and that a change or new optimisation did not break any of the previous tests. Additional tests coudl also be added as I considered edge cases while implementing features, ensuring that they were not overlooked by future modifications.
 
-Optimisations were similarly tested against all prior test programs, and additional tests were added for where these optimisations were more likely to make a mistake. % More detail in implementation section?
+ The same process was helpful for ensuring optimisations were only performed where safe to do so, adding cases where incorrectly applying a transformation would break the program. This was most often where expressions in the program had side-effects that must be preserved, preventing some optimisations being applied.
+
+
+%Optimisations were similarly tested against all prior test programs, and additional tests were added for where these optimisations were more likely to make a mistake. % More detail in implementation section?
 
 % Should go at the top as this was the first form of testing?
 % TODO: Is this worth mentioning? Probably the first thing I want to cut out
-Testing individual translation stages was challenging since I did not want to spend a large amount of time writing an interpreter for my IR, which would itself be prone to errors in handling the semantics of the IR, and checking the exact output of the translation would be impractical as the unoptimised compiler would introduce several unnecessary assignments and checks. Therefore, I initially checked these stages by adding pretty-printing code for the IR and manually inspecting the output for some of the test programs. The simplifications made by each IR made translated programs relatively easy to follow, and this was only necessary until the minimum compiler pipeline was implemented, then programs could be run as WebAssembly and be tested much easier. \\
+Testing individual stages of translation was challenging, since the intermediate representation produced would generally have several inefficiencies that later optimisation passes would remove, so could not be directly compared against some expected output. Similarly, trying to write an interpreter for the IR output would be time consuming and error prone. As such, I checked the initial stages of my compiler were behaving as expected by adding pretty-printing code for the intermediate representations, and manually inspecting the output for a few simple test programs. This would highlight any significant errors, and was only necessary until a minimal compiler pipeline down to WebAssembly was implemented, making testing much easier.
+
+Unit tests were still written with OUnit \cite{ounit} for specific functions involved in translation, which could be verified in isolation. For example, manually building the IR or WebAssembly representation of a program, and verifying properties such as which variables are free in a function body, or which variables are live at each point in the body. The distinction here is that, while there is flexibility in the code produced to perform the operations described by a previous representation, the analyses used during translation have a precise meaning that can be verified. 
+
+%Testing individual translation stages was challenging since I did not want to spend a large amount of time writing an interpreter for my IR, which would itself be prone to errors in handling the semantics of the IR, and checking the exact output of the translation would be impractical as the unoptimised compiler would introduce several unnecessary assignments and checks. Therefore, I initially checked these stages by adding pretty-printing code for the IR and manually inspecting the output for some of the test programs. The simplifications made by each IR made translated programs relatively easy to follow, and this was only necessary until the minimum compiler pipeline was implemented, then programs could be run as WebAssembly and be tested much easier. \\
 % TODO: ACTUALLY DO THIS!
-I still wrote unit tests for the more complex utility functions involved in translation, which could be more easily verified. This included tests for identifying the free variables of a block of code (important for constructing closures) and for the number of separate values allocated at once (important for determining the number of local variables a function requires). This should be inflexible values so are not affected by the compiler initially being inefficient, hence later optimisations would not invalidate these tests.
+%I still wrote unit tests for the more complex utility functions involved in translation, which could be more easily verified. This included tests for identifying the free variables of a block of code (important for constructing closures) and for the number of separate values allocated at once (important for determining the number of local variables a function requires). This should be inflexible values so are not affected by the compiler initially being inefficient, hence later optimisations would not invalidate these tests.
+
+
+\section{Legality}
+I make use of the font-end of the official OCaml compiler \cite{ocaml}, which is distributed under the GNU Lesser General Public License. My use of the compiler and modifications to it are therefore permitted, provided that I retain the original license in my project and highlight where modifications have been made. Benchmark programs were adapted from two existing sources \cite{chris00, benchmark-game}, one of which is also distributed under the GNU LGPL and the other under the BSD-3 license. Therefore, modification is once again permitted provided the original licenses are retained.
+
+
+

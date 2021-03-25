@@ -28,8 +28,6 @@ for (let i = 0; i < iters; i++) {
         heaps.push(mem1-mem0);
     }
     // allows it to be 'reloaded', repeating evaluation
-    // judging from output, appears to be accurate?
-    // 1st call slightly slower, might want to do averaging at a higher level?
     delete require.cache[require.resolve("./" + filename)]
 }
 

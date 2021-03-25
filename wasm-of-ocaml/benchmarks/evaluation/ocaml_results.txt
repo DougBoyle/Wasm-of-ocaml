@@ -50,8 +50,3 @@ mergesort_1000          3.379   0.041   131072  2106
 mergesort_3000          17.056  0.213   262152  2106
 nbody_100               1.755   0.093   65560   5408
 nbody_1000              14.579  0.175   65560   5408
-
-
-
-
-TODO: THESE VASTLY DIFFER FROM WHAT GcCollectData Gets

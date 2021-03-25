@@ -37,7 +37,6 @@ let rec map f = function
 
 (* Was originally defined on arrays, now defined on lists *)
 let make_perms (* : int -> (int -> int) list * (int list -> int list -> unit) list *) =
-  (* Create a random list of transformations - No random module, have to just pick a number! *)
   let rec random_perm ((p_f, p_v) as acc) i =
     if i <= 0 then acc else
       let c = rand 3 in
@@ -53,8 +52,6 @@ let make_perms (* : int -> (int -> int) list * (int list -> int list -> unit) li
 let () =
   let ncomp = 100 in
   let p_f, p_v = make_perms ncomp in
-  (* Goes through performing a large collection of list manipulations.
-     Huge memory allocation due to using lists, array version not currently possible. *)
   let v = init n (fun k -> k) in
   let do_f () =
     let f = fold_left (fun f f0 -> (fun k -> f0(f k))) (fun k -> k) p_f in

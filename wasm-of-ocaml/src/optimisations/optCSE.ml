@@ -1,12 +1,8 @@
-(* Can do much more complex analysis by first doing analysis pass to propagate annotations,
-   and by tracking if something could actually have been assigned to between declaration/use.
-   e.g. y = field 0 x; ...; z = field 0 x
-   even if x has mutable fields, can Apply CSE if no field assignments between.
-   Would mean keeping a running set of valid expressions and removing as they (potentially) become invalid *)
+(* Could do more complex flow-directed analysis to properly identify available expressions *)
 
 (* Need to keep a HashTbl of precomputed expressions
    Equality doesn't depend on annotations/location/environment etc. so need to generate custom HashTbl
-   See: https://caml.inria.fr/pub/docs/manual-ocaml/libref/Hashtbl.html*)
+   See: https://caml.inria.fr/pub/docs/manual-ocaml/libref/Hashtbl.html *)
 
 open Linast
 open LinastUtils
@@ -36,9 +32,7 @@ module CompoundHash = struct
             desc1 = desc2 && List.for_all
           (fun ({i_desc=desc1}, {i_desc=desc2}) -> desc1 = desc2) (List.combine args1 args2)
         (* Due to unique indents, would need alpha-conversion test to determine function equality *)
-        | _ -> false (* TODO: Why not define equality for Linasts? Gets too exhaustive?
-                              Note - will end up storing compounds that cannot be used?
-                              Suggests need to test before logging something as reusable *)
+        | _ -> false (* Doesn't attempt to CSE arbitrarily complex expressions like if statements or while/for loops *)
     (* c1 = c2 must guarentee that hash c1 = hash c2 *)
     let hash = function
         | CImm {i_desc} -> Hashtbl.hash "Imm" lxor Hashtbl.hash i_desc
@@ -72,7 +66,6 @@ let common_expressions = (CompoundHashtbl.create(50) : Ident.t CompoundHashtbl.t
 
 let enter_linast linast = match linast.desc with
   (* Track known subexpressions and Idents that can be replaced *)
-  (* TODO: Rather than replaced_idents - just introduct id = id' and leave it to copy propagation to simplify *)
   | LLet(id, (Local | Export), body, _) -> (
     match CompoundHashtbl.find_opt common_expressions body.c_desc with
     | Some id' ->
@@ -97,8 +90,7 @@ let map_imm imm = match imm.i_desc with
 
 (* Opposite of enter_linast as binding goes out of scope *)
 (* Removing from replaced_idents is just to keep table small, idents unique so not needed for correctness *)
-(* Ensures bindings that may not happen (e.g. if statements) don't leak into later parts.
-   Much more complex graph-based methods needed to determine if something gets bound on all paths or not *)
+(* Ensures bindings that may not happen (e.g. OR patterns) don't leak into later parts *)
 let leave_linast linast = (match linast.desc with
   | LLet(id, _, body, rest) -> (match CompoundHashtbl.find_opt common_expressions body.c_desc with
     (* This was being used as a common expression, remove since no longer in scope *)

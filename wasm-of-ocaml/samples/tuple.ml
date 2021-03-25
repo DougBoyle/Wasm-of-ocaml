@@ -13,8 +13,4 @@ let x =
 (*
 Due to simplicity, program is already massively simplified by inlining.
 But for large functions that wouldn't be inlined, especially if they have many arguments, can be very useful.
-With neither optimisations: 6 functions, 827 bytes
-With just tupling: 2 functions, 546 bytes
-With just inlining: 3 functions, 596 bytes (adder inlined and eliminated, iterate not)
-With both: 1 functions, 474 bytes
 *)

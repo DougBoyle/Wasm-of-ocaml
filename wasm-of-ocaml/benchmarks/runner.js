@@ -6,8 +6,8 @@ const readFile = util.promisify(fs.readFile);
 const filename = process.argv[2];
 const simple_name = filename.substring(filename.indexOf('/') + 1, filename.indexOf('.'));
 const filesize = fs.statSync(filename).size;
+
 // Handle all files (except memory for grain)
-// TODO: Update to use memory manager JavaScript file
 (async () => {
     if (filename.endsWith(".js")){
         gc(); // measure baseline memory, need to run node with --expose-gc
@@ -53,10 +53,8 @@ const filesize = fs.statSync(filename).size;
         const t0 = performance.now();
         instance.exports["OCAML$MAIN"]();
         const millis = performance.now() - t0;
-        // TODO: Include a way to select between the memory management methods
-       // const remaining_memory = memoryManager.memory_used;
-        const remaining_memory = memoryManager.maxMemory;
+        const peak = memoryManager.maxMemory;
       //  const remaining_memory = runtime.exports["alloc"](0);
-        console.log(simple_name, millis, remaining_memory, filesize);
+        console.log(simple_name, millis, peak, filesize);
     }
 })();

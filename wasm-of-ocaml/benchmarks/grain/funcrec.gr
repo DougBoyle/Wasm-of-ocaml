@@ -7,8 +7,6 @@ let f = x => x + 1
 let g = x => 2 * x
 let h = x => 1 + f(x) + g(x)
 
-// record is a keyword, can't use as variable name.
-// Grain doesn't like using functions as values in records, have to give an actual function
 let recrd = {f : x => x + 1, g : x => 2 * x}
 
 let rec iter = (f,x,n) => if (n == 0) {x} else {

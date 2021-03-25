@@ -1,7 +1,10 @@
+// Tries to show the profile cost of composing small functions.
+// https://github.com/Chris00/ocaml-benchmark/blob/master/examples/composition.ml
+
 // Example of a program that really isn't suited to being written in C, due to its lack of closures
 // Need to define the data structures to be passed around and a composition aware function
 // Demonstrates why we would like to compile other languages to Wasm
-// Again, don't worry about freeing memory since my OCaml compiler doesn't either
+// Doesn't attempt to free the memory used
 
 #include <stdlib.h>
 

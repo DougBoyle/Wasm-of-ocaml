@@ -1,6 +1,6 @@
 (*
   The expression "let _ = init a 10" is unused but is not removed due to not being able to
-  determine that the recursive function init is safe (TODO: Optimise this to assume recursive name safe initially).
+  determine that the recursive function init is safe.
   Despite this, it gets garbage collected so that final memory usage with gc is 1160, and is 1480 without
 *)
 

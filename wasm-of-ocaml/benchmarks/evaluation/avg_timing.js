@@ -1,19 +1,11 @@
-// Uses latest optimised version of memory.js to collect average + std dev time for 10 iters
-// Uses same memory with debugging operations enabled to track peak memory usage
-// output: filename  average_time  std_dev_time  heap_usage
-
 const util = require('util');
 const fs = require("fs");
 const { performance } = require('perf_hooks');
-// TODO: Switch this to select the implementation to use
+
+// Switch this to select the implementation to use
 const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory.js");
 const traced_memory = require(process.env.OCAML_TO_WASM_RT +  "/memory_trace.js");
 const readFile = util.promisify(fs.readFile);
-const exec = util.promisify(require('child_process').exec);
-
-// process.argv is a list of the command line arguments
-
-//const check_mem = require("./checkmemory");
 
 let iters = 25;
 
@@ -53,9 +45,6 @@ if (process.argv.length == 3){
           instance.exports["OCAML$MAIN"]();
           const millis = performance.now() - t0;
 
-          // first couple of runs often about 2x slower,
-          // so run several times and only record times once stable.
-          // Unclear what causes this.
           if (i >= 5) {
               times.push(millis);
           }

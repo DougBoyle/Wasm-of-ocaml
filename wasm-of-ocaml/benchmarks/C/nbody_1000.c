@@ -1,10 +1,14 @@
+// * The Computer Language Benchmarks Game
+// * https://salsa.debian.org/benchmarksgame-team/benchmarksgame/
+// *
+// * Contributed by Troestler Christophe
+
 #include <math.h>
 
 const double pi = 3.141592653589793;
 const double solar_mass = 4.0 * pi * pi;
 const double days_per_year = 365.24;
 
-// Should really pay closure attention to use of const/non-const in other C programs, affects optimisations
 struct planet {
     float x, y, z, vx, vy, vz;
     const float mass;

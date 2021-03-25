@@ -18,9 +18,17 @@
 \usepackage{amsmath}
 \usepackage{dirtree}
 
-\usepackage{float}		
+\usepackage{float}	
 
 \usepackage{cprotect}
+
+\usepackage{bytefield}
+\usepackage{ebproof}
+\usepackage{listings}
+ \lstset{
+  basicstyle=\ttfamily,
+  mathescape
+}
 
 \pdfminorversion=7
 
@@ -36,7 +44,6 @@
 \usepackage[backend=bibtex, sorting=none, urldate=iso8601]{biblatex}
 \addbibresource{diss.bib}
 \DeclareFieldFormat[misc]{title}{#1}
-
 
 
 %% START OF DOCUMENT
@@ -135,6 +142,8 @@ None.
  
 \tableofcontents
 
+\listoffigures
+
 \newpage
 
 
@@ -224,6 +233,7 @@ None.
 
 %\bibliographystyle{unsrt}
 %\bibliography{diss}
+\addcontentsline{toc}{chapter}{Bibliography}
 \printbibliography[title={Bibliography}]
 
 \chapter{Project Proposal}
