@@ -1,6 +1,5 @@
 (* When the only place a local function occurs is in full/over applications, and it has more than
-   1 argument, replace it with a function accepting a tuple.
-   TODO: Make use of callKnown to avoid having put put arguments into a tuple before calling *)
+   1 argument, replace it with a function accepting a tuple. *)
 open Linast
 open LinastUtils
 
@@ -22,7 +21,7 @@ let rec safe_to_rewrite f arity linast = match linast.desc with
 
 (* The only variables passed out of try blocks are ones bound by patterns, so not
    a function declared in a let binding unless it was used elsewhere already.
-   Also able to make use of fact that program is well typed, so can't do Field/ArrayGet on a function *)
+   Program is well typed, so also can't do Field/ArrayGet on a function *)
 and safe_to_rewrite_compound f arity compound = match compound.c_desc with
   | CImm imm | CSetField(_, _, imm) | CArraySet(_, _, imm) | CAssign(_, imm) ->
     is_not_f f imm
@@ -48,7 +47,6 @@ let rewrite_call f arity linast = match linast.desc with
       {linast with desc=LLet(id, local, {compound with c_desc=CApp(Imm.id result, remaining)}, rest)}
 
   (* LetRec can only be used to define functions, can't be an application *)
-
   | LSeq(({c_desc=CApp(imm, args)} as compound), rest) when is_f f imm && List.length args > arity ->
    let applied, remaining = Utils.take arity args in
    let result = Ident.create_local "result" in

@@ -60,7 +60,6 @@ let prim_table = Misc.create_hashtable 31 [
 
 let bindBinary opId operator =
     let id1, id2 = Ident.create_local "prim", Ident.create_local "prim" in
-    (* TODO: Change to specifying curried/tuple to make this neater (for now just done to make work) *)
     BLet(opId,
     Compound.mkfun [id1; id2]
         (LinastExpr.compound (Compound.binary operator (Imm.id id1) (Imm.id id2))))

@@ -1,7 +1,6 @@
 open Graph
 open GraphUtils
 
-(* TODO: Add unit tests for these functions! *)
 let liveness_changing = ref false
 
 let get_live_at_succ instr = List.fold_right (fun {live} set -> Set32.union (!live) set) (!(instr.succ)) Set32.empty

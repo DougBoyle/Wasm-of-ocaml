@@ -1,14 +1,10 @@
 (* Use live variables set on each node to assign registers more efficiently
-   Swap registers are left out for now. TODO: Include these? Complicates analysis of shadow stack size needed
+   Swap registers are left out, as they should never go on the shadow stack.
    Argument slots must be kept unchanged, but other values can be stored in them if needed,
      so these are pre-allocated to themselves.
  *)
 open Graph
 
-(* TODO: Better graph representation
-  current representation is (int32 * (int32 option) * (int32 list)) list
-  - possibly want to make it more mutable?
-*)
 type clashgraph = (Set32.elt * (int32 option) * Set32.elt list) list
 
 (* ------------------------------- Building clash graph from live variables --------------------------- *)
@@ -35,8 +31,6 @@ let add_edges arity num_swaps live graph  =
     (node::seen, List.fold_right
     (add_edge node) seen graph)
     else (seen, graph)) live ([], graph))
-
-(* TODO: At this point could probably do with a map/iter function over the Graph datatype *)
 
 (* add edges between every simultaneously live variable anywhere in the program *)
 let rec add_all_edges arity num_swaps body graph =

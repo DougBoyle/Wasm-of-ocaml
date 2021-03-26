@@ -5,8 +5,6 @@
   Matrix rows are (pattern list * linast_expr) list
   Only used for simple curried args of functions, or for top-level let bindings, so no guards
  *)
-(* TODO: In many places, no need to pass ~exported to binds_to_anf as it is an internally generated temporary,
-         so can't possibly be exported. Should only matter for the variable rule. *)
 open LinastUtils
 open Linast
 open Typedtree

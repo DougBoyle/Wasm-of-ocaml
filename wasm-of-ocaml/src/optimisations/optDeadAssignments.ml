@@ -3,13 +3,12 @@
    y appears to be a useless assignment until handler evaluated.
    For this reason, linastMap visits handler before body - May need to just handle specially if other order needed
 *)
-(* TODO: Is it useful to remove dead side effects? e.g. Seq( (), e) -> e. Likely do in other pass *)
 open Linast
 open LinastUtils
 
 let alive = ref Ident.Set.empty
 let mark id = alive := Ident.Set.add id (!alive)
-(* TODO: Work out how to replace unused but impure bindings with sequences. Would need to take the whole linast term *)
+(* If a term is unused but impure, LocalSet at Wasm level will be identified as dead and removed *)
 let is_dead (id, compound) =
   if Ident.Set.mem id (!alive) then false else List.mem Pure (!(compound.c_annotations))
 
@@ -36,17 +35,18 @@ let leave_linast linast = match linast.desc with
     when Ident.same id1 id3 ->
     {linast with desc=LLet(id2, Export, compound,
     {linast2 with desc=LLet(id1, Local, Compound.imm (Imm.id id2), rest)})}
-  (* Must not remove exported idents *)
-  | LLet (id, Local, compound, body) when is_dead (id, compound) -> body
   (* Top of functions sometimes introduce bindings of a variable to itself, since
      binding is implicit in CApp and function starts with a case statement.
      Note that Ident.same != Ident.equal. Ident.equal only checks names not stamps. *)
   | LLet(id, _, {c_desc = CImm {i_desc = ImmIdent id'}}, body) when Ident.same id id' -> body
-  (* all binds/body have been processed at this point, so can remove any unused binds now *)
+  (* Must not remove exported idents *)
+  | LLet (id, Local, compound, body) when is_dead (id, compound) -> body
   | LLetRec (binds, body) ->
     let new_binds = List.filter (function (id, Local, comp) -> not(is_dead (id, comp)) | _ -> true) binds
     in if List.length new_binds = List.length binds then linast (* No change made *)
     else (match new_binds with [] -> body | _ -> {linast with desc=LLetRec(new_binds, body)})
+  (* If first part of a sequence is pure, can remove it *)
+  | LSeq (c, body) when List.mem Pure (!(c.c_annotations)) -> body
   | _ -> linast
 
 let optimise linast =

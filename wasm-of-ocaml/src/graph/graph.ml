@@ -10,9 +10,7 @@ let id = ref 0
 let get_id () = incr id; !id
 
 (* Currently, 'call' instructions just point to the following instruction rather than between other functions/imports.
-   Do to possible branching at 'if' blocks, can have an unlimited number of possible successors *)
-(* So far, just use to detect unused locals. Will be more useful when CSE + constant propagation added *)
-(* TODO: Could probably do with an 'iter/map' function to traverse blocks efficiently? *) (* id uniquely identifies node *)
+   Do to possible branching at 'if' blocks, can have an unrestricted number of possible successors *)
 type instr = {it : instr'; pred : instr list ref; succ : instr list ref; live : Set32.t ref; id : int}
 and instr' =
   | Unreachable
@@ -57,7 +55,7 @@ type func =
   body : instr list;
 }
 
-type module_ = (* TODO: Remove from this representation all the ones I don't use *)
+type module_ = (* TODO: Remove from this representation all the parts I don't use *)
 {
   types : Ast.type_ list;
   globals : global list;
@@ -114,10 +112,8 @@ let link_to instr goes_to =
    'Block' instructions shouldn't be linked in to anything? Will need a function to traverse through blocks to get start *)
 (* on_exit is successors of the current block i.e. instructions to link to if end of block reached.
    Can't get from Labels as jump != fall through for Loop blocks *)
-(* TODO: Should 'unreachable' be treated specially? Seeing as it can never actually be reached, should unlink any edges *)
+(* TODO: Can treat 'unreachable' specially, it can never actually be reached, should unlink any successors *)
 let rec process_instrs on_exit labels = function
-  (* TODO: Probably need a 1-element list case? *)
-  (* Should this case ever actually occur? Maybe in empty function? In which case it shouldn't have been generated *)
   | [] -> failwith "Empty instructions"
   (* Blocks *)
   | {it=Block(_, body)}::rest -> (match get_start rest with
@@ -161,7 +157,6 @@ let rec process_instrs on_exit labels = function
     | instrs -> link_to instr instrs; process_instrs on_exit labels rest)
 
 (* Whenever an optimisation happens which can remove/insert nodes, either need to patch up or regenerate graph *)
-(* TODO: Add regenerate function and functions to add/remove from succ/pred lists (keeping unique membership) *)
 let rec generate_graph module_ =
   List.iter (fun {body} -> process_instrs [] [] body) module_.funcs
 

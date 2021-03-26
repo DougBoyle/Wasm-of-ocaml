@@ -1,3 +1,5 @@
+(* When optimisations have resulted in a sequence of pattern matching operations always exiting to the same handler,
+   can sometimes remove the MatchTry block, copying over any operations performed in the body before it fails  *)
 (* Note: 'let x = fail i in e' and 'seq(fail i, e)' both never actually occur. Included just to be safe *)
 open Linast
 open LinastUtils
@@ -11,6 +13,7 @@ let copy_fail from_annots to_annots =
   | Some (Fail i) -> mark_failing i to_annots
   | _ -> ()
 
+(* Pull out any bindings which occur before fail happens, may be used in handler *)
 let rec rewrite_fail i body handler = match body.desc with
   | LCompound {c_desc=CMatchFail j}
   (* Below cases should never actually occur, just included for completeness.
@@ -35,7 +38,6 @@ let rewrite_linast linast = match linast.desc with
 
 (* Pulling a linast out of a compound, so have to do at linast level *)
 (* Using the same functions as in optConstants to put rewritten matchtry linast into overall tree *)
-(* Rewriting currently completely discards original linast and any annotations that were on it *)
 (* Propagate up fail annotations (after any rewriting) *)
 let leave_linast linast =
   let linast = rewrite_linast linast in match linast.desc with
@@ -48,7 +50,7 @@ let leave_linast linast =
      fails then whole sequence must, 1st part cannot be an assignment or other side effect. *)
   | LLet(_, _, _, rest) | LSeq(_, rest) | LLetRec(_, rest) ->
     copy_fail rest.annotations linast.annotations; linast
-  | _ -> linast (* Any remaining cases e.g. LCompound with any other compound expression *)
+  | _ -> linast
 
 let optimise linast =
   (LinastMap.create_mapper ~leave_linast ()) linast

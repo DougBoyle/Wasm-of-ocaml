@@ -29,8 +29,8 @@ let rec peephole = function
   | ({it=Nop} as instr)::rest ->
     remove_instr instr;
     peephole rest
-  (* Where a switch case causes backtracking, get a branch due to backtracking and another due to exiting case *)
-  | ({it=Br _} as first)::({it=Br _} as instr)::rest ->
+  (* Second instruction can never execute, such cases sometimes introduced by switch statements that fail in some case *)
+  | ({it=Br _ | Unreachable} as first)::instr::rest ->
     remove_instr instr;
     first::(peephole rest)
 

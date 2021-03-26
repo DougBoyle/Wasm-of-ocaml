@@ -20,6 +20,10 @@ let rec print_var_list ppf (xs : Wasm.Ast.var list) = match xs with
   | [] -> ()
   | {it=x}::rest -> fprintf ppf "%li " x; print_var_list ppf rest
 
+let print_const ppf = function
+  | Wasm.Values.I32 i -> fprintf ppf "%li" i
+  | _ -> fprintf ppf "other"
+
 let rec print_instr ppf instr = match instr.it with
   | Unreachable -> fprintf ppf "%d:Unreachable [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | Nop -> fprintf ppf "%d:Nop [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
@@ -43,7 +47,7 @@ let rec print_instr ppf instr = match instr.it with
   | Store _ -> fprintf ppf "%d:Store [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | MemorySize -> fprintf ppf "%d:MemorySize [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | MemoryGrow -> fprintf ppf "%d:MemoryGrow [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
-  | Const _ -> fprintf ppf "%d:Const [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
+  | Const {it=i} -> fprintf ppf "%d:Const %a [%a] {last: %a, next: %a}" instr.id print_const i print_live instr print_last instr print_next instr
   | Test _ -> fprintf ppf "%d:Test [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | Compare _ -> fprintf ppf "%d:Compare [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr
   | Unary _ -> fprintf ppf "%d:Unary [%a] {last: %a, next: %a}" instr.id print_live instr print_last instr print_next instr

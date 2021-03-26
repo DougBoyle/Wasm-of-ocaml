@@ -29,7 +29,6 @@ let rec include_guard fail = function
 
 
 (* Aliases case still needed here as it is used by simplified_or_patterns i.e. before removal of aliases *)
-(* TODO: Variant patterns? *)
 let rec is_variable_pattern pat = match pat.pat_desc with
   | Tpat_any | Tpat_var(_, _) -> true
    | Tpat_alias(p, _, _) -> is_variable_pattern p
@@ -45,7 +44,7 @@ let rec apply_variable_rule (value : Linast.imm_expr) (pats, (action, action_set
       (match p.pat_desc with
         | Tpat_any -> (ps, (action, action_setup), guard)
         | Tpat_var(x, _) ->
-        (* TODO: Hack to avoid binding ident to itself at top of a function, remove by an optimisation pass *)
+        (* Avoid binding ident to itself at top of a function, remove by an optimisation pass *)
         let new_bind = match value.i_desc with ImmIdent i when i = x -> [] | _ -> [BLet(x, Compound.imm value)] in
         (ps, (action, new_bind @ action_setup), guard)
         | _ -> failwith "Not possible to apply variable rule")
@@ -92,7 +91,6 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
 (* Add partial information later *)
 (* values is imm vector corresponding to the vector of patterns in each row *)
 (* List of rows, each row is ([pattern list], ((action, action_setup), binds), (guard,setup) option)  *)
-(* TODO: May need an extra rule for variants and how to process them, shouldn't be difficult *)
 let rec compile_matrix fail values matrix =
   let matrix = List.map (preprocess_row values) matrix in
   match (values, matrix) with
@@ -155,10 +153,9 @@ let rec compile_matrix fail values matrix =
     apply_const_int_rule fail v vs matrix' cstrs_used (List.length cstrs_used = signature.cstr_consts)
 
  | (v::vs, ({pat_desc=Tpat_construct (_, signature, _)}::_,_,_)::_) ->
-   (* TODO: When is cstr_normal non-zero? *)
    apply_constructor_rule fail v vs matrix (signature.cstr_consts + signature.cstr_nonconsts)
 
- (* TODO: May be better to use simple if/else if only 1 constant. Do in later optimisation pass? *)
+ (* Choice between jump table and individual if/else cases decided at Wasm level *)
  | (v::vs, ({pat_desc=Tpat_constant (Const_int _)}::_,_,_)::_) ->
     let get_const_int = function
       | ({pat_desc=Tpat_constant (Const_int i)}::_,_,_) -> i

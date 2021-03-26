@@ -1,29 +1,3 @@
-(*
-  Two approaches were tested, latter had slightly better memory usage and dynamic instruction count.
-  Old method:
-    LetRec binds with only 1 function 'f' defined, which has a tail call to itself, is optimised on its own.
-    LetRec binds with multiple functions defined - each function making a tail call to any of the others
-      is optimised for mutual recursion.
-      Only tail calls to optimised functions within optimised functions can be replaced.
-    Hence can be inefficient if we have 'letrec f = ... and g = ...' where f makes no tail calls and g tail
-    calls f. g will be optimised but the call within it will not be optimised.
-    If f only tail calls itself, its also better to optimise f on its own (which doesn't create a 2nd function).
-    The call from g to f will still not be optimised, but as f never tail calls g, this isn't a significant loss.
-
-  New method:
-    Each letrec bound function is put into a table, mapping the function to every other letrec bound function
-    it tail calls.
-    While the table is not changing:
-      Functions which make no tail calls are removed, and tail calls to them are not counted for other functions.
-      Functions only tail calling themselves are also removed, and they are optimised separately since this
-        avoids introducing a second wrapper function.
-    The remaining functions are all made mutually tail recursive and their tail calls to each other replaced.
-
-  As the shared arguments for tail calls are only ever modified just before they are checked again, and
-  'continue' is always false at the end of a tail calling program, all the shared arguments (including
-  wrapper arguments to be used by each actual function) can be shared across the entire program.
-*)
-
 open Linast
 open LinastUtils
 open Asttypes
@@ -99,9 +73,7 @@ and find_tail_calls_compound f funcs compound = match compound.c_desc with
   | CFunction (_, body)
   | CFor (_, _, _, _, body) ->
     find_tail_calls None funcs body
-  (* The important part, can mark as a tail call if in a suitable location *)
   | CSwitch (_, cases, default) ->
-    (* written this way to ensure all branches get analysed *)
     List.iter
       (fun (_, body) -> find_tail_calls f funcs body) cases;
     (match default with None -> () | Some body -> find_tail_calls f funcs body)
@@ -137,13 +109,13 @@ let analyse_program linast =
   Becomes
 
   let rec f args* =    -- still recursive due to possibly having non tail-recursive calls too.
-    continue = true; result = 0;
+    continue = true; result = 0; mut_args = args*;
     while continue {
       continue = false;
       result =
-        let args = args* in  -- allows keeping the assumption that values are immutable everywhere else
+        let args = mut_args in  -- allows keeping the assumption that values are immutable everywhere else
         ...
-        <args* = args'; continue = true>
+        <mut_args = args'; continue = true>
     }
     result
 *)
@@ -191,9 +163,8 @@ and rewrite_compound_single f_id continue_id args compound = match compound.c_de
 
 (* Redefine function to be tail recursive on its own *)
 let rewrite_function_single f_id args body =
-
   (* Create new formal parameters for the function, as the original paramters
-     will now be used as mutable locals rather than coming from function argument/closure *)
+     will now be assigned to from mutable copies rather than coming from function argument/closure *)
   let new_params = List.map (fun id -> Ident.create_local (Ident.name id)) args in
   let mut_args = List.map (fun id -> Ident.create_local (Ident.name id)) args in
   let initial_binds = List.map (fun (arg, param) -> BLet(arg, Compound.imm (Imm.id param)))
@@ -209,16 +180,13 @@ let rewrite_function_single f_id args body =
     (* binding of arg = mut_arg also marked as mutable, since we don't want to allow use of mutable
        variable to leak into body of function *)
     binds_to_anf ~mut:(args) ((BEffect(Compound.assign continue_id (Imm.const (Const_int 0))))::while_binds)
-    (* Need to rewrite the body of the function so that it binds the result to 'result'.
-       Uses 'rewrite_tree' previously defined in optConstants for pulling out guarenteed branches  *)
+    (* Need to rewrite the body of the function so that it binds the result to 'result'. i.e. linearise expression  *)
     (* Since CAssign takes an imm, first need to bind the result to a 'temp_reuslt_id' *)
     (OptConstants.rewrite_tree (LinastExpr.mklet temp_result_id Local)
       (rewrite_body_single f_id continue_id mut_args body)
       (LinastExpr.compound (Compound.assign result_id (Imm.id temp_result_id)))) in
 
-  (* Note - each ident has to first be assigned to by a Let expression, before LAssign can be used *)
   let new_body =
-    (* Only place in the whole project ~mut is used. Custom function might be better? *)
     binds_to_anf ~mut:(continue_id :: result_id :: mut_args)
     ((BLet(continue_id, Compound.imm (Imm.const (Const_int 1)))) ::
      (BLet(result_id, Compound.imm unit_value)) ::

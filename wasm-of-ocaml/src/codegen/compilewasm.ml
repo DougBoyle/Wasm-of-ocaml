@@ -2,7 +2,7 @@ open Bindstree
 open Wasm
 open Graph
 (* TODO: Use concatList to enable pre/post append efficiently *)
-(* Grain uses deque package: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatDeque.html
+(* deque package: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatDeque.html
    and similar lists: https://ocaml-batteries-team.github.io/batteries-included/hdoc2/BatList.html *)
 
 open Compilerflags
@@ -29,12 +29,9 @@ let enter_block ?(n=1) ({handler_heights;} as env) =
   {env with handler_heights = List.map (fun (handler, height) -> (handler, Int32.add (Int32.of_int n) height)) handler_heights}
 
 (* Number of swap variables to allocate *)
-(* Swap varaibles are only ever int32s (currently). As such, no type argument to get/set swap *)
+(* Swap varaibles are only ever int32s, so no type argument to get/set swap *)
 let swap_slots = [Types.I32Type; Types.I32Type]
 
-(* These are the bare-minimum imports needed for basic runtime support -- Many removed, see grain compcore.ml *)
-(* Ignore anything exception or printing related (could technically handle specific print cases with js calls) *)
-(* Primitives still not translated to idents at this stage - aids constant propagation if I want to do at this level *)
 let runtime_mod = Ident.create_persistent "ocamlRuntime"
 let malloc_ident = Ident.create_persistent "malloc"
 let compare_ident = Ident.create_persistent "compare"
@@ -99,7 +96,6 @@ let wrap_int32 n = add_dummy_loc (Values.I32Value.to_value n)
 let wrap_int64 n = add_dummy_loc (Values.I64Value.to_value n)
 let wrap_float64 env n = [Const (add_dummy_loc (Values.F64Value.to_value n)); make_float env]
 
-(* TODO: Work out which of these actually needed *)
 (* For integers taken out of wasmtree - all tags/ints need doubling (but not memory offsets) *)
 let encoded_int n = n * 2
 let encoded_int32 n = Int32.mul 2l n
@@ -109,7 +105,7 @@ let encoded_const_int32 n = wrap_int32 (encoded_int32 n)
 let rec compile_const env c =
     match c with
     | MConstI32 n -> [Const(encoded_const_int32 n)]
-    | MConstI64 n -> [Const(wrap_int64 (Int64.mul 2L n))] (* TODO: Handle I64's and literal I32s *)
+    | MConstI64 n -> failwith "64-bit ints not supported"
     | MConstF64 n -> wrap_float64 env (Wasm.F64.of_float n)
 
 (* Translate constants to WASM. Override names from wasmtree to be wasm phrases (values with regions) *)
@@ -151,7 +147,6 @@ let find_index p l =
 let get_func_type_idx env typ =
   match find_index ((=) typ) !(env.func_types) with
   | None ->
-    (* TODO: Inefficient, BatDeque does O(1) snoc and size *)
     env.func_types := !(env.func_types) @ [typ];
     List.length !(env.func_types) - 1
   | Some((i, _)) -> i
@@ -294,10 +289,10 @@ let compile_binary (env : env) op arg1 arg2 : instr' list =
      compiled_arg1 @ compiled_arg2 @ decode_num @ [Binary(Values.I32 Ast.IntOp.DivS);]
   | Mod -> (* Both div and rem are signed in OCaml *)
      compiled_arg1 @ compiled_arg2 @ [Binary(Values.I32 Ast.IntOp.RemS);]
-  (* Can still occur due to how && and || are compiled when not applied to anything??
+  (* Can still occur due to how && and || are compiled when not applied to anything
      i.e. when they are compiled to function abstractions, still use AND/OR rather than rewriting as an if-then-else *)
   (* Note - safe to recompile args since compile_imm's only side-effect is generating dummy locations *)
-  | AND -> (* TODO: Can just use actual And operation? Side-effect semantics removed higher up. This just avoids encoding after *)
+  | AND -> (* TODO: Can just use actual And operation? *)
     compiled_arg1 @
     swap_tee @
     decode_num @ [
@@ -359,19 +354,18 @@ let heap_allocate env (num_words : int) =
 (* Not sure check_memory needed *)
 (* Not doing strings initially, so can leave out allocate_string/buf_to_ints *)
 
-(* TODO: Functions allocated by MStore and MAllocate get free vars filled in separately, MStore is more complex process *)
+(* Functions allocated by MStore and MAllocate get free vars filled in separately,
+   Can take advantage of information known when MStore happening (know the variable being bound to) *)
 (* Closure represented in memory as [function index, free vars...] *)
-let allocate_closure env ?lambda ({func_idx; arity; variables} as closure_data) =
+(* bound_to stores the instructions used to access the variable this function is being assigned to for MStore.
+   For plain MAllocate (i.e. function is being returned, so never stored in a variable),
+   that just uses get_swap 0 and leaves bound_to as [] *)
+let allocate_closure env ?(bound_to=[]) ({func_idx; arity; variables} as closure_data) =
   let num_free_vars = List.length variables in
   let closure_size = num_free_vars + 2 in
   let get_swap = get_swap env 0 in
   let tee_swap = tee_swap env 0 in
-  (* A way to access the closure if it hasn't been bound to a variable name i.e. anonymous allocation *)
-  let access_lambda = Option.value ~default:(get_swap @ [
-      Const(const_int32 (4 * closure_size));
-      Binary(Values.I32 Ast.IntOp.Sub);
-    ]) lambda in
-  env.backpatches := (access_lambda, closure_data)::!(env.backpatches);
+  env.backpatches := (bound_to, closure_data)::!(env.backpatches);
   (heap_allocate env closure_size) @ tee_swap @
   [Const(wrap_int32 (Int32.(add func_idx (of_int env.func_offset)))); store ();] (* function index *)
    (* Store number of variables *)
@@ -457,11 +451,12 @@ let collect_backpatches env f =
    (or themself) with that closure. So go through and put a pointer to each needed closure in each of the closures. *)
 let do_backpatches env backpatches =
   let do_backpatch (lam, {variables}) =
+    (* skip if nothing to backpatch *)
+    if variables = [] then [] else
     let get_swap = get_swap env 0 in
     let set_swap = set_swap env 0 in
     (* Put lam in the swap register *)
     let preamble = lam @ (toggle_tag Closure) @ set_swap in
-    (* TODO: Should skip if nothing to backpatch? *)
     let backpatch_var idx var = (* Store each free variable in the closure *)
       get_swap @ (compile_imm env var) @ [store ~offset:(Int32.of_int(4 * (idx + 2))) ();] in
     preamble @ (List.flatten (List.mapi backpatch_var variables)) in
@@ -475,16 +470,14 @@ let rec compile_store env binds =
       let get_bind = compile_bind ~is_get:true env b in
       let compiled_instr = match instr with
         | MAllocate(MClosure(cdata)) ->
-          (* Special lambda specified since several mutually recursive functions could be getting defined,
-             access each one by the identifier it is bound to. *)
-          allocate_closure env ~lambda:get_bind cdata
+        (* bound_to is which variable the closure produced is assigned to, so can get it for backpatching later *)
+          allocate_closure env ~bound_to:get_bind cdata
         | _ -> compile_instr env instr in
       (compiled_instr @ store_bind) @ acc in
     List.fold_right process_bind binds [] in
   let instrs, backpatches = collect_backpatches env process_binds in
   instrs @ (do_backpatches env backpatches)
 
-(* Rewriting Grain version to put one "value" block at top, rest nonetype *)
 and compile_switch env arg branches default =
   let max_label = Int32.to_int (List.fold_left (fun m (i, _) -> max m i) 0l branches) in
   let num_cases = List.length branches in
@@ -541,10 +534,10 @@ and compile_instr env instr =
       | _ -> [Br (add_dummy_loc (List.assoc j env.handler_heights))])
   | MAllocate(alloc) -> (* New - currying appeared to not work before *)
     let new_backpatches = ref [] in
-    (* TODO: Tidy up to better suit single allocation. Currently just a modified version of letrec backpatching
-         Should at least detect allocating data vs function *)
+    (* Unlike for MStore, can't be mutually recursive allocations, so know closure will be swap 0 if needed *)
     let instrs = compile_allocation {env with backpatches=new_backpatches} alloc in
-    let do_backpatch (lam, {func_idx;variables}) =
+    let do_backpatch (_, {func_idx;variables}) =
+      (* Nothing to backpatch, potentially because thing allocated wasn't a function anyway *)
       if variables = [] then [] else
       let get_swap = get_swap env 0 in
       let set_swap = set_swap env 0 in
@@ -559,7 +552,7 @@ and compile_instr env instr =
   | MUnary(op, arg) -> compile_unary env op arg
   | MBinary(op, arg1, arg2) -> compile_binary env op arg1 arg2
   | MSwitch(arg, branches, default) -> compile_switch env arg branches default
-  | MStore(binds) -> compile_store env binds (* Difference between MAllocate and MStore - alloc for compound, store for toplevel *)
+  | MStore(binds) -> compile_store env binds (* MAllocate for memory allocation, MStore for variable binding *)
   | MCallIndirect(func, args, tupled) ->
     let compiled_func = compile_imm env func in
     let ftype = add_dummy_loc (Int32.of_int (get_arity_func_type_idx env
@@ -622,7 +615,7 @@ and compile_instr env instr =
               [Const(encoded_const_int 1); (* For loop actually takes steps of 2 due to encoding *)
                Binary(Values.I32
                  (match direction with Upto -> Ast.IntOp.Add | Downto -> Ast.IntOp.Sub));] @
-              (compile_bind ~is_get:false env arg) @ (* TODO: Could use Tee here? Avoiding 'get' at top *)
+              (compile_bind ~is_get:false env arg) @
               [Br (add_dummy_loc @@ Int32.of_int 0)]))])]
 
   (* Creates two blocks. Inner block is usual 'try' body, outer block is that + handler body.
@@ -769,10 +762,13 @@ let compile_functions env ({functions} as prog) =
   let main = compile_main env prog in
     compiled_funcs @ [main]
 
+
+(* For debugging - if webassembly produced is invalid then throw error during compilation, and print where *)
 let module_to_string compiled_module =
   (* Print module to string *)
   Wasm.Sexpr.to_string 80 @@ Wasm.Arrange.module_ compiled_module
 
+(* Adds proper locations to each operation using Wasm module, so error can be printed out with a specific location *)
 let reparse_module (module_ : Wasm.Ast.module_) =
   let open Wasm.Source in
   let as_str = Wasm.Sexpr.to_string 80 (Wasm.Arrange.module_ module_) in
@@ -782,8 +778,6 @@ let reparse_module (module_ : Wasm.Ast.module_) =
   | Encoded _ -> failwith "Internal error: reparse_module: Returned Encoded (should be impossible)"
   | Quoted _ -> failwith "Internal error: reparse_module: Returned Quoted (should be impossible)"
 
-(* Leaving out "reparse" function for now - meant so that actual locations of parts of program can be found
-   when validation fails. TODO: May want to add this to help with debugging *)
 exception WasmRunnerError of Wasm.Source.region * string * Wasm.Ast.module_
 let validate_module (module_ : Wasm.Ast.module_) =
  try

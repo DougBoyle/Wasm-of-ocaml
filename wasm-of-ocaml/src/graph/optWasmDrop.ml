@@ -24,10 +24,8 @@ let generate_type_table {types; funcs; imports} =
  Can then separately try to optimise each of them.
  Working out where to 'insert' the drop requires walking over instructions in reverse to see where
  stack height is 1 less. Latest such point (earliest in reverse) is when 1st arg is fully constructed.
- In case where it is actually [1st arg] @ [get i; set j] @ ...
- then this is repeated to move the drop back, since it can't be the 'set j' that needs removing.
- Hence always end up at the required position.
- *)
+ Effectively just performing Wasm stack type validation algorithm
+*)
 (* Instructions iterated over and returned in reverse order (hence instructions that reduce stack increase n) *)
 let rec split_stack n instrs = if n = 0 then ([], instrs)
   else if n < 0 then failwith "Stack structure error"

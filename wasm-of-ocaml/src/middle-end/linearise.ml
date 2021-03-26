@@ -55,7 +55,6 @@ let matrix_to_linast exported total value matrix =
     (* Unoptimised version *)
     CompileLet.compile_matrix ~exported fail_trap [value] matrix
 
-(* TODO: Texp_extension_constructor and Texp_variant all left out initially, may implement later once working. *)
 let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attributes} as e) =
   match exp_desc with
   |  Texp_ident (path, idLoc, valDesc) -> (translate_ident path valDesc.val_kind, [])
@@ -94,8 +93,6 @@ let rec translate_imm ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribut
   | _ -> raise NotSupported
 
 (* TAKEN FROM OCAML COMPILER Lambda/Translcore.ml *)
-(* Can't see why optional arguments matter? Just due to pre-evaluating supplied ones? *)
-(* TODO: Not fully handling optional/labelled args, differs from how OCaml compiler handles transl_apply *)
 (* Returns a compound expr *)
 (* f already compiled to compound *)
 and transl_apply f args =
@@ -169,13 +166,13 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
 
  (* Made easier by fact that Typedtree always puts fields in order, regardless of order in program.
     Hence no need to do sorting or check label descriptions *)
- (* TODO: Having to convert arrays to lists suggests I should represent things slightly differently here *)
   | Texp_record {fields; extended_expression} ->
     let id = Ident.create_local "record" in
     (match extended_expression with
     (* Not built off of anything so each field must be Overridden *)
     | None -> let (args, setup) =
-        List.split (List.map (function (_, Overridden(_, e)) -> translate_imm e | _ -> raise NotSupported) (Array.to_list fields))
+        List.split (List.map
+          (function (_, Overridden(_, e)) -> translate_imm e | _ -> raise NotSupported) (Array.to_list fields))
       in let mutable_list = List.map (fun (desc, _) -> desc.lbl_mut = Asttypes.Immutable) (Array.to_list fields) in
       (Compound.makeblock ~annotations:(ref [ImmutableBlock mutable_list]) 0 args, List.concat setup)
     | Some e -> let extract_field original i = (function
@@ -221,7 +218,6 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
     let expr = translate_linast e in
     (Compound.mkfor param start finish dir expr, start_setup @ finish_setup)
 
-  (* TODO: Look at how translprim collapses down curried functions. Each Texp_function only has 1 argument *)
   (* Rather than special case for currying, could add a special case for tuples. *)
   | Texp_function { param; cases; partial; } ->
     translate_function param partial cases
@@ -235,8 +231,9 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
         in if extra_args = [] then (op, arg_setups)
         else let (app, setup) = transl_apply op extra_args in
         (app, arg_setups @ setup)
-  (* Not 'Val_prim primitive_description' so have to extract arity manually. val_kind = Val_reg to exclude Val_prim cases *)
-  | Texp_apply({exp_desc = Texp_ident(Path.Pdot(Path.Pident (Ident.Global "Stdlib"), name), _, {val_kind = Val_reg})}, oargs)
+  (* Not 'Val_prim primitive_description' so have to extract arity manually. val_kind = Val_reg to exclude Val_prim *)
+  | Texp_apply({exp_desc =
+      Texp_ident(Path.Pdot(Path.Pident (Ident.Global "Stdlib"), name), _, {val_kind = Val_reg})}, oargs)
     when List.length oargs >= (match Hashtbl.find Primitives.prim_table name with Unary _ -> 1 | Binary _ -> 2
                                     | _ -> failwith "No such cases for Compound functions")
          && List.for_all (fun (_, arg) -> arg <> None) oargs ->
@@ -249,7 +246,8 @@ and translate_compound ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribu
         let (arg2_imm, setup2) = translate_imm arg2 in
         let op = Compound.binary binop arg1_imm arg2_imm in (op, setup1 @ setup2, extra_args)
       | _ -> failwith "Incorrect guard statement") in
-    if extra_args = [] then (op, setup) else let (app, rest_setup) = transl_apply op extra_args in (app, setup @ rest_setup)
+    if extra_args = [] then (op, setup)
+    else let (app, rest_setup) = transl_apply op extra_args in (app, setup @ rest_setup)
 
   | Texp_apply (f, args) ->
     let (f_compound, fsetup) = translate_compound f in
@@ -275,7 +273,8 @@ and translate_linast ({exp_desc;exp_loc;exp_extra;exp_type;exp_env;exp_attribute
 
 (* AND/OR handled specially as they sometimes don't evaluate their second argument *)
 and translate_prim_app (primDesc : Primitive.description) args =
-    (* Want to represent arrays the same way as tuples, so they get their own get/set operation rather than unary/binary *)
+    (* Want to represent arrays the same way as tuples,
+       so they get their own get/set operation rather than unary/binary *)
     match (primDesc.prim_name, args) with
       | "%array_safe_get", [arg1; arg2] -> let (imm1, setup1) = translate_imm arg1 in
         let (imm2, setup2) = translate_imm arg2 in (Compound.arrayget imm1 imm2, setup1 @ setup2)
@@ -303,8 +302,7 @@ and translate_prim_app (primDesc : Primitive.description) args =
       )
 
 and translate_function param partial = function
-   (* Currying gets unrolled again later, but makes IR neater and could aid optimisations *)
-   (* Handling currying this way lower down also makes writing functions for primitives/labelled arg functions neater *)
+   (* Currying gets unrolled again later, but makes IR neater and allows optimisations *)
    [{c_lhs=pat; c_guard=None;
       c_rhs={exp_desc = Texp_function { arg_label = _; param = param'; cases;
       partial = partial'; }; exp_env; exp_type} as exp}]
@@ -370,7 +368,6 @@ let rec get_idents = function
     match item.str_desc with
       | Tstr_value (_, binds) -> List.rev_append (let_bound_idents binds) (get_idents rest)
       | _ -> get_idents rest
-      (* TODO: Check no more cases to consider *)
   )
 
 let rec getExports (tree, coercion) =
@@ -395,16 +392,16 @@ let rec translate_structure exported = function
     ) bind_list ([], [])
     in binds_to_anf setups (LinastExpr.mkletrec binds (translate_structure exported items))
    | Tstr_value (Nonrecursive, []) -> translate_structure exported items
-   (* TODO: Should have 'pre-anf' (see Grain) to simplify what can appear in this type of let binding *)
    | Tstr_value (Nonrecursive, {vb_pat;vb_expr;}::bind_list) ->
      let rest = translate_structure exported ({item with str_desc=Tstr_value(Nonrecursive, bind_list)}::items) in
      let matrix = [([vb_pat], rest)] in
      let (value, value_setup) = translate_imm vb_expr in
      let tree = matrix_to_linast exported (check_if_binding_partial vb_pat) value matrix in
      binds_to_anf ~exported value_setup tree
-   | _ -> translate_structure exported items (* TODO: Should check which ones should/shouldn't be included *)
+   (* Ignore structures like type definitions etc. Already processed by front-end *)
+   | _ -> translate_structure exported items
   )
 
 let translate_structure_with_coercions (structure, coercions) =
- binds_to_anf (!primBinds) (translate_structure (getExports (structure.str_items, coercions)) structure.str_items)
- (* Add on primitive definitions *)
+  (* Add on primitive definitions *)
+  binds_to_anf (!primBinds) (translate_structure (getExports (structure.str_items, coercions)) structure.str_items)

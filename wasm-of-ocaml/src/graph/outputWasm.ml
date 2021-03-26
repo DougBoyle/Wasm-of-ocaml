@@ -88,9 +88,8 @@ let wrap_function types {ftype; locals; num_swaps} wasm_body =
   (List.map add_dummy_loc [Ast.Const(Compilewasm.const_int32 (num_stack_spaces * 4));
    Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.create_fun_ident)]) @
     (* Because intermediate closures of curried function calls (function applied many times in one place)
-       aren't stored anywhere other than a swap variable, the closure needs to be explicitly put on the stack
+       aren't stored anywhere other than a swap variable, the closure needs to be put on the stack
        at the start of a function. (Check args > 0 to avoid case of MAIN, which has no args/closures) *)
-    (* TODO: Tidy to make more efficient, insert only between curried calls and avoid needing to re-tag? *)
     (if arity = 0 then []
       else List.map add_dummy_loc ([Ast.LocalGet (add_dummy_loc 0l);
         Ast.Const(Compilewasm.const_int32 (Bindstree.tag_of_type Bindstree.Closure));

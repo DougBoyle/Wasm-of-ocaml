@@ -123,7 +123,7 @@ let rec analyse_compound handlers compound = match compound.c_desc with
     compound.c_annotations <- List.fold_left
      (fun func_annots arg ->
        let latent_analysis =
-         List.fold_left (fun annots -> (function (Latent [body]) -> body | _ -> annots)) (ref []) (!func_annots) in
+         List.fold_left (fun annots -> (function Latent body -> body | _ -> annots)) (ref []) (!func_annots) in
        ref (List.filter (function ((Pure|Immutable) as annot) -> List.mem annot (!func_annots) | _ -> true)
            (!latent_analysis)))
      f.i_annotations args
@@ -134,7 +134,7 @@ let rec analyse_compound handlers compound = match compound.c_desc with
     analyse_linast handlers body;
     (* Each partial function is pure/immutable *)
     let function_annotations =
-      (List.fold_left (fun annots _ -> ref [Pure; Immutable; Latent [annots]]) body.annotations args) in
+      (List.fold_left (fun annots _ -> ref [Pure; Immutable; Latent annots]) body.annotations args) in
     (* Need to remember if function has been tail call optimised/expects args as a tuple *)
     if List.mem TailCallOptimised (!(compound.c_annotations))
       then function_annotations := TailCallOptimised :: (!function_annotations);

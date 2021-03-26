@@ -6,10 +6,9 @@ open Utils
   Heuristics to decide which functions to inline.
   Table of properties kept for each defined function.
   Heuristics based on (simplified version of): http://titanium.cs.berkeley.edu/papers/bonachea-method-inlining.pdf
-  TODO: Is it worth inlining under-applications, still have to create a new function but may be able to further inline
 *)
 
-(* TODO: Also want to track how many function calls the body of a function makes? (then can't use Mapper?) *)
+(* TODO: Improvements: Approximate how many calls the body of a function makes, *4 for occurences within loops *)
 type func_info = {
   size: int;
   local: bool;
@@ -50,9 +49,8 @@ let can_remove_if_inlined {local; applications; under_applications; other_uses} 
   (applications + under_applications = 1) && local && (other_uses = 0)
 
 (* Typically getters of reference values or function that just calls another function *)
-let function_is_very_small {size} = size < 5 (* 5 chosen arbitrarily *)
+let function_is_very_small {size} = size < 5
 
-(* TODO: Track leaf nodes of call graph too i.e. doesn't make any other function calls *)
 let small_enough_and_in_budge {size} = size < 20 && (!budget) >= size
 
 let should_inline info = List.exists (fun heuristic -> heuristic info)
@@ -92,7 +90,7 @@ let enter_compound compound = match compound.c_desc with
   | _ -> compound
 
 let enter_linast linast = match linast.desc with
-  (* If only use of function is inline, Dead Assignment Elimination will remove it *)
+  (* If only use of function is inlined, Dead Assignment Elimination will remove it *)
   | LLet (id, export, {c_desc = CFunction (parameters, body)}, _) ->
     inline_info := Ident.add id
       {applications = 0; under_applications = 0; other_uses = 0; arity = List.length parameters;
@@ -143,16 +141,8 @@ let inline_function args {arity; parameters; body; size} =
 
     (mapping := List.combine parameters args;
     substituter body)
- (*   let mapping = List.combine parameters args in
-    (LinastMap.create_mapper ~map_imm:(substitue mapping)
-      ~leave_compound:copy_compound ~leave_linast:copy_linast ()) body *)
-
   else if (List.length args) > arity then
     let applied_args, rest = take (List.length parameters) args in
-
-  (*  let mapping = List.combine parameters applied_args in
-    let body' = (LinastMap.create_mapper ~map_imm:(substitue mapping)
-      ~leave_compound:copy_compound ~leave_linast:copy_linast ()) body in *)
     mapping := List.combine parameters applied_args;
     let body' = substituter body in
 
@@ -161,14 +151,8 @@ let inline_function args {arity; parameters; body; size} =
       (LinastExpr.compound (Compound.app (Imm.id f) rest))
   else
     let applied_params, rest = take (List.length args) parameters in
-
-
-    (*let mapping = List.combine applied_params args in
-    let body' = (LinastMap.create_mapper ~map_imm:(substitue mapping)
-      ~leave_compound:copy_compound ~leave_linast:copy_linast ()) body in *)
     mapping := List.combine applied_params args;
     let body' = substituter body in
-
     LinastExpr.compound (Compound.mkfun rest body')
 
 let leave_linast linast =

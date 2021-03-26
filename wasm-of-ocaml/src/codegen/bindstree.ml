@@ -1,13 +1,6 @@
-(* Low level IR - can translate directly to Wasm but keeps some conventions about flow control/types of variable bindings
-   to make understanding translation + optimising clearer. Also leave out wrapper code like mapping bools -> int32s and back.
-   Main differences are encoding of recursion, explicit closure creation/bindings, explicit binding locations rather than Idents
-*)
-
-(* Taken from Grain compiler's codegen/mashtree.ml *)
-(* Value_tags likely not needed unless pattern matching going to be used. Only possible exception is
-   equals function should throw error on functions?? Hence need start of closure to distinguish itself from anything else.
-   Simple hack would be to store as [0, num_args, code_ptr, [args]] when all others are [len, tag, [vals]] so 0 => fun
-Similarly not interacting with strings or DOM for now so can completely ignore them for now *)
+(* Low level IR - Replaces Ident identifiers with integer indexes into Local/Arg/Closure/Global,
+                  makes memory allocations explicit, including storing tag,
+                  moves all functions to top-level, doing backpatching when closure allocated *)
 
 (* Copied out to make visible without opening Linast in compilewasm *)
 type unop = Linast.unop =
@@ -54,8 +47,7 @@ type asmtype = Wasm.Types.value_type =
 
 type constant =
   | MConstI32 of int32
-  | MConstI64 of int64 (* Likely want to remove this until implemented. Similarly, Int32 will need wrapper, not just MConstI32 *)
-(*  | MConstF32 of float    No reason I would want to support 32 bit floats *)
+  | MConstI64 of int64 (* 64-bit ints not yet supported *)
   | MConstF64 of float
 
 type binding =
@@ -74,7 +66,7 @@ type immediate =
 
 type closure_data = {
   func_idx: int32;
-  arity: int32; (* 2 (closure + last arg) for all functions except main (where it is 0) *)
+  arity: int32;
   variables: immediate list; (* How are these used? *)
 } 
 
@@ -96,9 +88,10 @@ type data_op =
 type instr =
   | MImmediate of immediate
   | MFail of int32 (* Match failure - compiles to a branch out to the block for the switch of same label *)
-  | MCallKnown of int32 * immediate list (* Optimized path for statically-known function names *)
+  | MCallKnown of int32 * immediate list (* Statically-known function names *)
   (* bool indicates arguments are passed as tuple rather than curried *)
   | MCallIndirect of immediate * immediate list * bool
+  (* memory allocation *)
   | MAllocate of allocation_type
   | MIf of immediate * block * block
   | MWhile of block * block
@@ -107,11 +100,12 @@ type instr =
   (* After being evaluated at start, changing value doesn't change limit of loop, so need to save to var *)
   | MFor of binding * immediate * Asttypes.direction_flag * binding * immediate * block
   | MTry of int32 * block * block
-  | MSwitch of immediate * (int32 * block) list * block (* TODO: Should default case be optional? *)
+  | MSwitch of immediate * (int32 * block) list * block (* TODO: Default case could be made optional *)
   | MUnary of unop * immediate
   | MBinary of binop * immediate * immediate
   | MDataOp of data_op * immediate
-  | MStore of (binding * instr) list (* Items in the same list have their backpatching delayed until the end of that list *)
+  (* Bindings to local variables, whole list backpatched together to handle mutual recursion *)
+  | MStore of (binding * instr) list
   | MDrop (* Ignore the result of the last expression. Used for sequences. *)
 
 and block = instr list

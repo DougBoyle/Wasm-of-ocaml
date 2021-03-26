@@ -63,7 +63,6 @@ let rec include_guard fail ctx = function
   | _ -> failwith "Value vector/pattern matrix mismatch. Pattern matrix expected to be empty"
 
 (* Aliases case still needed here as it is used by simplified_or_patterns i.e. before removal of aliases *)
-(* TODO: Variant patterns? *)
 let rec is_variable_pattern pat = match pat.pat_desc with
   | Tpat_any | Tpat_var(_, _) -> true
    | Tpat_alias(p, _, _) -> is_variable_pattern p
@@ -261,7 +260,6 @@ let rec preprocess_row values ((patterns, (action, action_setup), g) as row) = m
 (* List of rows, each row is ([pattern list], ((action, action_setup), binds), (guard,setup) option)
    Binds separated from action_setup since guard needs to be checked between these.
    Guard kept separate till end since the handler it should escape to hasn't been created yet *)
-(* TODO: May need an extra rule for variants and how to process them, shouldn't be difficult *)
 let rec compile_matrix ({values; matrix; total; handlers; ctx} as state) =
   let matrix = List.map (preprocess_row values) matrix in
   (* update with preprocessed row, so no alias patterns present *)

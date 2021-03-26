@@ -210,16 +210,10 @@ let extract_ctx pat ctx =
 
 (* ------------------ equivalent operations on jump summaries ------------- *)
 (* Jump summary is a list of (i, ctx) pairs for each handler the output could jump to *)
-(* TODO: Check which ones are actually needed *)
-
-let rec specialise_jump_summary kind jumps =
-  List.map (fun (i, ctx) -> (i, specialise_ctx kind ctx)) jumps
+(* push/specialise not needed as just summaries are only ever returned out of procedure *)
 
 let collect_jump_summary jumps =
  List.map (fun (i, ctx) -> (i, collect_ctx ctx)) jumps
-
-let push_jump_summary jumps =
-  List.map (fun (i, ctx) -> (i, push_ctx ctx)) jumps
 
 let pop_jump_summary jumps =
   List.map (fun (i, ctx) -> (i, pop_ctx ctx)) jumps
@@ -231,14 +225,6 @@ let union_jump_summary jumps1 jumps2 =
       | None -> (i, ctx1) | Some ctx2 -> (i, union_ctx ctx1 ctx2)) jumps1 in
   (* include any key that are in jumps2 but not jumps1 *)
   (List.filter (fun (i, _) -> not (List.mem_assoc i jumps1)) jumps2) @ shared_jumps
-
-(* Must operate on the intersection of keys for jumps *)
-let intersect_jump_summary jumps1 jumps2 =
-  List.fold_right (fun (i, ctx1) jumps -> match List.assoc_opt i jumps2 with
-    | None -> jumps | Some ctx2 -> (i, intersect_ctx ctx1 ctx2)::jumps) jumps1
-
-let extract_jump_summary pat jumps =
-  List.map (fun (i, ctx) -> (i, extract_ctx pat ctx)) jumps
 
 (* --------------- equivalent operations on matrices ------------- *)
 let mat_to_ctx mat = List.map (fun row -> ([], row)) mat

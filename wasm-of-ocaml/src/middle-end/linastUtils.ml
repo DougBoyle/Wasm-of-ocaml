@@ -5,9 +5,9 @@ let defaultLoc = Location.none
 let defaultEnv = Env.empty
 
 exception NotImplemented of string
-exception NotSupported (* TODO: Modify earlier parts of OCaml frontend to not accept these elements *)
+exception NotSupported
 
-(* Don't worry about passing around locations/environments for now, just a hastle *)
+(* TODO: Didn't end up using locations/environments, may want to remove in future *)
 module Imm = struct
   let mk i_annotations d =
       {i_desc=d;
@@ -56,7 +56,7 @@ module LinastExpr = struct
   let compound ?(annotations=ref []) e = mk annotations (LCompound e)
 end
 
-(* Now that constant only constructors are represented as integers, unit = 0l *)
+(* Constant constructors map to integers, unit = 0 *)
 let unit_value = Imm.const (Asttypes.Const_int 0)
 
 let get_const_constructor_tag = function
@@ -78,7 +78,7 @@ let get_global_flag exported mut id = if List.exists (fun x -> x = id) exported 
   else if List.exists (fun x -> x = id) mut then Mut
   else Local
 
-(* mut added since now I need to distinguish mutable locals introduced by tail call optimisation *)
+(* mut added to distinguish mutable locals introduced by tail call optimisation *)
 let rec binds_to_anf ?(exported=[]) ?(mut=[]) binds body =
   List.fold_right (fun bind body ->
      match bind with
@@ -109,8 +109,6 @@ let update_handler_env i env =
 let get_handler_env i env = match Hashtbl.find_opt handler_envs i with
   | Some e -> Hashtbl.remove handler_envs i; Ident.Set.union env e
   | None -> env
-
-
 
 (* Env is variables bound in body of expression *)
 let rec free_vars env (e : linast_expr) =
@@ -164,12 +162,7 @@ and free_vars_imm env i = match i.i_desc with
   | ImmIdent x when not (Ident.Set.mem x env) -> Ident.Set.singleton x
   | _ -> Ident.Set.empty
 
-(* Just needs the maximum since same 'env' (contains most recent stack index) is passed to compilation
-   of both sides e.g. Seq(hd, tl). tl doesn't use anything added to scope in hd so can just overwrite.
-   Makes semantics of the handle case difficult, need to know how variables have previously been bound
-   when going to compile handle case, likely by using references as a 'cheat' to scoping in this case.  *)
-(* Like a very basic form of register colouring! *)
-(* Assumption that all vars can use the same type of local variable - is this true/relevant? *)
+(* Upper bound on number of locals needed by a function body *)
 let rec count_vars (ast : linast_expr) = match ast.desc with
   (* Split up how many things needed at a time.
      For let x = e in e', can overwrite all variables in e once its constructed, then just have x and e' *)

@@ -1,6 +1,4 @@
-(* Map linast to wasmtree, ready to be compiled to actual wasm by compilewasm *)
-(* Need to check conventions here line up with what compilewasm does
-   e.g. putting values into closures/handling function args *)
+(* Map linast to bindstree, ready to be compiled to actual wasm by compilewasm *)
 
 open Bindstree
 open Linast
@@ -82,9 +80,8 @@ type work_element = {
 
 let worklist = ref ([] : work_element list)
 
-(* TODO: Use BatDeque to be able to cons in reverse.
-         Why is this built in reverse order? May be possible to rewrite other way round *)
-let worklist_add elt = worklist := !worklist @ [elt]
+(* TODO: Use BatDeque to be able to cons in reverse *)
+let worklist_add elt = worklist := !worklist @ [elt] (* keeps functions in expected order in Wasm code *)
 let worklist_pop () = match !worklist with
   | [] -> failwith "Worklist empty"
   | x::xs -> worklist := xs; x
@@ -92,10 +89,10 @@ let worklist_pop () = match !worklist with
 let compile_const (c : Asttypes.constant) =
   match c with
   | Const_int i -> MConstI32 (Int32.of_int i)
-  | Const_string _ -> failwith "no strings yet" (* TODO: Implement strings *)
+  | Const_string _ -> failwith "strings not yet supported"
   | Const_float f_str -> MConstF64 (float_of_string f_str)
-  | Const_int32 i32 -> MConstI32 i32
-  | Const_int64 i64 -> MConstI64 i64 (* TODO: Should this be supported currently? Likely fails in practice *)
+  | Const_int32 i32 -> failwith "boxed integers not yet supported"
+  | Const_int64 i64 -> failwith "boxed integers not yet supported"
   | Const_char c -> failwith "Characters not yet supported"
   | Const_nativeint _ -> failwith "Native ints not yet supported"
 
@@ -140,7 +137,7 @@ let compile_function env args body tupled : closure_data =
   {
     func_idx=(Int32.of_int idx);
     arity=Int32.of_int (List.length new_args);
-    (* These variables should be in scope when the lambda is constructed. *)
+    (* each binding used to fill in free variables of closure when closure allocated *)
     variables=(List.map (fun id -> MImmBinding(find_id id env)) free_vars);
   }
 
@@ -198,7 +195,7 @@ let rec compile_comp env c =
   | CApp(({i_desc=ImmIdent id} as f), args) when Ident.Set.mem id (!(tupled_functions)) ->
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args, true)
   | CApp(f, args) ->
-    (* TODO: Utilize MCallKnown - Since AppBuiltin never used, is CallDirect useful? Maybe for optimisation when target known *)
+    (* TODO: Utilize MCallKnown *)
     MCallIndirect(compile_imm env f, List.map (compile_imm env) args, false)
   | CMatchFail i -> MFail i
   | CImm i -> MImmediate(compile_imm env i)
