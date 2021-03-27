@@ -16,6 +16,7 @@ Since OCaml is a strongly-typed language, runtime type-checks are rarely necessa
 \section{Overview of WebAssembly}
 WebAssembly has both a text format for \verb|.wast| files and a binary format for \verb|.wasm| files. This means that code can be easily inspected in the text format but downloaded and executed as the binary format, reducing the size of files and overhead to run them. As an example of how WebAssembly code is structured, see the implementation of the factorial function below:
 
+\begin{figure}[H]
 \begin{verbatim}
 (module
   (func $fact (export  ``fact'') (param $n i32) (result i32)
@@ -28,6 +29,8 @@ WebAssembly has both a text format for \verb|.wast| files and a binary format fo
   )
 )
 \end{verbatim}
+\caption{Factorial function written in WebAssembly} 
+\end{figure}
 
 The text format is very flexible, offering many forms of syntactic-sugar for writing expressions. In this case, I have used the folded form of instructions, where the arguments to instructions are given in a nested format, rather than the linear sequence of stack-based instructions they produce in the binary output. 
 

@@ -93,6 +93,9 @@ let main () =
   (* Reduce the number of locals used *)
   let graph = Colouring.colour_registers graph in
 
+  (* Now registers have been re-mapped, remove any useless copies 'Get i; Set i' *)
+  let graph = if (!opt_graph) then OptWasmPeephole.optimise graph else graph in
+
   let wasm = OutputWasm.translate_to_wasm graph in
   Compilewasm.validate_module wasm;
 

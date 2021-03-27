@@ -29,10 +29,10 @@ let rec peephole = function
   | ({it=Nop} as instr)::rest ->
     remove_instr instr;
     peephole rest
-  (* Second instruction can never execute, such cases sometimes introduced by switch statements that fail in some case *)
-  | ({it=Br _ | Unreachable} as first)::instr::rest ->
-    remove_instr instr;
-    first::(peephole rest)
+  (* Later instructions never execute, such cases sometimes introduced by switch statements that fail in some case *)
+  | ({it=Br _ | Unreachable | BrTable _} as first)::rest ->
+    List.iter remove_instr rest;
+    [first]
 
   (* Tags are added/removed by Xor. Rather than requiring some form of constant propagation on the stack,
      just look for the specific pattern of something being immediately tagged/untagged *)

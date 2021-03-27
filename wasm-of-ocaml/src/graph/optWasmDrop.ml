@@ -62,7 +62,7 @@ let rec split_stack n instrs = if n = 0 then ([], instrs)
         (* puts a value on the stack *)
         | Wasm.Ast.ValBlockType (Some _) -> n - 1
       in let above, rest = split_stack new_n rest in (instr::above, rest)
-    (* Doesn't actually occur - need to look up type of func (i is the func index) *)
+    (* Doesn't actually occur, included for completeness  - need to look up type of func (i is the func index) *)
     (* Easy to calculate since we know imports only contains functions *)
     | ({it=Call {it}} as instr)::rest ->
       let new_n = match List.nth (!func_types) (Int32.to_int it) with
@@ -74,7 +74,6 @@ let rec split_stack n instrs = if n = 0 then ([], instrs)
         {it=Wasm.Types.FuncType (args, results)} -> n + (List.length args) - (List.length results)
       in let above, rest = split_stack new_n rest in (instr::above, rest)
 
-(* TODO: Work out way to test this? *)
 (* reverse function body is 'drop_instr' :: 'rest' where 'rest' is 2nd argument *)
 let rec propagate_drop drop_instr = function
   | [] -> [drop_instr]

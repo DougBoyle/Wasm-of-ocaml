@@ -1,0 +1,51 @@
+\chapter{WebAssembly Optimisations}
+This appendix describes the optimisations performed on the WebAssembly representation in greater detail. These optimisations remove inefficiencies introduced by compiling each IR operation separately, performing relatively simple transformations that reduce the size of the output code by removing unnecessary operations.
+
+
+\section{Peephole Optimisations}
+Certain patterns of inefficient expressions are particularly common in the initial output of the compiler, so are scanned for and replaced.
+\begin{itemize}
+\item \texttt{(Br | BrTable | Unreachable); ...} are unconditional jump/trap instructions, so the instructions after them are never executed and can be discarded.
+This can occur when a case of a switch statement fails and backtracks during pattern matching. The body will contain a branch, but compiling a switch statement introduces a branch at the end of every case so that execution continues at the same point in every case after the pattern matching expression has been executed. Therefore, some cases can end up with two branches, in which case the second is discarded.
+
+\item \verb|LocalSet i; LocalGet i| is replaced with \verb|LocalTee i|. This happens where the IR code assigns to a variable then immediately uses that variable. In addition to reducing code size, if that variable is not accessed again (determined by live variable analysis), the \verb|LocalTee| instruction can be removed entirely as there is no need to store the variable. Without the optimisation, such an assignment would appear necessary since the \verb|LocalSet| is followed immediately by a \verb|LocalGet|.
+
+\item \verb|LocalGet i; LocalSet i| is removed, since getting a variable just to assign it to the same slot is clearly unnecessary. This can happen when register colouring maps two initially distinct local variables to the same slot.
+
+\item \verb|Const tag; Xor; Const tag; Xor| can occur where an object in memory is tagged to indicate that it is a pointer to a data block/closure, then is immediately untagged to access that value. Again, such sequences of instructions can just be removed.
+
+\end{itemize}
+
+
+\section{Dead Code}
+As described in the implementation chapter, live variable analysis identifies when the value stored in a local variable is actually needed later in the program.
+A \verb|LocalTee| to an unused variable can just be deleted, but removing a \verb|LocalSet| also requires removing the value it would take off of the stack, so the instruction is replaced with a \verb|Drop|.
+
+\verb|Drop| instructions, as introduced above or where a sequence \verb|e; e'| discards the result of the first expression, can sometimes be optimised to avoid putting the value on the stack in the first place. How this is done depends on the instruction that appears before the \verb|Drop| instruction. A few cases of WebAssembly instructions are omitted, as they are never output by the code my compiler produces.
+
+\begin{itemize}
+\item \verb|LocalGet|, \verb|GlobalGet| or \verb|Const|: A value is put on the stack then immediately discarded, so both instructions can just be removed.
+
+\item \verb|LocalTee|: A value is stored to a local variable but does not need to be kept on the stack, so this is changed to a \verb|LocalSet|.
+
+\item \verb|Load| or \verb|Unary|: These instructions take a value off the stack and push a new value, which is then discarded. Therefore, as the compiled code should never produce invalid memory accesses, these instructions can be discarded and the instruction below them considered instead.
+
+\item \verb|LocalSet| or \verb|GlobalSet|: Because WebAssembly is strongly typed, we must have that some value is put on the stack, then some value is constructed on top of that. The top value is stored by the \verb|Set| instruction and the value below it is discarded. By performing a simplified version of WebAssembly's type validation algorithm, using the argument/result arity of each instruction to track how the stack height changes as each instruction executes, I find the closest previous point where the stack height is one less than when the \verb|Set| executes. This is the point just after the first of those values has been constructed on the stack, so the \verb|Drop| instruction can be moved back to there and optimised accordingly.
+
+\item \verb|Compare| or \verb|Binary|: These are handled similarly to the previous case, replacing the instruction with a \verb|Drop| instruction and adding a second \verb|Drop| instruction further back in the code after the first argument to \verb|Compare| or \verb|Binary| is constructed.
+
+\item \verb|Drop|: Two \verb|Drop| instructions are handled by moving the latter one back to when the value it discards is put on the stack, similar to the previous two cases.
+\end{itemize}
+
+
+\section{Use of global variables}
+Initially, every variable defined by the WebAssembly function representing the top-level of the compiled OCaml program is stored as a global variable. These values then do not need to be stored in closures, reducing memory usage. However, the register colouring algorithm is not applied to global variables, so this can result in more variables being declared than necessary. To avoid this, once all functions have been compiled, those global variables that are never used outside of the top-level function (so would never be stored in closures anyway) are replaced with new local variables, which can then share local variable slots when register allocation occurs.
+
+
+
+
+
+
+
+
+

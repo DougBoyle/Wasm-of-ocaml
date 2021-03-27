@@ -3,9 +3,10 @@
 
 \def\authorname{Douglas Boyle\xspace}
 \def\authorcollege{Churchill College\xspace}
-%\def\authoremail{Sarah.Jones@cl.cam.ac.uk}
-\def\dissertationtitle{Optimising compiler from OCaml to Webassembly}
-\def\wordcount{\#\#\#\#\#}
+\def\dissertationtitle{Optimising compiler from OCaml to WebAssembly}
+
+
+\def\wordcount{12117} %%% OVER LIMIT! MUST GET BELOW 12k
 
 
 \usepackage{epsfig,parskip,setspace,tabularx,xspace}
@@ -37,6 +38,8 @@
 \epstopdfsetup{outdir=./}
 
 \graphicspath{{figures/}}
+
+\usepackage{fancyvrb}
 
 %\includeonly{chapters/implementation}
 %\includeonly{diss.bib}
@@ -120,18 +123,18 @@ College:            & \bf\authorcollege     \\
 Project Title:      & \bf\dissertationtitle \\
 Examination:        & \bf Computer Science Tripos -- Part II, July 2021  \\
 Word Count:         & \bf \wordcount \footnotemark[1] \\
+Lines of Code 	 & \bf {8807}\footnotemark[2] \\
 Project Originator: & Dr T.~Jones                    \\
 Supervisor:         &  Dr T.~Jones                   \\ 
 \end{tabular}
 }
-\footnotetext[1]{This word count was computed
-by \texttt{detex diss.tex | tr -cd '0-9A-Za-z $\tt\backslash$n' | wc -w}
-}
+\footnotetext[1]{Computed using \texttt{texcount} for the 5 main chapters}
+\footnotetext[2]{Computed using \texttt{cloc}, excluding whitespace, comments and the OCaml compiler front-end. See \texttt{https://github.com/AlDanial/cloc}}
 \stepcounter{footnote}
 
 \section*{Original Aims of the Project}
 
-To produce a compiler from a subset of OCaml to WebAssembly and measure its performance against a set of alternatives for running code in browsers. The core subset of OCaml would support programs operating on integers, without the class/module layer of OCaml. Extensions were to extend the subset supported, such as including floating point operations, and to implement optimisations and measure their impact.
+To produce a compiler from a subset of OCaml to WebAssembly and measure its performance against a set of alternatives for running code in browsers. The core subset of OCaml would support programs operating on integers, without the class/module layer of OCaml. Extensions were to extend the subset supported, such as including floating point operations, implement optimisations and measure their impact, and add a garbage collector to the runtime.
 
 
 \section*{Work Completed} % Of course update this as the project develops
@@ -235,6 +238,9 @@ None.
 %\bibliography{diss}
 \addcontentsline{toc}{chapter}{Bibliography}
 \printbibliography[title={Bibliography}]
+
+\clearpage
+\include{chapters/appendix-wasm}
 
 \chapter{Project Proposal}
 \clearpage

@@ -7,6 +7,7 @@ In this project, I implement a compiler from OCaml to WebAssembly, primarily sup
 % Reference for ANF?
 From OCaml's Typedtree data structure, the first pass of the compiler translates programs to be closer to administrative normal form (ANF), which linearises the syntax tree so that operands are always constants or identifiers, with the exception of control-flow constructs such as if statements. Expressions are broken down into immediate, compound and linast (linearised AST) terms to achieve this. The general structure is given below, with some cases omitted for brevity.
 
+\begin{figure}[H]
 \begin{verbatim}
 linast = compound 
   | Sequence (compound, linast)
@@ -23,6 +24,8 @@ compound = imm | unary_op imm | binary_op (imm, imm)
 imm = Constant | Identifier
 tag = index = int
 \end{verbatim}
+\caption{Summary of IR structure}
+\end{figure}
 
 %For example:
 %
@@ -56,6 +59,7 @@ I chose to implement the backtracking pattern-matching compiler described by Le 
 
 The idea is to have a vector of the values being matched, and a matrix representing the different cases and the action when each matches. An example of this is:
 
+\begin{figure}[H]
 \begin{minipage}{0.45\textwidth}
 \begin{verbatim}
 let f l1 l2 = match l1, l2 with
@@ -75,6 +79,8 @@ $\begin{pmatrix}
 \verb|x::xs| & \verb|y::ys| & \to & \verb|e3| \\
 \end{pmatrix}$
 \end{minipage}
+\caption{Representing a program as a pattern matrix and value vector}
+\end{figure}
 
 The algorithm given in the paper is made more complex by the range of syntax OCaml supports. %, and to a lesser extent by the fact the IR is linearised. 
 First, OCaml patterns can have guard statements, which need to be tested to see whether a pattern matches. Some of the compilation steps prefix additional variable bindings onto the actions, and the guard statement needs to be evaluated after these, but before any of the original action is evaluated. Therefore, each action $\to a$ is replaced with $\to a \ g \ b$ where $g$ is the optional guard expression and $b$ is the other bindings introduced.
@@ -84,7 +90,9 @@ The base cases of this algorithm occur when we reach a matrix with either no row
 There are four broad cases for when the matrix is non-empty:
 \begin{itemize}
 \item \textbf{Variable rule}: If the first column has just variable patterns, the corresponding binding of the first value in the values vector is added to each row's bindings, then the first column of the matrix is discarded, as is the now-matched value of the value vector.
-\item \textbf{Constructor rule}: If the first column has just constructor patterns, several specialised matrices are produced, each removing incompatible rows and deconstructing the fields of the chosen constructor. The result of compiling each of these then forms the branches of a switch statement on the constructor tag. A default case captures any constructor with no corresponding rows, and fails so that matching backtracks. \\
+\item \textbf{Constructor rule}: If the first column has just constructor patterns, several specialised matrices are produced, each removing incompatible rows and deconstructing the fields of the chosen constructor. The result of compiling each of these then forms the branches of a switch statement on the constructor tag. A default case captures any constructor with no corresponding rows, and fails so that matching backtracks. 
+\begin{figure}[H]
+\hfill
 $
 \begin{pmatrix}
 c(q_1, \dots, q_k) & p^1_2 & \dots & p^1_n & \to & \dots \\
@@ -94,7 +102,9 @@ c'(\dots) & p^2_2 & \dots & p^2_n & \to & \dots \\
 \begin{pmatrix}
  q_1 & \dots & q_k & p^1_2 & \dots & p^1_n  & \to & \dots 
 \end{pmatrix}
-$
+$ \hfill
+\caption{Constructor specialisation on a pattern matrix}
+\end{figure}
 % OR variables are an issue even at this stage, mention difference to paper's approach here about extended scope
 \item \textbf{OR rule}: If there is just one row and it starts with an OR pattern \verb"(p1|...|pk)", a $k \times 1$ matrix is produced expanding out the OR pattern. %, with each row having an empty action. 
 The output is the result of compiling this matrix, sequenced with the result of compiling the rest of the original matrix. Simply duplicating the original row once for each case of the OR pattern would duplicate all patterns in later columns. That could lead to exponential growth in code size, which backtracking compilation aims to avoid.
@@ -114,7 +124,8 @@ The explanation above is how the paper describes the algorithm. In practice, OCa
 \item \textbf{Arrays}: In OCaml, array patterns look like \verb"[|p1, p2, ..., pk|]", matching a specific length. The length is the tag of the object, so a switch statement on the tag is generated, extracting the corresponding number of fields in each case. As there are infinitely many possibilities, a default case is always included.
 
 \item \textbf{Records}: These are again treated as a constructor with one variant, and each pattern specifies some subset of fields to match. To allow all rows of the matrix to be processed,  the union of the fields mentioned in each row is extracted from the record, inserting the wildcard pattern \verb|_| where a row does not match a field, allowing the value extracted for that field to be ignored. In the example below, any unmentioned field $z$ is ignored entirely.
-
+\begin{figure}[H]
+\hfill
 $
 \begin{pmatrix}
 \{x=q_1\} & p^1_2 & \dots & p^1_n & \to & \dots \\
@@ -128,6 +139,9 @@ q_1 & \_ & p^1_2 & \dots & p^1_n  & \to & \dots \\
  q_3 & q_4 & p^3_2 & \dots & p^3_n  & \to & \dots
 \end{pmatrix}
 $
+\hfill
+\caption{Handling of record fields in pattern matrices}
+\end{figure}
 \end{itemize}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -194,7 +208,7 @@ $
 Finally, OCaml has alias patterns such as \verb|((x::xs) as lst)| which must be supported. These are handled by preprocessing the first column of the matrix at each step, replacing aliases in each row with a binding of the first value to the corresponding aliased variable. Redundant OR patterns are also removed, replacing \verb"(_|p)" with just \verb|_|.
 %The last feature of the OCaml language that needs supporting is aliases, for example \verb"match v with ((x::xs) as lst) -> ...". These are handled by always preprocessing the first column of the matrix to replace aliases in each row with a binding of the first value to the aliased variable. Preprocessing also simplifies any or patterns in the first column, replacing \verb"(_|p)" with just \verb|_| since the second part of the or pattern would never be considered.
 
-
+\begin{figure}[H]
 $
 \begin{pmatrix}
 (p^1_1\ \mathrm{as}\ q) & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
@@ -208,6 +222,8 @@ p^3_1 & p^3_2 & \dots & p^3_n & \to & a^3 & g^3 & b^3
 p^3_1 & p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
 \end{pmatrix}
 $
+\caption{Handling of aliases in pattern matrices}
+\end{figure}
 
 % MENTION ISSUE WITH OR PATTERNS?
 %There is a complication with OR patterns which I handle differently to the paper. 
@@ -222,6 +238,8 @@ First, the mixture rule can swap rows where they are incompatible. Patterns must
 
 As an example, these programs are equivalent, however the constructor rule can only be applied to the first row on the left, but to the first two rows in the right:
 
+\begin{figure}[H]
+\hfill
 \begin{minipage}{0.45\textwidth}
 \begin{verbatim}
 match l1, l2 with
@@ -237,7 +255,9 @@ match l1, l2 with
   | x::xs, y::ys -> 3
   | _, [] -> 2
 \end{verbatim}
-\end{minipage}
+\end{minipage}\hfill
+\caption{Example of reordering patterns not changing a program's semantics}
+\end{figure}
 
 Another improvement is made by passing a boolean for exhaustiveness to the procedure. The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive. Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. When a matrix is known to be exhaustive, switch statements can leave out cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
 
@@ -247,6 +267,7 @@ Next, several other data structures are added to the procedure. They are all rel
 
 The procedure is extended with a context, a pair of matrices of just patterns with no actions or guards. The first is called the prefix, remembering already matched structure, and the second is the fringe, the matrix of patterns used above to indicate patterns left to be matched. Together, these describe the possible values that may reach the point in the pattern-matching code currently being produced. Initially there is just one row, where the prefix is empty and the fringe is \verb|_|, as nothing is known about the value being matched. The specialisation operations on matrices extend to contexts in the obvious way, for example with constructors ($\bullet$ separates the prefix and fringe):
 
+\begin{figure}[H]
 $
 \begin{pmatrix}
  p^1_1 \dots  p^1_k & \bullet & c(q_1, \dots, q_k) & \dots & q^1_n \\
@@ -257,6 +278,8 @@ $
 p^1_1 \dots  p^1_k  & c(\_, \dots, \_) & \bullet &  q_1 & \dots & q_k & \dots &  q^1_n 
 \end{pmatrix}
 $
+\caption{Constructor specialisation on a context}
+\end{figure}
 
 The procedure is also passed a list of reachable handlers. When the mixture rule splits a matrix into upper and lower parts $P$ and $Q$ and introduces handler $i$, then $P$ is complied with $(i, Q)$ added to its handler list, although only the patterns of $Q$ need to be remembered in the handler list, not the actions or guards. Again, operations on matrices are naturally extended to each matrix in the list. 
 
@@ -396,6 +419,7 @@ Finally, the program is translated to WebAssembly code, with most operations map
 For example, if \verb|ar| evaluates to an array object and \verb|index| evaluates to the index being accessed, checking the index is within the bounds of the array and loading the value from that index emits the code below. Some steps have been omitted for brevity, such as removing tags from values, or multiplying the index by 4 to be a byte offset rather than a word offset.
 
 % TODO: Check this is aligned nicely with pages
+\begin{figure}[H]
 \begin{verbatim}
 ar; 
 LocalTee 0;
@@ -412,6 +436,8 @@ else
   trap 
 end
 \end{verbatim}
+\caption{Code generated for accessing an array element}
+\end{figure}
 
 Here locals 0 and 1 are the swap variables. The expressions \verb|ar| and \verb|index| could be free variables being loaded from a closure, in which case storing their values in local variables avoids repeated loads from memory. 
  For a function with \verb|n| arguments, we therefore compile \verb|Swap i| as \verb|LocalGet (n + i)| and \verb|Local i| as \verb|LocalGet (n + 2 + i)|. Lastly,  a free variable \verb|Closure i| compiles to a \verb|LocalGet 0| to get the closure pointer, then a \verb|Load| with an offset to that variable.
@@ -427,7 +453,7 @@ As explained below, integers and pointers are tagged to distinguish them, so I w
 
 Even before implementing a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are unused. I therefore distinguish the types of values by these last two bits. Closure pointers are tagged with 11, pointers to other objects in memory such as constructors are tagged with 01, and integers are tagged with 10 or 00 by shifting them left one, so odd  values now end in 10 and even values end in 00. 
 
-The layout of objects stored in memory is given below, where the column headers are byte offsets and the ``arity" field specifies the number of 32-bit values in ``elements"/``free variables". Since arguments and return values in WebAssembly are strongly typed, and polymorphic OCaml functions need supporting, all values are 32-bit integers that are decoded as pointers to data or functions, as just described. In particular, floating-point values need to be ``boxed'' in memory and represented as pointers to data blocks storing their value. The variant tag on data blocks goes from 0 to the number of variants of that type, so -1 is used as a special value to distinguish blocks storing a float value.\\
+The layout of objects stored in memory is given by figure \ref{fig:memlayout}, where the column headers are byte offsets and the ``arity" field specifies the number of 32-bit values in ``elements"/``free variables". Since arguments and return values in WebAssembly are strongly typed, and polymorphic OCaml functions need supporting, all values are 32-bit integers that are decoded as pointers to data or functions, as just described. In particular, floating-point values need to be ``boxed'' in memory and represented as pointers to data blocks storing their value. The variant tag on data blocks goes from 0 to the number of variants of that type, so -1 is used as a special value to distinguish blocks storing a float value.\\
 
 %  \begin{tabular}{c|c|c|c|c|c|m{2cm}|} \cline{2-7}
 %Constructor block &   variant tag  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements} } &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-7}
@@ -436,7 +462,7 @@ The layout of objects stored in memory is given below, where the column headers 
 %Closure & function index  & arity &   \multicolumn{3}{c}{\hspace{2cm}{free variables}} &  \\ \cline{2-7} 
 %\end{tabular}
 
-
+\begin{figure}[H]
 \hspace{-1cm}
 \begin{bytefield}[bitformatting={\small\bfseries},bitwidth=1.6em, leftcurly=.]{22}
 \bitheader{0,4,8,16} \\
@@ -453,7 +479,10 @@ The layout of objects stored in memory is given below, where the column headers 
 \begin{leftwordgroup}{Closure}
 \bitbox{4}{function index} & \bitbox{4}{arity} & \bitbox{14}{free variables}  \end{leftwordgroup}  \\
     \end{bytefield}
-
+\vspace{-1cm}
+\caption{Memory layout of objects}
+\label{fig:memlayout}
+\end{figure}
 
 
 
@@ -499,15 +528,20 @@ As detailed below, tail-call optimising a recursive function increases its size,
 %
 %At the end of this process, we have a table which stores the functions that are tail called within each recursive function. From this we determine which functions to tail call optimise on their own, and which to optimise as mutually tail recursive functions (which has a greater impact on code size since the function must be split into two functions). 
 
-\begin{verbatim}
+\begin{figure}[H]
+\centering
+\begin{BVerbatim}
 while graph changing:
-  for each f in graph:
-    if f makes no tail calls:
-      remove f and all edges to it
-    else if f only tail calls itself:
-      remove f and all edges to it
-      optimise f on its own
-\end{verbatim}
+    for each f in graph:
+        if f makes no tail calls:
+            remove f and all edges to it
+        else if f only tail calls itself:
+            remove f and all edges to it
+            optimise f on its own
+\end{BVerbatim}
+\caption{Iterative algorithm to determine mutually tail-recursive functions}
+\end{figure}
+
 %There is little to gain from rewriting a function which makes no tail calls, so these are not optimised and hence no other function can optimise tail calls to them. Due to the added code bloat of optimising a function for mutually recursive tail calls rather than just tail calls to itself, a function which could only optimise calls to itself is optimised separately and tail calls from other functions to it are also removed. This leaves us with all other functions benefiting from being made mutually tail recursive.\\
 
 When deciding on this method for choosing which functions to tail-call optimise on their own or as mutually recursive functions, I studied how the Grain complier implements this analysis. In doing so, I identified a bug where it would wrongly optimise certain tail calls, and submitted an issue on GitHub\footnote{https://github.com/grain-lang/grain/issues/506} detailing this, which has since been corrected. % Cite github issue?
@@ -516,6 +550,7 @@ When deciding on this method for choosing which functions to tail-call optimise 
 For a function \verb|f| taking argument \verb|x| which is to be made mutually recursive on its own, we create new variables \verb|result|, \verb|continue| and \verb|x'|. The argument of \verb|f| is changed to be \verb|x'| and the body of \verb|f| is replaced with an assignment \verb|x = x'| and a while loop on the \verb|continue| variable. This loop sets \verb|continue| to false and \verb|result| to the result of evaluating the original body of \verb|f|. A tail call \verb|f(y)| is replaced with \verb|x = y; continue = true|. This will therefore execute the body of \verb|f| again with the new argument each time a tail call occurs. When the loop eventually exits, \verb|result| is the value the function returns. When \verb|f| is a curried function with multiple arguments, a new variable is created for each argument.
 % Mention that linearised tree may need to be rewritten
 
+\begin{figure}[H]
 \begin{minipage}{0.24\textwidth}
 \begin{verbatim}
 let rec f x = 
@@ -538,10 +573,14 @@ let rec f x' =
   result
 \end{verbatim}
 \end{minipage}
+\caption{Example of how a single function is tail-call optimised}
+\end{figure}
+
 
 Above we were able to include the body of the function in the new function. For mutually tail-recursive functions, the while loop must execute one of a number of mutually recursive functions so this is not possible. Instead, the body of \verb|f| is moved to a new function \verb|_f| taking a unit argument and the new function \verb|f| just executes a while loop, calling a function selected by a variable \verb|next|, set at each tail call. \verb|next|, \verb|continue| and \verb|result| are all shared global variables in this case, so they can be set by different functions. A shared set of global variables is also used to pass arguments at tail calls, and their values are bound to the original function variables when \verb|_f| executes.
 % Give pseudocode for this too?
 
+\begin{figure}[H]
 \begin{minipage}{0.24\textwidth}
 \begin{verbatim}
 let rec f x = 
@@ -574,6 +613,8 @@ and _f () =
 ... similarly for g and _g ...
 \end{verbatim}
 \end{minipage}
+\caption{Example of how mutually recursive functions are tail-call optimised}
+\end{figure}
 
 
 
@@ -649,13 +690,15 @@ OCaml is an impure language, so analysis of side effects is necessary to determi
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-The algorithm is summarised by the inference rules and functions below. $P$ and $I$ represent pure and immutable, and $L(F)$ represents a function having latent behaviour described by $F$. $\Gamma$ is a mapping of both variables and handler indices to analyses. The variable rule for \verb|x| $\not \in \Gamma$ is used when \verb|x| is a function argument or recursive function, in which case nothing is assumed about its latent effects, so side effects are safely over-approximated. Where branches may occur, the intersection of analyses is taken.
+The algorithm is summarised by the inference rules and functions in figure \ref{fig:inferenceRules}. $P$ and $I$ represent pure and immutable, and $L(F)$ represents a function having latent behaviour described by $F$. $\Gamma$ is a mapping of both variables and handler indices to analyses. The variable rule for \verb|x| $\not \in \Gamma$ is used when \verb|x| is a function argument or recursive function, in which case nothing is assumed about its latent effects, so side effects are safely over-approximated. Where branches may occur, the intersection of analyses is taken.
 
 The function \verb|seq| encodes that the latent effects of \verb|e; e'| are those of \verb|e'|, but the expression is only pure/immutable if both \verb|e| and \verb|e'| are. The function \verb|app| encodes the same for unwrapping the analysis of latent effects as a function is applied. 
 
 % Cases left out: Handler jumps, unary/binary operations
 % For simplicity, ignores the propagation of 'Fields' analysis happening at the same time, as this generally isn't useful
 % Only case it is useful is if we have 'if p then (f1, f2) else (f3, f4)', can't propagate the Idents themselves but can propagate effect analysis
+
+\begin{figure}[H]
 \begin{prooftree}
 \hypo{ $\lstinline{x}$\   : F \in \Gamma}
 \infer1{\Gamma \vdash \  $\lstinline{x}$\   : F \cup \{P, I\}}
@@ -670,6 +713,7 @@ The function \verb|seq| encodes that the latent effects of \verb|e; e'| are thos
 \infer2{\Gamma \vdash\   $\lstinline{let x = e in e'}$ \ :\ $\lstinline{seq}$(F, F')}
 \end{prooftree}\hfill \\
 
+\vspace{0.2cm}
 \begin{prooftree}
 \hypo{ \Gamma \vdash \  $\lstinline{e}$\  : F}
 \infer1{\Gamma \vdash\   $\lstinline{fun x -> e}$\   : \{P, I, L(F)\}}
@@ -680,6 +724,7 @@ The function \verb|seq| encodes that the latent effects of \verb|e; e'| are thos
 \infer2{\Gamma \vdash\   $\lstinline{let rec f x = e in e'}$\   :  F'}
 \end{prooftree} \\
 
+\vspace{0.2cm}
  \begin{prooftree}
 \hypo{ \Gamma \vdash\  $\lstinline{f}$\ : F}
 \hypo{ $\lstinline{app}$\  F\ $\lstinline{args}$\ = F'}
@@ -691,6 +736,7 @@ The function \verb|seq| encodes that the latent effects of \verb|e; e'| are thos
 \end{prooftree} 
  \\
 
+\vspace{0.2cm}
 \begin{prooftree}
 \infer0{\Gamma \vdash   \ $\lstinline{SetField (e, i, e')}$ \ :  \{\}}
 \end{prooftree} \hfill
@@ -699,6 +745,7 @@ The function \verb|seq| encodes that the latent effects of \verb|e; e'| are thos
 \infer1{\Gamma \vdash\    $\lstinline{Field (e, i)}$\  :  F}
 \end{prooftree}\hfill \\
 
+\vspace{0.2cm}
  \begin{prooftree}
 \hypo{ \Gamma \vdash\  $\lstinline{e}$ \ : F}
 \hypo{ \Gamma \vdash\  $\lstinline{e'}$\  : F'}
@@ -710,6 +757,7 @@ The function \verb|seq| encodes that the latent effects of \verb|e; e'| are thos
 \infer2{\Gamma \vdash \  $\lstinline{e; e'}$\ : \ $\lstinline{seq}$(F, F')}
 \end{prooftree}\\
 
+\vspace{0.2cm}
 \begin{prooftree}
 \hypo{ \Gamma, i:F' \vdash  \ $\lstinline{e}$\ : F}
 \hypo{ \Gamma \vdash\  $\lstinline{e'}$\ : F'}
@@ -733,6 +781,10 @@ let rec app F = function
       seq (F, app F' args)
     else: $\{\}$
 \end{lstlisting}
+
+\caption{Summary of the inference rules used for effects analysis}
+\label{fig:inferenceRules}
+\end{figure}
 
 For the purpose of removing dead assignments, creating a block in memory is considered pure as it could be immediately garbage collected if unused. If every field is immutable, then creating the block is also considered immutable, since two instances pointing to a shared copy is indistinguishable from having two separate blocks. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. This therefore relies on the propagation of \verb|ImmutableBlock| annotations described previously, left out here to avoid further complicating the inference rules.
 
@@ -807,6 +859,7 @@ The implementation above requires \verb|malloc| and \verb|free| to both walk alo
 
 First, an additional 8 byte trailer is added to each block, used as shown below, with the flags A = allocated, M = marked. A block's size, and whether it is allocated or not, is now accessible from either end of the block. The free list is doubly linked but is no longer made circular. 
 
+\begin{figure}[H]
 \hspace{-0.8cm}
 \begin{bytefield}[bitformatting={\small\bfseries},bitwidth=1.1em, leftcurly=.]{34}
 \begin{leftwordgroup}{Free block}
@@ -815,6 +868,9 @@ First, an additional 8 byte trailer is added to each block, used as shown below,
 \begin{leftwordgroup}{Allocated block}
 \bitbox{7}{marked stack ptr} & \bitbox{1}{A}  & \bitbox{7}{size} & \bitbox{1}{M}  & \bitbox{2}{\dots} & \bitbox{7}{size} & \bitbox{1}{0}  &	\bitbox{7}{unused} & \bitbox{1}{A} \end{leftwordgroup} 
     \end{bytefield}
+\vspace{-0.5cm}
+\caption{Memory layout of the header and trailer for optimised memory allocation}
+\end{figure}
 
 
 
@@ -856,6 +912,7 @@ This chapter has described the components of my compiler and the decisions made 
 
 
 \section{Repository Overview}
+\begin{figure}[H]
 \dirtree{%
 .1 . 
 .2 src.
@@ -876,7 +933,8 @@ This chapter has described the components of my compiler and the decisions made 
 .3 Grain/.  
 .2 unit-tests/\DTcomment{Tests for isolated elements of translation/optimisation}.
 }
-
+\caption{Overview of the structure of the repository. Most of the contents of directories is omitted for brevity, such as the example programs in the \texttt{samples} directory.}
+\end{figure}
 
 
 
