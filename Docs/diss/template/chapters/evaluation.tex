@@ -8,7 +8,7 @@ I also measure the impact of the optimisations implemented in my compiler. Perfo
 \item \textbf{Heap usage}: The heap memory used is also collected by these scripts. Without garbage collection, my runtime allocates memory linearly so a call to allocate 0 bytes returns the total memory used. For the garbage-collected allocator, I created a separate version that tracks the peak memory allocated, updating this on each allocation. 
 
 The Grain runtime's development build outputs similar memory-tracing statistics, including the amount of heap memory used. 
-The overhead of tracing is significant so this is done separately to collecting timing information. For C, where parts of \verb|stdlib| are included in the WebAssembly output for memory allocation, \verb|sbrk(0)| returns the size of the WebAssembly linear memory used. 
+The overhead of tracing is significant so this is done separately to collecting timing information. For C, where parts of \verb|stdlib| are included in the WebAssembly output for memory allocation, \verb|sbrk(0)| returns the size of the WebAssembly linear memory used. % Mention 64KiB resolution?
 Lastly, for programs translated to JavaScript, the benchmarking script is run with the \verb|--expose-gc| option. This allows calling the garbage collector before the program is executed, and obtaining the memory used by calling \verb|process.memoryUsage().heapUsed| before and after the program runs. This is an approximate value, so it is also averaged over 20 iterations.
 
 \item \textbf{Output file size}: This is easily obtained from the file system.
@@ -47,7 +47,7 @@ In the following graphs, the output of compiling equivalent C programs to WebAss
 
 \begin{figure}[H]
 \hspace{-0.7cm}
-\includegraphics[scale=0.42]{figures/alternatives_timing}
+\includegraphics[scale=0.42]{figures/alternatives_timing2}
 \vspace{-0.5cm}
 \caption{Execution times for each alternative (less time is better)}
  \label{fig:alt_timing} 
@@ -73,7 +73,7 @@ Without garbage collection, my compiler's output	executes between 0.33 and 20 ti
 
 \begin{figure}[H]
 \hspace{-1cm}
-\includegraphics[scale=0.43]{figures/alternatives_heap}
+\includegraphics[scale=0.43]{figures/alternatives_heap2}
 \vspace{-0.5cm}
 \caption{Heap usage for each alternative (less memory is better)}
  \label{fig:alt_heap} 
@@ -84,7 +84,12 @@ There are no bars for C for \verb|arith|, \verb|funcrec| and \verb|nbody| in fig
 There is also no data for Grain for \verb|arith_1000| as the program did not appear to terminate with tracing enabled.
 % was very slow without tracing (see figure \ref{fig:alt_timing}) and with tracing enabled did not terminate after 10 minutes.
 
-Where the compiled C programs did use the heap, my garbage-collected runtime uses at worst 13\% more memory. However, C is not a garbage-collected language, so additional effort is required when writing the programs, to perform manual memory management. My implementation also uses significantly less memory than both the JavaScript and Grain alternatives. In every test, % (ignoring the Grain result for \verb|arith_1000|), 
+For the compiled C programs that did use the heap, my garbage-collected runtime only uses more memory for \verb|mergesort|, where my implementation uses 70\% more memory at the larger problem size. This difference is due to C being an imperative language, where it is natural to implement \verb|mergesort| to perform operations in-place. C is also not garbage-collected, so manual memory management is necessary. Although this allows more precise control over memory, it adds to the complexity of writing these program. % Say how it makes things harder or not?
+The WebAssembly memory is initialised as 2 pages (128KiB), which is the size recorded for \verb|composition| and \verb|mergesort|$_{1000}$, indicating that these programs may need less memory than the amount initially allocated.
+
+
+%Where the compiled C programs did use the heap, my garbage-collected runtime uses at worst 35\% more memory. However, C is not a garbage-collected language, so additional effort is required when writing the programs, to perform manual memory management. 
+My implementation uses significantly less memory than both the JavaScript and Grain alternatives. In every test, % (ignoring the Grain result for \verb|arith_1000|), 
 the garbage-collected runtime uses at most one third of the memory used by either the JavaScript or Grain version. 
 % NEW - DESCRIBING MEMORY MANAGEMENT IN EACH OF THE ALTERNATIVES
 The Grain compiler has its own runtime system for managing WebAssembly memory, whereas Js\_of\_ocaml converts OCaml programs to JavaScript, which then rely on the garbage collector of the environment the benchmarking script is executed in. I ran the tests with Node.js, so this was using Chrome's V8 JavaScript engine for memory management.
@@ -97,8 +102,8 @@ The order of the bars for my compiler, with and without garbage collection, are 
 \subsection{Output File Size}
 
 \begin{figure}[H]
-\hspace{-1cm}
-\includegraphics[scale=0.6]{figures/alternatives_size}
+\hspace{-1.2cm}
+\includegraphics[scale=0.5]{figures/alternatives_size2}
 \vspace{-0.8cm}
 \caption{Output size for each alternative (smaller files are better)}
  \label{fig:alt_size} 
@@ -106,7 +111,7 @@ The order of the bars for my compiler, with and without garbage collection, are 
 
 As expected, figure \ref{fig:alt_size} shows that the JavaScript output tends to be largest, as JavaScript is a text format rather than a binary format like WebAssembly. On average, it is 8 times larger than the output of my compiler with garbage collection enabled. Grain also produces much larger binary files, averaging about 3.5 times larger than my compiler's output. Inspecting the compiled output, there appear to be a few reasons for this. First, programs import a larger set of functions from Grain's runtime than used by my compiler, as Grain supports more types of numerical data, such as having both 32-bit and 64-bit integers. It also uses a reference-counting garbage collector, which adds more overhead since updating a variable requires both incrementing the new value and decrementing the old value, whereas my garbage collector just overwrites the old value on the shadow stack. Lastly, it does not appear to optimise the WebAssembly produced, compared with my compiler, which uses a register-allocation algorithm to reduce the number of local variables declared, and peephole optimises trivially useless statements such as \verb|local.get i; drop|.
 
-Compared with the output of compiling a C program, the sizes are similar except where parts of \verb|stdlib| have to be included for memory allocation, which makes those programs about 7KB larger. For comparison, my runtime without garbage collection is a 740B WebAssembly file, but the garbage collector is implemented in JavaScript, which when minified is a 4KB file.
+Compared with the output of compiling a C program, the sizes are similar except where parts of \verb|stdlib| have to be included for memory allocation, which makes those programs about 9KB larger. For comparison, my runtime without garbage collection is a 740B WebAssembly file, but the garbage collector is implemented in JavaScript, which when minified is a 4KB file.
 
 % CAREFUL! MANUALLY SET REFERENCES! MAY CHANGE IF CHAPTERS REORDERED/REMOVED!
 Figure \ref{fig:alt_size} also demonstrates the overhead of garbage collection in terms of the extra bookkeeping operations added to maintain the shadow stack. %described in section 3.6.1.
@@ -175,10 +180,10 @@ As figure \ref{fig:patterns} shows, the optimisations have little or no impact o
 
 \subsection{Impact of number of iterations}
 %Only one instance of each benchmark is shown, as the pattern is identical for other problem sizes.
-
+\vspace{-0.5cm}
 \begin{figure}[H]
 \hfill
-\includegraphics[scale=0.65]{figures/iterations} \hfill
+\includegraphics[scale=0.62]{figures/iterations} \hfill
 \vspace{-0.3cm}
 \caption{Effect of repeating optimisation passes}
  \label{fig:iterations} 
@@ -190,14 +195,12 @@ Multiple iterations can also benefit one optimisation in isolation e.g. \verb|le
 % TODO: Phase ordering or not?
 
 
-
 \section{Garbage Collection}
-
-\begin{figure}[H]
-\hspace{-3.3cm}
 \vspace{-0.5cm}
-\includegraphics[scale=0.58]{figures/three_gcs}
-\vspace{-0.3cm}
+\begin{figure}[H]
+\hspace{-2.8cm}
+\includegraphics[scale=0.53]{figures/three_gcs}
+\vspace{-0.6cm}
 \caption{Effect of changes to garbage collection}
  \label{fig:three_gcs} 
 \end{figure}

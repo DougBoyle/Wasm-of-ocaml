@@ -48,48 +48,17 @@ int splice(void* params, int k){
     }
 }
 
-typedef struct cell *list;
-struct cell {
-    void *head;
-    list tail;
-};
-
-struct closure {
-    void *(*f)(void*, void*);
-    void* params;
-};
-typedef struct closure Closure;
-
-list cons(void *head, list tail){
-    list ptr = malloc(sizeof(struct cell));
-    ptr->head = head;
-    ptr->tail = tail;
-    return ptr;
-}
-
-// arena used due to the complexity of closures containing other closures for map/compose etc.
-list arena = NULL;
-
-void *arena_malloc(size_t n){
-    void *ptr = malloc(n);
-    arena = cons(ptr, arena);
-    return ptr;
-}
-
-void free_list(list l){
-    while (l != NULL){
-        list tail = l->tail;
-        free(l);
-        l = tail;
-    }
-}
-
 // Biggest issue with this program is the need to define closures so we can compose functions by folding to get
 // a function which applies every function in the list.
 // Was a significant challenge to work out how to write this compared to writing it in Grain/JS/OCaml
 // Due to having both functions on single elements and mapped across lists, also have lots of void* arguments.
 // C++ would avoid some of these issues by allowing template functions. (Also pairs)
 // Could also just duplicate definitions for functions on lists vs functions on ints
+struct closure {
+    void *(*f)(void*, void*);
+    void* params;
+};
+typedef struct closure Closure;
 
 int compose(void* p, int k){
     Closure** params = (Closure**)p;
@@ -99,10 +68,10 @@ int compose(void* p, int k){
 }
 
 Closure *mk_compose(Closure *c1, Closure *c2){
-    Closure** params = arena_malloc(sizeof(Closure*)*2);
+    Closure** params = malloc(sizeof(Closure*)*2);
     params[0] = c1;
     params[1] = c2;
-    Closure *c = arena_malloc(sizeof(Closure));
+    Closure *c = malloc(sizeof(Closure));
     c->f = (void * (*)(void *, void *))compose;
     c->params = params;
     return c;
@@ -112,6 +81,18 @@ int apply(Closure *c, int n){
     return (int)c->f(c->params, (void*)n);
 }
 
+typedef struct cell *list;
+struct cell {
+    void *head;
+    list tail;
+};
+
+list cons(void *head, list tail){
+    list ptr = malloc(sizeof(struct cell));
+    ptr->head = head;
+    ptr->tail = tail;
+    return ptr;
+}
 
 list map(Closure *c, list l){
     list result = NULL;
@@ -131,36 +112,37 @@ struct pair {
 };
 typedef struct pair Pair;
 
+// gcc supports nested functions to make syntax easier, but clang doesn't :(
 Pair random_perm(int n, Pair acc, int i){
-    if (i <= 0) return acc;
-    int c = randm(3);
-    Closure *p = arena_malloc(sizeof(Closure));
-    if (c == 0){
-        int *params = arena_malloc(sizeof(int));
-        params[0] = randm(n);
-        p->f = (void * (*)(void *, void *))rotate;
-        p->params = params;
-    } else if (c == 1){
-        int *params = arena_malloc(sizeof(int)*2);
-        params[0] = randm(n);
-        params[1] = randm(n);
-        p->f = (void * (*)(void *, void *))reverse;
-        p->params = params;
-    } else {
-        int *params = arena_malloc(sizeof(int)*3);
-        params[0] = randm(n);
-        params[1] = randm(n);
-        params[2] = randm(n);
-        p->f = (void * (*)(void *, void *))splice;
-        p->params = params;
+        if (i <= 0) return acc;
+        int c = randm(3);
+        Closure *p = malloc(sizeof(Closure));
+        if (c == 0){
+            int *params = malloc(sizeof(int));
+            params[0] = randm(n);
+            p->f = (void * (*)(void *, void *))rotate;
+            p->params = params;
+        } else if (c == 1){
+            int *params = malloc(sizeof(int)*2);
+            params[0] = randm(n);
+            params[1] = randm(n);
+            p->f = (void * (*)(void *, void *))reverse;
+            p->params = params;
+        } else {
+            int *params = malloc(sizeof(int)*3);
+            params[0] = randm(n);
+            params[1] = randm(n);
+            params[2] = randm(n);
+            p->f = (void * (*)(void *, void *))splice;
+            p->params = params;
+        }
+        Closure *p_vec = malloc(sizeof(Closure));
+        p_vec->f = (void * (*)(void *, void *))map;
+        p_vec->params = p;
+        acc.l1 = cons(p, acc.l1);
+        acc.l2 = cons(p_vec, acc.l2);
+        return random_perm(n, acc, i-1);
     }
-    Closure *p_vec = arena_malloc(sizeof(Closure));
-    p_vec->f = (void * (*)(void *, void *))map;
-    p_vec->params = p;
-    acc.l1 = cons(p, acc.l1);
-    acc.l2 = cons(p_vec, acc.l2);
-    return random_perm(n, acc, i-1);
-}
 
 Pair make_perms(int n){
     Pair acc = {NULL, NULL};
@@ -182,18 +164,11 @@ int main(){
         c = mk_compose(p_f->head, c);
         p_f = p_f->tail;
     }
-    free_list(p_f);
-
     list l = v;
     while (p_v != NULL){
         Closure *p_vec = (Closure*)p_v->head;
-        list new_l = p_vec->f(p_vec->params, l);
-        free_list(l); // map doesn't itself free the list
-        l = new_l;
+        l = p_vec->f(p_vec->params, l);
         p_v = p_v->tail;
     }
-    free_list(p_v);
-
-    free_list(arena);
     return 0;
 }

@@ -1,12 +1,21 @@
 #include <stdlib.h>
 
 // trees require use of malloc
-// lists freed once used, all nodes allocated only freed at end due to reuse of nodes
+// free ignored as it gets quite complicated for this problem, lots of reuse of nodes
+// would be simpler if not done naively i.e. remember the generated trees for each smaller size
+// fair comparison as my compiler also doesn't worry about freeing memory
 struct tree {
     struct tree *left;
     struct tree *right;
 };
 typedef struct tree *Tree;
+
+Tree node(Tree l, Tree r){
+    Tree ptr = malloc(sizeof(struct tree));
+    ptr->left = l;
+    ptr->right = r;
+    return ptr;
+}
 
 typedef struct cell *list;
 struct cell {
@@ -21,39 +30,9 @@ list cons(Tree head, list tail){
     return ptr;
 }
 
-void list_free(list l){
-    while (l != NULL){
-        list tail = l->tail;
-        free(l);
-        l = tail;
-    }
-}
-
-// just a list of every node allocated, done this way due to reuse of trees
-list arena = NULL;
-
-void arena_free(){
-    while (arena != NULL){
-        free(arena->head);
-        list tail = arena->tail;
-        free(arena);
-        arena = tail;
-    }
-}
-
-Tree node(Tree l, Tree r){
-    Tree ptr = malloc(sizeof(struct tree));
-    ptr->left = l;
-    ptr->right = r;
-
-    arena = cons(ptr, arena);
-
-    return ptr;
-}
-
 list all_trees(int n){
     list result = NULL;
-    if (n == 0){return cons(NULL, result);} // NULL used for Leaf node
+    if (n == 0){return cons(NULL, result);}
     for (int i = 0; i < n; i++){
         list left = all_trees(i);
         list right = all_trees(n-i-1);
@@ -65,14 +44,11 @@ list all_trees(int n){
             }
             left = left->tail;
         }
-        list_free(left);
-        list_free(right);
     }
     return result;
 }
 
 int main(){
-    all_trees(7);
-    arena_free();
+    all_trees(9);
     return 0;
 }

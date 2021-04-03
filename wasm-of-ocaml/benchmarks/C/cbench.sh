@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 cd $(dirname $BASH_SOURCE)
-for file in *.c
+for file in gc_*.c
 do
   NAME=$(basename $file .c)
   if grep -q "#include" $file

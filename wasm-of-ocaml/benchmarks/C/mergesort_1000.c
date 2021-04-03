@@ -13,6 +13,14 @@ list cons(int head, list tail){
     return ptr;
 }
 
+void list_free(list l){
+    while (l != NULL){
+        list tail = l->tail;
+        free(l);
+        l = tail;
+    }
+}
+
 int a = 214013;
 int c = 2531011;
 int m = 65536;
@@ -23,10 +31,26 @@ int randm(int n){
 }
 
 list merge(list l1, list l2){
-    if (l1 == NULL) return l2;
-    if (l2 == NULL) return l1;
-    if (l1->head < l2->head) return cons(l1->head, merge(l1->tail, l2));
-    return cons(l2->head, merge(l1, l2->tail));
+    struct cell result = {0, 0}; // dummy node
+    list ptr = &result;
+    while (l1 != NULL && l2 != NULL){
+        if (l1->head < l2->head){
+            ptr->tail = l1;
+            ptr = ptr->tail;
+            l1 = l1->tail;
+        } else {
+            ptr->tail = l2;
+            ptr = ptr->tail;
+            l2 = l2->tail;
+        }
+    }
+    if (l1 == NULL){
+        ptr->tail = l2;
+    } else {
+        ptr->tail = l1;
+    }
+
+    return result.tail;
 }
 
 // results passed in to avoid having to deal with returning pairs
@@ -46,7 +70,11 @@ list mergesort(list l){
   list l1 = NULL;
   list l2 = NULL;
   split(&l1, &l2, l);
-  return merge(mergesort(l1), mergesort(l2));
+  list_free(l);
+
+  list result = merge(mergesort(l1), mergesort(l2));
+
+  return result;
 }
 
 list init(int n, int m){
