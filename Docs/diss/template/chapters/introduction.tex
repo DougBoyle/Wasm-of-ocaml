@@ -2,19 +2,43 @@
 % Have a brief description of project at the top
 
 % Don't have other projects open when writing, ensures I use my own words
-\section{Motivation}
+%\section{Motivation}
 % Javascript or JavaScript
-WebAssembly was developed to provide a more efficient platform for web applications. Until recently, JavaScript was the only language available for writing interactive web pages, and it is still the most popular choice. The first disadvantage of JavaScript is that code is sent in a text format and is then compiled to bytecode  and interpreted, or just-in-time compiled to native code. Therefore, the client has to download a larger file and there is a significant overhead in loading the file. 
+%WebAssembly was developed as a more efficient platform for web applications.
+Until recently, JavaScript was the only language available for writing interactive web applications, and it is still the most popular choice for developers. 
+%
+However, JavaScript has a number of downsides, which has led to the development of WebAssembly as a more efficient rival for these kinds of programs. In particular, WebAssembly is better suited as a target for compiling strongly typed languages, in order for them to run on the web. %particularly as a target for strongly typed languages, 
+%
 
-The second issue with JavaScript comes from its dynamic typing system. Varaibles can be arbitrarily assigned values of different types or have properties added or removed. This greatly restricts the types of optimisations that can be made and means that almost all operations require runtime type-checks and potentially throw exceptions if a variable no longer has the expected type, all of which adds to runtime overhead. It also tries to be flexible as a programming language, implicitly casting objects to the necessary type where possible. This can result in hard to detect bugs which slow down development. For example, arrays can be cast to booleans and \verb|[] == false| returns \verb|true|, suggesting that the empty array is equivalent to \verb|false|, yet \verb|![]| returns \verb|false|, suggesting it is instead equivalent to \verb|true|. This can lead to the conditions of \verb|if| statements having unexpected semantics which take a long time to debug. 
+The first disadvantage of JavaScript is that it is sent as source code and then compiled to bytecode  and interpreted, or just-in-time compiled to native code. Therefore, the client downloads a relatively large text file, increasing the overhead in  loading the page. 
+
+Another issue with JavaScript comes from its dynamic typing system. Variables can be arbitrarily assigned values of different types or have properties added or removed. This uncertainty restricts the optimisations that can be performed, and means that most operations require runtime type checks and potentially throw exceptions, all of which adds to the runtime overhead.
+%
+The dynamic typing also has some flexibility, implicitly casting objects to the correct type where possible. This behaviour can be confusing in places, resulting in hard-to-detect bugs that slow development. For example:
+
+\begin{verbatim}
+if ([]) console.log(`[] is true');
+
+if ([] == false) console.log(`[] is false');
+\end{verbatim}
+
+Perhaps surprisingly, both statements above will be printed (the issue here is that casting \verb|[]| to a boolean gives \verb|true|, whereas the second case casts both sides to integers, giving \verb|0 == 0|), and unexpected semantics like this can take a long time to debug.
+
+%For example, arrays can be cast as booleans and both \verb|[] == false| and \verb|[]| 
+
+% It also tries to be flexible as a programming language, implicitly casting objects to the necessary type where possible. This can result in hard to detect bugs which slow down development. For example, arrays can be cast to booleans and \verb|[] == false| returns \verb|true|, suggesting that the empty array is equivalent to \verb|false|, yet \verb|![]| returns \verb|false|, suggesting it is instead equivalent to \verb|true|. This can lead to the conditions of \verb|if| statements having unexpected semantics which take a long time to debug. 
 % [] has boolean value true but Number value 0. [] == false sees an object and a boolean and conversion table specifies that these get compared as numbers.
 % So both get converted to 0 and 0 == 0 
 % See: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#Loose_equality_using
 
-Since OCaml is a strongly-typed language, runtime type-checks are rarely necessary so compiling OCaml to JavaScript, as done by the Js\_of\_ocaml tool \cite{jsofocaml}, introduces inefficiencies which would be nice to avoid. WebAssembly is also strongly-typed and is now supported by major browsers such as Chrome, Firefox and Safari, so a compiler with a WebAssembly backend provides a more efficient way to compile OCaml code to run on the web. 
+An advantage of programming in a functional language, such as OCaml, is that it is statically typed, so compile-time type checking detects many potential errors. However, compiling OCaml to JavaScript, as done by the Js\_of\_ocaml tool \cite{jsofocaml}, results in these checks being unnecessarily repeated at runtime. It would be better to avoid these inefficiencies.
+Targeting WebAssembly is one possible choice, since it is strongly typed, so these checks are not needed at runtime, providing a more efficient way to run functional code on the web. In addition, WebAssembly is now supported by major browsers, such as Chrome, Firefox and Safari.
+
+
+%Since OCaml is a strongly-typed language, runtime type-checks are rarely necessary so compiling OCaml to JavaScript, as done by the Js\_of\_ocaml tool \cite{jsofocaml}, introduces inefficiencies which would be nice to avoid. WebAssembly is also strongly-typed and is now supported by major browsers such as Chrome, Firefox and Safari, so a compiler with a WebAssembly backend provides a more efficient way to compile OCaml code to run on the web. 
 
 \section{Overview of WebAssembly}
-WebAssembly has both a text format for \verb|.wast| files and a binary format for \verb|.wasm| files. This means that code can be easily inspected in the text format but downloaded and executed as the binary format, reducing the size of files and overhead to run them. As an example of how WebAssembly code is structured, see the implementation of the factorial function below:
+WebAssembly has both a text format for \verb|.wast| files and a binary format for \verb|.wasm| files. This means that code can be easily inspected in the text format but downloaded and executed as binaries, reducing the size of files and the overhead to run them. Figure \ref{fig:wasm} implements factorial, as an example of how WebAssembly code is structured:
 
 \begin{figure}[H]
 \begin{verbatim}
@@ -30,12 +54,25 @@ WebAssembly has both a text format for \verb|.wast| files and a binary format fo
 )
 \end{verbatim}
 \caption{Factorial function written in WebAssembly} 
+\label{fig:wasm}
 \end{figure}
 
-The text format is very flexible, offering many forms of syntactic-sugar for writing expressions. In this case, I have used the folded form of instructions, where the arguments to instructions are given in a nested format, rather than the linear sequence of stack-based instructions they produce in the binary output. 
-
+The text format is very flexible, offering many forms of syntactic sugar for writing expressions. Although WebAssembly is a stack-based language, primarily made up of linear sequences of instructions, the text format allows nesting where it is clearer how arguments are supplied and consumed on the stack. Unlike most assembly languages, control-flow is expressed by nesting (that is not just syntactic sugar), such as the two cases of the \verb|If| statement above, rather than jumps in linear code.
 
 \section{Related work}
-As already mentioned, the Js\_of\_ocaml tool allows translating OCaml to JavaScript code for running it on the web. There is now a wide range of languages with compilers to WebAssembly \cite{langauges-to-wasm}. This includes Grain, a functional language based on OCaml, designed for running on the web with a compiler that outputs WebAssembly. C can also be compiled to WebAssembly using Clang/LLVM, and I compare my compiler against all three of these approaches in my evaluation.
+As already mentioned, the Js\_of\_ocaml tool translates OCaml to JavaScript for running on the web. There is now a wide range of languages with compilers to WebAssembly \cite{langauges-to-wasm}. This includes Grain \cite{grain}, a functional language based on OCaml, designed for running on the web with a compiler that outputs WebAssembly. C can also be compiled to WebAssembly using Clang/LLVM \cite{clang-llvm}, and I compare my compiler against all three of these approaches in my evaluation.
 
-Two projects from last year implemented compilers from functional languages to WebAssembly. One was from Standard ML and the other was from OCaml. I take a somewhat different approach to the previous OCaml to WebAssembly compiler, making use of the standard OCaml compiler's type-checker in order to support a larger subset of the language.
+Two projects from last year implemented compilers from functional languages to WebAssembly. One was from Standard ML and the other was from OCaml. I take a different approach to the previous OCaml to WebAssembly compiler, making use of the standard OCaml compiler's type checker in order to support a larger subset of the language.
+
+
+% PUT IN INTRODUCTION OR PREPARATION??
+\section{Project summary}
+This project implements a compiler from OCaml to WebAssembly, supporting the core OCaml language and the integer, boolean, comparison and list operations from the standard library \cite{stdlib}. This was then extended with floating-point and reference operations.  I also implemented several optimisation passes in the middle-end of the compiler, and implemented a garbage collector as part of the runtime system.
+
+
+
+
+
+
+
+
