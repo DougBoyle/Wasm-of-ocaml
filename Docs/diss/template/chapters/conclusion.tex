@@ -10,7 +10,17 @@ I also extended the runtime system with a mark-and-sweep garbage collector, usin
 With these optimisations, my compiler consistently produces smaller output files than the Js\_of\_ocaml tool, and the compiled programs consume at most one third the amount of memory. 
 This demonstrates the benefit of compiling a strongly typed language, such as OCaml, to WebAssembly, avoiding the inefficiencies of JavaScript. Execution time was also reduced, but only for benchmarks that did not make heavy use of the heap.
 
-Whilst I worked at a steady pace both during term time and in the breaks, the timetable in my project proposal should have put greater emphasis on having more time available during the breaks. I implemented benchmarks and data collection during the Christmas break, a couple weeks ahead of schedule, and mostly focused on extensions during Lent term, which could have been better anticipated in my initial plan.
+
+\section{Personal reflection}
+This project allowed me to learn more about how complex language features can be implemented, such as pattern matching and mutually recursive functions, which were not discussed in the Part IB Compilers course. It has also reinforced the importance of careful planning and preparation for substantial software projects, which allowed me to complete the core compiler relatively quickly and explore a range of interesting extensions. 
+
+I was able to work much faster during the breaks than in term time, due to not having units of assessment and lectures to balance with the project. My initial plan accounted for the unit of assessment exam taking priority the week it was set, but could have allocated more work during the breaks. As a result, I implemented benchmarks and data collection during the Christmas break, a couple weeks ahead of schedule, and mostly focused on extensions during Lent term.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%Whilst I worked at a steady pace both during term time and in the breaks, the timetable in my project proposal should have put greater emphasis on having more time available during the breaks. I implemented benchmarks and data collection during the Christmas break, a couple weeks ahead of schedule, and mostly focused on extensions during Lent term, which could have been better anticipated in my initial plan.
 
 %Whilst I managed to work at a steady pace both during term time and in the breaks, always staying on track or ahead of schedule, my original timetable did not account for me being able to allocate much more time to the project during the breaks.
 %This led to me being about three weeks ahead of schedule at the start of Lent term, which meant I had lots of time to work on extensions, but had to come up with new goals for when I wanted to complete components by, that could have been present in my initial plan.
@@ -18,12 +28,16 @@ Whilst I worked at a steady pace both during term time and in the breaks, the ti
 
 % NEW BIT - LESSONS LEARNT
 % PROBABLY FAR TOO LONG WITH ALL THE STUFF ABOUT DIFFERENT LANGUAGES
-While working on this project, I learnt how to implement a range of language constructs that were more complex than those considered in the Part IB Compilers course, such as pattern matching and mutually recursive functions.
+%While working on this project, I learnt how to implement a range of language constructs that were more complex than those considered in the Part IB Compilers course, such as pattern matching and mutually recursive functions.
 %
-I also improved at learning new languages despite limited availability of tutorials or examples. For example, Grain is a relatively new language, so its only examples are short demonstrations of each feature on the project's website. Similarly, the Typedtree representation in the OCaml compiler, which my compiler translates from, is only briefly documented by comments in the compiler's source code. I found it easiest to learn each of these by producing examples and looking at their behaviour. For Grain, this meant adapting the available examples and running them. For the Typedtree, I instead wrote simple OCaml programs that I already knew the behaviour of, then made use of the pretty-printing in the compiler's front-end to see the IR they produced. Adopting these approaches from the beginning of the project may have helped me to gain confidence in each language faster.
-%that have limited examples or tutorials available. For example, WebAssembly has a detailed specification but few example programs online due to its low-level structure, and Grain is a relatively new language with only a few short example programs available to learn from. In both cases, I found it easiest to learn the languages by producing small programs and running them to understand their behaviour, or compiling simple C programs to WebAssembly to see how well-known operations map into that language. In particular, the Typedtree IR of the OCaml compiler has little documentation, so it was very helpful to use the pretty-printing functions in the compiler's front-end to see how simple OCaml programs are translated into the IR. Adopting these approaches from the beginning of the project would have helped me to gain confidence in each of the languages faster.
 
-I initially had some difficulties debugging my garbage collection implementation, since errors, such as incorrectly freeing an object, may not affect a program's output, and if they do it is typically long after the error occurs, when that block of memory is reallocated and modified. To solve this, I ended up writing several JavaScript functions to aid debugging, such as checking the structure of the free list and that blocks were correctly marked as allocated or not, as well as logging lots of data about pointers used during a program's execution and studying the resulting trace instead. This process likely would have gone faster had I taken a more systematic view to debugging from the beginning, writing utility functions that I expected would be useful in advance.
+
+%I also improved at learning new languages despite limited availability of tutorials or examples. For example, Grain is a relatively new language, so its only examples are short demonstrations of each feature on the project's website. Similarly, the Typedtree representation in the OCaml compiler, which my compiler translates from, is only briefly documented by comments in the compiler's source code. I found it easiest to learn each of these by producing examples and looking at their behaviour. For Grain, this meant adapting the available examples and running them. For the Typedtree, I instead wrote simple OCaml programs that I already knew the behaviour of, then made use of the pretty-printing in the compiler's front-end to see the IR they produced. Adopting these approaches from the beginning of the project may have helped me to gain confidence in each language faster.
+
+Debugging my garbage collection implementation was challenging at first.
+Errors, such as incorrectly freeing an object, may only affect a program's output long after the error occurs, when that block of memory is reallocated and modified. To solve this, I eventually wrote several JavaScript functions to aid debugging, such as checking the structure of the free list% and that blocks were correctly marked as allocated or free
+, as well as logging data about pointers used during a program's execution and studying the resulting trace. 
+Had I taken a more systematic view to debugging from the beginning, writing utility functions that I expected would be useful in advance, some errors might have been detected much sooner.
 
 
 \section{Future work}
@@ -41,7 +55,7 @@ Also, control-flow analysis would more precisely identify where functions are us
 %One optimisation made in the OCaml compiler which I did not get round to implementing is identifying references that are effectively used just as mutable local variables, and representing them as such rather than forcing them to be stored in memory.
 %This requires ensuring the variable cannot leak out of the function, done by escape analysis. Control-flow analysis would also make the use of functions more precise, increasing the opportunities for inlining or tail-call optimisation.
 
-Finally, the garbage collector is implemented in JavaScript rather than WebAssembly. I suspect that translating this to WebAssembly, avoiding the switch between WebAssembly and JavaScript for each memory allocation, would significantly reduce the overhead of garbage collection. More complex garbage collection techniques could also be implemented, such as a generational collector, which identifies objects as short-lived or long-lived, and collects long-lived objects less frequently since they are likely to still be in use.
+Finally, the garbage collector is implemented in JavaScript rather than WebAssembly. I suspect that translating this to WebAssembly, avoiding the switch between WebAssembly and JavaScript for each memory allocation, would significantly reduce the overhead of garbage collection. More complex garbage-collection techniques could also be implemented, such as a generational collector, which identifies objects as short-lived or long-lived, and collects long-lived objects less frequently since they are likely to still be in use.
 %It could also be improved to use more complex garbage collection techniques, such as a generational collector which divides objects into short-lived objects collected frequently, and long-lived objects collected less often. I suspect this would introduce additional challenges relating the the WebAssembly stack being inaccessible.
 
 

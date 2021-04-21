@@ -5,7 +5,7 @@ In this project, I implement a compiler from OCaml to WebAssembly, primarily sup
 
 \section{Linearised IR}
 % Reference for ANF?
-From OCaml's Typedtree data structure, the first pass of the compiler translates programs to be closer to administrative normal form (ANF), which linearises the syntax tree so that operands are always constants or identifiers, with the exception of control-flow constructs such as if statements. Expressions are broken down into immediate, compound and linast (linearised AST) terms to achieve this. The general structure is given below, with some cases omitted for brevity.
+From OCaml's Typedtree data structure, the first pass of the compiler translates programs to be closer to administrative normal form (ANF), which linearises the syntax tree so that operands are always constants or identifiers. Expressions are broken down into immediate, compound and linast (linearised AST) terms to achieve this. The general structure is given below, with some cases omitted for brevity.
 
 \begin{figure}[H]
 \begin{verbatim}
@@ -52,7 +52,7 @@ Given an expression in the Typedtree to translate to an immediate or compound te
 % TODO: Describe 3-level structure of immediate, compounds and linast terms
 
 \section{Pattern Matching}
-The linearised intermediate representation also compiles patterns in OCaml's \verb|Typedtree| datatype to the code required to match them and bind variables within patterns. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
+Translation to the linearised IR also compiles patterns in the Typedtree to code that matches them. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
 
 I chose to implement the backtracking pattern-matching compiler described by Le Fessant and Maranget \cite{ocamlpatternmatch}, which is also implemented in the OCaml compiler for its intermediate representation. 
 The idea is to have a vector of the values being matched, and a matrix representing the different cases and the action when each matches. An example of this is:
@@ -81,13 +81,14 @@ $\begin{pmatrix}
 \end{figure}
 
 The algorithm given in the paper is made more complex by the range of syntax OCaml supports. %, and to a lesser extent by the fact the IR is linearised. 
-First, OCaml patterns can have guard statements, which need to be tested to see whether a pattern matches. Some of the compilation steps prefix additional variable bindings onto the actions, and the guard statement needs to be evaluated after these, but before any of the original action is evaluated. Therefore, each action $\to a$ is replaced with $\to a \ g \ b$ where $g$ is the optional guard expression and $b$ is the other bindings introduced.
+First, OCaml patterns can have guard statements, which must be tested to see whether a pattern matches. Some of the compilation steps prefix additional variable bindings onto the actions, and the guard statement needs to be evaluated after these, but before any of the original action is evaluated. Therefore, each action $\to a$ is replaced with $\to a \ g \ b$ where $g$ is the optional guard expression and $b$ is the other bindings introduced.
 
-The base cases of this algorithm occur when we reach a matrix with either no rows or no columns of patterns. If there are no rows, we have run out of possibilities so pattern matching fails and backtracks to another branch. If there are no columns, we have successfully matched the whole pattern. We then output code testing the guard for each action from top to bottom of the matrix, executing the corresponding action if the guard succeeds. Either some row is not guarded, in which case it runs unconditionally if that is reached, or every row is guarded, in which case we similarly backtrack if all guards are false.
+The base cases of this algorithm occur when we reach a matrix with either no rows or no columns of patterns. If there are no rows, we have run out of possibilities so pattern matching fails and backtracks. If there are no columns, we have successfully matched the whole pattern. We then output code testing the guard for each action from top to bottom of the matrix, executing the corresponding action if the guard succeeds. Either some row is not guarded, in which case it runs unconditionally if that is reached, or every row is guarded, in which case we similarly backtrack if all guards are false.
 
 There are four broad cases for when the matrix is non-empty:
 \begin{itemize}
-\item \textbf{Variable rule}: If the first column has just variable patterns, the corresponding binding of the first value in the values vector is added to each row's bindings, then the first column of the matrix is discarded, as is the now-matched value of the value vector.
+\item \textbf{Variable rule}: If the first column has just variable patterns, a corresponding binding of the first value in the values vector is added to each row's bindings, then the first column of the matrix is discarded, as is the now-matched value of the value vector.
+% INCLUDE A DIAGRAM??
 \item \textbf{Constructor rule}: If the first column has just constructor patterns, several specialised matrices are produced, each removing incompatible rows and deconstructing the fields of the chosen constructor. The result of compiling each of these then forms the branches of a switch statement on the constructor tag. A default case captures any constructor with no corresponding rows, and fails so that matching backtracks. 
 \begin{figure}[H]
 \hfill
@@ -110,18 +111,19 @@ The output is the result of compiling this matrix, sequenced with the result of 
 
 \end{itemize}
 
-The explanation above is how the paper describes the algorithm. In practice, OCaml has several different types that all fall under the ``constructor" rule and have to be handled separately:
+The explanation above is how the paper describes the algorithm. In practice, OCaml has several different types that all fall under the ``constructor" rule and must be handled separately:
 \begin{itemize}
-\item \textbf{Constants}: Constants can be viewed as a datatype with infinitely many 0-arity constructors. For integers, these compile to a switch statement on the integer value, always having a default case that backtracks. For floating-point constants, a switch statement cannot be used, so these instead compile to a sequence of if-then-else tests.
+\item \textbf{Constants}: Constants can be viewed as a datatype with infinitely many 0-arity constructors. Integers compile to a switch statement on the integer value, always including a default case that backtracks. For floating-point constants, a switch statement cannot be used, so these instead compile to a sequence of if-then-else tests.
 % and this switch statement will always have a default case that backtracks, since it can never be exhaustive. The decision to implement this switch statement as a branch table or nested if-then-else statements is made at the WebAssembly generation stage based on how sparse the set of values is. \\
 %For floating point values, we must always use a chain of if-then-else tests so these are compiled as such at the IR level.
 % TODO: Talk about branch tables or not?
 
 \item \textbf{Tuples}: Tuples are just constructors with a single variant of a particular size. Therefore, the matrix is specialised by extracting the nested patterns and no rows need to be discarded. There is also no need for a switch statement, since there is only one case.
 
-\item \textbf{Arrays}: In OCaml, array patterns look like \verb"[|p1, p2, ..., pk|]", matching a specific length. The length is the tag of the object, so a switch statement on the tag is generated, extracting the corresponding number of fields in each case. As there are infinitely many possibilities, a default case is always included.
+\item \textbf{Arrays}: In OCaml, array patterns look like \verb"[|p1, p2, ..., pk|]", matching a specific length. 
+The length is the tag of the object, so a switch statement on the tag is generated, extracting the corresponding number of fields in each case. As there are infinitely many possibilities, a default case is always included.
 
-\item \textbf{Records}: These are again treated as a constructor with one variant, and each pattern specifies some subset of fields to match. To allow all rows of the matrix to be processed,  the union of the fields mentioned in each row is extracted from the record, inserting the wildcard pattern \verb|_| where a row does not match a field, allowing the value extracted for that field to be ignored. In the example below, any unmentioned field $z$ is ignored entirely.
+\item \textbf{Records}: These are again treated as a constructor with one variant, and each pattern specifies some subset of fields to match. To allow all rows of the matrix to be processed,  the union of the fields mentioned in each row is extracted from the record, inserting the wildcard pattern \verb|_| where a row does not match a field, allowing the value extracted for that field to be ignored. In the example below, any unmentioned fields are ignored entirely.
 \begin{figure}[H]
 \hfill
 $
@@ -142,82 +144,22 @@ $
 \end{figure}
 \end{itemize}
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-% Description of algorithm in paper
-%The basic algorithm represents the patterns to compile by a vector of values to be matched and a matrix, where each row is a corresponding vector of patterns to match against (where rows are tried in top to bottom order) plus some code, called an action, to execute if the values match that row. The handling of guard statements is not described. Without guards, when the algorithm reaches a $m \times 0$ matrix (so each row has an empty vector of patterns left to match), the pattern has now been matched so the action of the top row is returned. To handle guards, each row of the matrix is augmented to also have an optional compiled guard expression. When an $m \times 0$ matrix is reached, this compiles to a series of if-then-else tests of the guards of each row until a row without a guard is reached. If all rows are guarded, then we eventually reach a $0 \times 0$ matrix which corresponds to pattern matching having failed, so we escape to the enclosing statement testing any other patterns or trap if there is nothing else to test. \\
-%As guard expressions can include variables bound by the pattern, bindings introduced by pattern matching also need to be kept separate from the action to perform when a match succeeds. This allows the guard expression to be inserted between these bindings and the body of the action, which must only execute if the guard succeeds. \\
-%For describing examples, $p$ represents a pattern, $a$ is an action, $g$ is an (optional) guard expression, and $b$ are binds introduced by pattern matching. $v$ is the first value being matched against.
-
-%Escaping out of failed matches is achieved by the intermediate representation having static exceptions in the form of a \verb|fail i| and \verb|try ... with i ...| expression. Therefore, the algorithm just remembers the closest enclosing handler at any point and escapes to that when pattern matching fails. Although regular exceptions are challenging to implement in WebAssembly, these static exceptions compile to simple blocks with branch instructions to escape out of depending on if the expression succeeds or fails.
-
-% Mention that bindings and the actual action need to be kept separate so that the guard can be checked between them?
-%Another complication is the additional cases that need to be checked for. The described algorithm considers three types of patterns which are variables $\_$ or $x$ (where the latter generates a binding of the value to $x$ when it is matched), constructors $c(p_1, \dots, p_k)$ and OR patterns $(p_1 | p_2)$. Compilation can then be broken down into a handful of cases based on the patterns in the first column of the matrix. If every pattern is a variable pattern, then the first value and first column of the matrix can be discarded after binding the value to any non-wildcard variables for each row. 
-
-%$
-%\begin{pmatrix}
-%x & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
-%y & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
-%\_ & p^3_2 & \dots & p^3_n & \to & a^3 & g^3 & b^3
-%\end{pmatrix}
-%\to
-%\begin{pmatrix}
-% p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, x=v) \\
-% p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & (b^2, y=v) \\
-% p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
-%\end{pmatrix}
-%$
-%
-%If instead every pattern is a constructor pattern, then the matrix is compiled into a switch statement on the variant tag of the first value. A case is generated for each constructor present in the matrix, where the body of the switch case is the result of compiling the matrix with all rows with incompatible constructors discarded, and any sub-patterns of the constructor pattern extracted out and appended to the front of each row. 
-%
-%$
-%\begin{pmatrix}
-%c(q_1, \dots, q_k) & p^1_2 & \dots & p^1_n & \to & \dots \\
-%c'(\dots) & p^2_2 & \dots & p^2_n & \to & \dots \\
-%\end{pmatrix}
-%\xrightarrow{\text{specialise } c}
-%\begin{pmatrix}
-% q_1 & \dots & q_k & p^1_2 & \dots & p^1_n  & \to & \dots 
-%\end{pmatrix}
-%$
-
-%Although this is described as one rule, there are many types of OCaml patterns which are all treated as constructors and need to be handled slightly differently. Tuples are treated as a constructor type with a single variant, so a switch statements is not required, just extracting each of the values contained from the tuple and corresponding patterns. Records are similarly treated as a constructor type with only one variant. As each pattern may match different fields of the record, the fields extracted are the union of the fields mentioned by each row. Where a field is extracted but a row does not match on that field, a wildcard pattern is introduced in the row to effectively ignore that extracted value.  Fields in a record which no pattern mentions are ignored entirely.
-
-%$
-%\begin{pmatrix}
-%\{f_1=q_1\} & p^1_2 & \dots & p^1_n & \to & \dots \\
-%\{f_2=q_2\} & p^2_2 & \dots & p^2_n & \to &\dots \\
-%\{f_1=q_3; f_2=q_4\} & p^3_2 & \dots & p^3_n & \to &\dots
-%\end{pmatrix}
-%\to
-%\begin{pmatrix}
-%q_1 & \_ & p^1_2 & \dots & p^1_n  & \to & \dots \\
-%\_ & q_2 & p^2_2 & \dots & p^2_n  & \to & \dots \\
-% q_3 & q_4 & p^3_2 & \dots & p^3_n  & \to & \dots
-%\end{pmatrix}
-%$
-
-%Patterns for arrays in OCaml look like \verb"[|p1, p2, ..., pk|]" and match an array of a specific length. Arrays are tagged with their length so an array of a certain type can be viewed as a constructor with infinitely many variants, each variant having arity equal to the length of array it matches. This therefore becomes a switch statement on the length of the array, and must always introduce a default case since there are infinitely many variants so the match cannot be exhaustive. Integer constants are similarly handled as a constructor with infinitely many variants, except that these variants all have arity 0 as there are no sub-patterns to match. Floating point constants can be pattern matched in OCaml however these must be compiled to nested if-then-else statements, since my IR only allows switching on integers, either an integer constant or the tag of some constructor. This means switch statements can always be compiled as branch tables in WebAssembly later. \\
-% Do I want to mention that there can be other rows after the OR pattern
-%If neither of the previous rules apply then either the matrix  starts with an OR pattern in its first row, which can be expanded into multiple rows, or the matrix is split into an upper or lower part where each can be checked recursively, with a failure in the upper matrix being handled by trying the lower matrix (referred to as the mixture rule).\\
-
-Finally, OCaml has alias patterns such as \verb|((x::xs) as lst)| which must be supported. These are handled by preprocessing the first column of the matrix at each step, replacing aliases in each row with a binding of the first value to the corresponding aliased variable. Redundant OR patterns are also removed, replacing \verb"(_|p)" with just \verb|_|.
+Finally, OCaml has alias patterns such as \verb|((x::xs) as lst)| which must be supported. These are handled by preprocessing the first column of the matrix at each step, replacing aliases in each row with a binding of the first value to the corresponding aliased variable. %Redundant OR patterns are also removed, replacing \verb"(_|p)" with just \verb|_|.
 %The last feature of the OCaml language that needs supporting is aliases, for example \verb"match v with ((x::xs) as lst) -> ...". These are handled by always preprocessing the first column of the matrix to replace aliases in each row with a binding of the first value to the aliased variable. Preprocessing also simplifies any or patterns in the first column, replacing \verb"(_|p)" with just \verb|_| since the second part of the or pattern would never be considered.
 
 \begin{figure}[H]
 $
 \begin{pmatrix}
 (p^1_1\ \mathrm{as}\ q) & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
-(\_ | p^2_1) & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
-p^3_1 & p^3_2 & \dots & p^3_n & \to & a^3 & g^3 & b^3
+%(\_ | p^2_1) & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
+p^2_1 & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2
 \end{pmatrix}
 \to
 \begin{pmatrix}
  p^1_1 & p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, q=v) \\
-\_ & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2 \\
-p^3_1 & p^3_2 & \dots & p^3_n  & \to & a^3 & g^3 & b^3
+%\_ & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2 \\
+p^2_1 & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2
 \end{pmatrix}
 $
 \caption{Handling of aliases in pattern matrices}
@@ -232,7 +174,7 @@ The above process is made more efficient by including auxiliary information. %, 
 % Mention OR pattern change or not?
 
 
-First, the mixture rule can swap rows where they are incompatible. Patterns must be matched in top-to-bottom order, but this does not matter for two rows which do not overlap in the set of values they may match. Therefore, the mixture rule lifts up rows where safe to do so, trying to increase the size of the first matrix that can be handled by a single use of the constructor or variable rule. This decreases the number of splits from the mixture rule that are needed. 
+First, the mixture rule can swap incompatible rows. Patterns must be matched in top-to-bottom order, but this does not matter for two rows which do not overlap in the set of values they may match. Therefore, the mixture rule lifts up rows where safe to do so, trying to increase the size of the first matrix that can be handled by a single use of the constructor or variable rule. This decreases the number of splits from the mixture rule that are needed. 
 
 As an example, these programs are equivalent, however the constructor rule can only be applied to the first row on the left, but to the first two rows in the right:
 
@@ -257,7 +199,8 @@ match l1, l2 with
 \caption{Example of reordering patterns not changing a program's semantics}
 \end{figure}
 
-Another improvement is made by passing a boolean for exhaustiveness to the procedure. The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive. Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. When a matrix is known to be exhaustive, switch statements can leave out cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
+Another improvement is made by passing a boolean for exhaustiveness to the procedure. The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive.% Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. 
+When a matrix is known to be exhaustive, switch statements can leave out default cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
 
 
 
@@ -279,10 +222,10 @@ $
 \caption{Constructor specialisation on a context}
 \end{figure}
 
-The procedure is also passed a list of reachable handlers. When the mixture rule splits a matrix into upper and lower parts $P$ and $Q$ and introduces handler $i$, then $P$ is complied with $(i, Q)$ added to its handler list, although only the patterns of $Q$ need to be remembered in the handler list, not the actions or guards. Again, operations on matrices are naturally extended to each matrix in the list. 
+The procedure is also passed a list of reachable handlers. When the mixture rule splits a matrix into upper and lower parts $P$ and $Q$ and introduces handler $i$, then $P$ is complied with $(i, Q)$ added to its handler list, although only the patterns of $Q$ are stored in the handler list, not the actions or guards. Again, operations on matrices are naturally extended to each matrix in the list. 
 
 Correspondingly, in addition to the code to match a matrix, the procedure returns a jump summary, a mapping from indices of enclosing handlers to the contexts in which those handlers will be jumped to. To compute this, where the algorithm inserts \verb|fail i| to backtrack, it also adds the current context to the jump summary for index \verb|i|, indicating that values of the form described by that context will trigger backtracking. For each index, the contexts of each branch are unioned at switch statements, amounting to concatenating the rows from each context. As jump summaries are returned out of nested calls, patterns are popped off the prefix of each context back to the fringe, to be consistent with the values matched up to that point in the process, but now making the fringe more precise. 
-If compiling the upper matrix in the mixture rule returns jump summary $\rho$, then when compiling the lower matrix $Q$ for handler $i$, the context $\rho(i)$ is used from the jump summary.
+If compiling the upper matrix in the mixture rule returns jump summary $\rho$, then when compiling the lower matrix $Q$ for handler $i$, the context $\rho(i)$ is used.% from the jump summary.
 
 
 The reachable handler list remembers which patterns each handler will try to match if exited to, and the contexts obtained from the jump summary provide some information on the structure of values which will trigger that handler. 
@@ -290,101 +233,6 @@ The reachable handler list remembers which patterns each handler will try to mat
 The first improvement is that, rather than always backtracking to the nearest handler, handlers guaranteed to fail can be skipped over. Since the matrices matched by reachable handlers are specialised as more specific cases are matched recursively, at a point where backtracking occurs some of those matrices may be empty. This indicates that the patterns matched by that handler are incompatible with the known structure of the value causing backtracking, so the procedure instead inserts a \verb|fail i| to the first handler \verb|i| with a non-empty matrix. Note that, where the mixture rule is needed multiple times to split up a matrix, it now makes sense to nest the handlers so that they are all available to jump to, maximising the opportunities to skip handlers.  
 
 Second, the lower matrix for a handler may not cover all constructor cases if some are covered by the upper matrix matched before backtracking. Naively, this would result in additional backtracking cases for the missing constructors, which we know will never occur. This is the purpose of taking the context from the jump summary. If some constructor is incompatible with the first column of the fringe for each row of the context, the value being matched will never be that constructor when the handler executes, so cases can be safely discarded to reduce code size. In some cases, switch statements may be reduced to a single case by this approach, in which case the test can be removed entirely.
-
-% Haven't mentioned OR patterns optimisation
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-% MENTION USE OF EXHAUSTIVENESS INFORMATION EARLY ON! EXPLAINS WHY WE DON'T NEED A TEST ON THE LAST ROW!
-
-%First, there are cases where it can be useful to swap the order of rows in the pattern matrix. When no rule can be directly applied, we split the matrix into two parts and recursively match each of them, backtracking out of the first case if necessary. A simple program matching two lists can be equivalently written as (the action in each case is unimportant):
-
-
-
-%These are equivalent as the last two rows are incompatible. Although patterns must be matched in order, any pattern matching row 3 could never match row 2 so they are safe to swap. The second case is more efficient as we can handle rows 1 and 3 together with the constructor rule, and only need to split the matrix once rather than twice. Of course, the first case could also avoid splitting the matrix twice if rows 2 and 3 were matched on the second pattern before the first, in which case applying the constructor rule would be possible. The problem of selecting the optimal column is thought to be NP-Complete and heuristics for this are more commonly used for decision tree based pattern matching, and the paper does not suggest how row and column based optimisations could be combined. % Cite the end of the OCaml paper for this (e.g. NP-Complete statement)
-% Do I actually need to mention this?
-
-% TODO: Not why we use contexts!!!
-% Actually quite complex - interaction between jump summaries, reachable handlers, and how extraction from context is used to choose handler on each exit of failed constructor rule (i.e. simpler exhaustiveness because some case can't actually occur)
-
-%Next, in addition to the matrix storing patterns an actions, we maintain and extended to structure called a context, which does not include actions but keeps an additional list of patterns on each row, called the prefix, for the structure already matched by pattern matching. The issue with using just the matrix described previously is that we effectively forget about what has already been seen once part of a match succeeds. Therefore, 
-
-% Very long explanation, would go better in preparation???
-%If matching some pattern fails and we need to backtrack, we backtrack to the nearest enclosing handler. In some cases, we already know that this handler will fail too due to patterns matched before we had to backtrack. If so, then we can speed up the process by considering all enclosing handlers and jumping to the nearest one that may actually succeed. For this reason each handler has an integer identifier \verb|i|.
-
-% Not my job to duplicate explanations from the paper?
-%As an example, consider the program below (written out of order to show how the improved mixture rule previously described would process it): % Cite this as being the example given in the paper
-%\begin{verbatim}
-%type t = Nil | One of int | Cons of int * t
-%match l1, l2 with
-%  | Nil, _ -> 1
-%  | Cons(x, xs), Cons(y, ys) -> 5
-%  | _, Nil -> 2
-%  | One x, _ -> 3
-%  | _, One y -> 4
-%\end{verbatim} % TODO: Can cut all this down a little?
-%
-%In pseudocode, this is what it will compile to:  % TODO: Cite that this comes from the paper!
-%\begin{verbatim}
-%try
-%  try
-%    try
-%      switch (l1):
-%        case Nil: 1
-%        case One: fail 1
-%        case Cons:
-%          switch (l2):
-%            case Cons: 5
-%            case One|Nil: fail 1
-%    with (1)
-%      switch (l2):
-%        case Nil: 2
-%        case Cons|One: fail 2
-%  with (2)
-%    switch (l1):
-%      case One: 3
-%      case Cons|Nil: fail 3
-%with (3) 4
-%\end{verbatim}
-
-%The OCaml compiler already warns about non-exhaustive patterns, so we can use exhaustiveness information to determine that any tests in the last handler would be redundant, as pattern matching cannot fail from there if the original patterns were exhaustive.
-
-%The mixture rule groups the first two rows to be matched by the constructor rule, and divides the remaining rows into separate 1-row matrices tried in turn. The goal is to jump past one handler to an enclosing one, so \verb|try ... with i ...| blocks are formed in bottom-up order so that matching of the first two rows is enclosed by 3 handlers. \\ % TODO: Add a diagram/pseudocode for this?
-%For a pair of values such as \verb|Cons(a, b), One(c)|, we first attempt to match against just the first two rows. We successfully match the \verb|Cons(x, xs)| constructor but fail on the second row. Naively, we would now try the first handler, which tests the second value against \verb|Nil| again and fails, then goes to the second handler which tests the first value against \verb|One x| and so also fails. Given the tests that had already been performed when we first failed, we knew the value had the form \verb|Cons(_, _), One(_)| and that this is incompatible with the matrices of both of the first two handlers, so we could have immediately jumped to testing the last row.
-
-%To track this information, we additionally maintain a list of reachable handlers, mapping their indices \verb|i| to the remaining matrix that handler tries to match. Similar to how rows of matrices are manipulated in the original algorithm, we can specialise the rows of these handler matrices as pattern matching progresses, removing incompatible rows. If one  of the cases when matching a constructor pattern then requires us to backtrack, we can now go to the first handler with a non-empty matrix in the reachable handlers, since all previous handlers will immediately fail. \\
-
-% Include optimised version of code?
-% TODO: Contexts and jump summaries
-
-%Having done this, it reveals another form of inefficiency. We can only reach a particular handler from exits at specific points in the code and, having successfully matched patterns up to those points, the set of possible values when that handler is reached is restricted. In the example above, we now jump straight to 
-%the last handler from line 10 when the second list is a \verb|One _| value, splitting the old \verb"case One|Nil" line into two different exits. This means that the first handler is only entered from one of two locations, when \verb|l1 = One v| or when \verb|l1 = Cons (v, vs)| and \verb|l2 = Nil|. In the latter case, we will return 2, but in the first case we exit to the second handler. This handler then checks if \verb|l1 = One v|, but we just established this is the only situation in which the second handler executes. Therefore, the other cases of the switch statement can be discarded and the whole second handler reduces to just the value 3.
-
-%To identify these case, we maintain an extended version of a pattern matrix called a context, which does not include actions but keeps an additional list of patterns on each row, called the prefix, for the structure already matched by pattern matching. As with the reachable handler list, the operations of pattern matrices are extended to apply to this, with additional operations to push or pop pattern between the prefix and the fringe of patterns yet to be matched. Now, as well as returning code to match the patterns in a matrix, the procedure recursively computes a jump summary, mapping each handler index to the union of the contexts at all points that exit to that handler. Recursive calls push patterns onto the prefix of the current context, as they match sub-patterns in a more specialised context, and returns pop patterns off the prefixes of context in the jump summary as we return to higher up points in the pattern matching process. 
-
-%Now, when we compile a handler, we take its context to be the context mapped to in the jump summary returned from the try block. When we construct a switch statement for the constructor rule, we can exclude any constructor patterns which are incompatible with all rows of the context, indicating that we will never see that constructor for values reaching this point in the pattern matching code. \\
-
-% OR PATTERNS - DIFFERS FROM PAPER!
-% Is this actually something I want to draw attention to???
-% Should probably change this in my code to do it the other way, as it only every applies to OR patterns doesn't it? Can easily determine which variables need to be passed out.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%                            OR PATTERN ISSUES                             %%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%My implementation differs from the one described in the paper by not also specifying variables passed through to handlers in addition to a handler index. When an OR pattern \verb"(p1|...|pk) q1 q2 ..." is split into several rows, unless it is the only row of the matrix, we introduce an exit to a handler which matches the remaining patterns \verb|q1 q2 ...|. This is done to avoid duplicating the patterns \verb|q1 q2 ...| in the original matrix, which could result in duplicate code across switch cases. The issue here is that the patterns \verb"p1|...|pk" could each bind some variable \verb|x|, which is then in scope when we enter the handler. The paper handles this by listing all such variables at the exit and at the start of the handler block. \\
-%Because the parser in the compiler front-end assigns a unique identifier to each variable, there is never a scoping issue where the \verb|x| in the handler could refer to the same \verb|x| declared elsewhere. Even with variables listed on exits and handers, we still need an extra data structure to remember identifiers outside of the subtree they are defined when performing analyses or translations, for example so tat we know which lower level local variable the identifier was mapped to when we come to translate the handler. Therefore, I chose to leave out these lists of variables since they serve little purpose other than to make such scoping complications explicit, so exits and handlers are only annotated with the index of the handler they correspond to. \\
-%This scoping complication disappears at the WebAssembly level, since static exceptions compile to code looking more like a standard \verb|break| statement, jumping to the next block (the handler) at an exit, or jumping past the next block if pattern matching ultimately succeeds.
-%This is not necessary as parsing uniquely identifies reuses of the same variable name in different scopes, so a table can track all the variables seen so far without having to deal with renaming issues, at the relatively small overhead of needing to remember more variables simultaneously.
-%%% ALSO PREVENTS OPTIMISING, BUT VERY RARE ANYWAY?
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-
-%In summary, the compilation scheme now has three additional arguments, a boolean indicating if we know the current matrix of patterns to be exhaustive, a context giving additional information on the patterns already matched, and a list of the reachable trap handlers with the matrix each handler matches. It also returns both the code to match a given matrix, and a summary of the set of values which can cause the code to exit to each of the enclosing handlers. 
-
 
 
 
@@ -440,14 +288,10 @@ end
 Here locals 0 and 1 are the swap variables. The expressions \verb|ar| and \verb|index| could be free variables being loaded from a closure, in which case storing their values in local variables avoids repeated loads from memory. 
  For a function with \verb|n| arguments, we therefore compile \verb|Swap i| as \verb|LocalGet (n + i)| and \verb|Local i| as \verb|LocalGet (n + 2 + i)|. Lastly,  a free variable \verb|Closure i| compiles to a \verb|LocalGet 0| to get the closure pointer, then a \verb|Load| with an offset to that variable.
 
-%%%%%%%%%%%%%%%%%%%%%
 
-%WebAssembly generation is then straightforward, as each of the constructs and primitive operators in my lower IR are all simple to implement. The variable bindings in the lower IR were separated into argument, local, global and closure bindings. Argument and global bindings translate directly to Local and Global operations respectively. The locals in a function are laid out as function arguments, then swap space locals used to implement some of the operations in WebAssembly, then locals allocated above for let bindings and loops. Therefore, local bindings are offset by the number of swap spaces and function arguments. The first argument to each function is its closure, so closure bindings first get local 0 then do a load from that address, with an offset selecting the correct variable from the closure. 
 
 I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append. These, along with the memory controlled by the memory allocator, are declared as imports into the compiled WebAssembly module. The module then exports each top-level global variable as its name from the OCaml program, and each of the user defined functions. 
 As explained below, integers and pointers are tagged to distinguish them, so I wrote a short JavaScript wrapper that interprets values accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
-
-% These are declared as imports to the WebAssembly module and each function index in my IR must be offset by the number of runtime functions imported. Additionally, the memory for the module is also imported from the runtime since it is managed by the allocation function from the runtime imports. Lastly, the global variables for each user variable declared at the top level of the OCaml program are exported, along with all functions from the module. Every function is exported so that values representing closures can be returned from WebAssembly and called. As integers are encoded by shifting them left by one, and so that pointers to closures can be used to call functions in WebAssembly from JavaScript, I added a JavaScript wrapper which uses knowledge of how values are represented in memory to be able to pass values back into compiled functions, or return integer values back to a JavaScript caller.
 
 Even before implementing a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are unused. I therefore distinguish the types of values by these last two bits. Closure pointers are tagged with 11, pointers to other objects in memory such as constructors are tagged with 01, and integers are tagged with 10 or 00 by shifting them left one, so odd  values now end in 10 and even values end in 00. 
 
@@ -486,11 +330,6 @@ The layout of objects stored in memory is given by figure \ref{fig:memlayout}, w
 
 The arity field in closures indicates the number of free variables. \verb|compare| is undefined on function values, but the arity is still needed for garbage collection so that pointers stored as free variables in closures can be searched. This field is unnecessary for floating-point values, which are distinguished by having a tag of -1, but is included and set to 0 so that garbage collection can search each of these blocks for pointers in the same way, by first looking at the arity field then checking that many subsequent fields. A float contains no pointers, hence the field is set to 0 so that the following 64 bits are not misinterpreted.
 
-%Although not strictly necessary, an arity field is included for both floating point values and closures. In the case of floating point values, it is always 0, and for closures it is the number of free variables. For floating point values, this ensures the 64-bit float value is aligned, which may improve memory access performance, and a floating point value can be treated as any other data block by the garbage collector, as the block will be inspected and the arity field indicates that we do not need to inspect the block further for other pointers. \\
-%In the case of closures, we need to know the number of free variables for garbage collection, so that pointers stored in the block can be followed in the marking algorithm. This again means all pointers can be treated uniformly by the garbage collector, checking first the arity field and then any potential pointer fields within the block, as indicated below:
-
-
-
 %As OCaml limits the number of different constructors supported% Reference required
 %, the variant tag is guaranteed to be a non-negative integer. Therefore, as floats need to be``boxed'' and stored in memory as a data block, -1 was used to identify floats, which are stored similarly to . This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
 
@@ -510,21 +349,7 @@ There is first an analysis pass to construct a call graph of just the tail calls
 
 As detailed below, tail-call optimising a recursive function increases its size, and the optimisation is more expensive for mutually tail-recursive functions, as each function must be split in two. Therefore, this call graph is iteratively pruned to identify functions worth optimising. Functions with no tail calls are removed from the graph, as are functions that only make tail calls to themselves, hence should be optimised in isolation. Once this process converges, we have the set of functions to make mutually tail recursive. Tail calls between these functions will then be rewritten to avoid making additional function calls.
 
-%
-%% Body could be a tail call, not that we currently are a tail call
-%\begin{itemize} % TODO: Find better way to describe this
-%\item The body of a recursive binding to a variable \verb|f| is traversed as being a tail call position for the function \verb|f|.
-%\item The body of a non-recursive binding or first part of a sequence is not a tail call position.
-%\item The condition and body of a while loop and the body of a for loop or anonymous function are not tail call positions.
-%\item If the current position is viewed as a tail call position for some function \verb|f|, then so is the body of each branch of an if statement or switch statement.
-%\item If the current position is viewed as a tail call position for some function \verb|f|, then so is the remaining expression after a recursive or non-recursive binding or first part of a sequence.
-%\end{itemize}
-%These rules allow keeping track of whether an application is in a tail call position or not as the tree is traversed. Each variable declared by a recursive binding to a function is also added to an initially empty table \verb|tbl| and mapped to an empty set of variables and the function's arity. When an application of \verb|g| is found in a tail call position for some function \verb|f|, we check two things. First, \verb|g| must be known at compile time to be one of the recursive functions declared in the program and therefore present in \verb|tbl|. 
-%% TODO: Is this obvious
-%This is because we can only rewrite tail calls to functions optimised to make tail calls, the reason for which will be apparent when the changes made to functions are described below.
-%Second, the number of arguments applied to \verb|g| must match the arity recorded for \verb|g| in the table. This allows curried functions to be tail call optimised. If the function is under-applied, then we do not have all of the arguments ready to evaluate it so it can not be tail called yet. If the function is over-applied, then the result of calling \verb|g| cannot be returned immediately so this is again not a tail call. if both conditions are satisfied, we add \verb|g| to the set of variables \verb|f| is mapped to in \verb|tbl|.
-%
-%At the end of this process, we have a table which stores the functions that are tail called within each recursive function. From this we determine which functions to tail call optimise on their own, and which to optimise as mutually tail recursive functions (which has a greater impact on code size since the function must be split into two functions). 
+
 
 \begin{figure}[H]
 \centering
@@ -540,7 +365,6 @@ while graph changing:
 \caption{Iterative algorithm to determine mutually tail-recursive functions}
 \end{figure}
 
-%There is little to gain from rewriting a function which makes no tail calls, so these are not optimised and hence no other function can optimise tail calls to them. Due to the added code bloat of optimising a function for mutually recursive tail calls rather than just tail calls to itself, a function which could only optimise calls to itself is optimised separately and tail calls from other functions to it are also removed. This leaves us with all other functions benefiting from being made mutually tail recursive.\\
 
 When deciding on this method for choosing which functions to tail-call optimise on their own or as mutually recursive functions, I studied how the Grain complier implements this analysis. In doing so, I identified a bug where it would wrongly optimise certain tail calls, and submitted an issue on GitHub\footnote{https://github.com/grain-lang/grain/issues/506} detailing this, which has since been corrected. % Cite github issue?
 
@@ -627,9 +451,9 @@ and _f () =
 
 A curried function of many arguments is implemented in WebAssembly as several functions, where all but the last function just constructs the closure to the next function, copying across free variables in the closure and the curried argument. 
 
-This is made more efficient for functions that are not exported and are always called with all of their curried arguments.  In this case, we can replace the set of curried functions with one function that takes all of its arguments as a tuple, and update the calling sites accordingly. Rather than actually creating a tuple in memory and passing that to the function (as in a function like \verb|f (x, y) = x + y|), the WebAssembly function takes multiple arguments directly, saving on memory usage. 
+This is made more efficient for functions that are not exported and are always called with all of their curried arguments.  In this case, we can replace the set of curried functions with one function that takes all of its arguments as a tuple, and update the calling sites accordingly. Rather than actually creating a tuple in memory and passing that to the function (as in a function like \verb|f (x, y) = x + y|), the WebAssembly function takes multiple arguments directly, saving on memory usage. Functions and applications that are optimised in this way are annotated in the IR tree, so that translation to WebAssembly distinguishes them from functions called using curried arguments.
 
-Such functions and calls to them are tagged with an annotation in the IR tree, so that translation to WebAssembly can distinguish them from function definitions/calls using curried arguments. 
+%Such functions and calls to them are tagged with an annotation in the IR tree, so that translation to WebAssembly can distinguish them from function definitions/calls using curried arguments. 
 
 This optimisation requires that every call to the function can be identified precisely, since some other call that is not annotated would be compiled to a function call passing one argument at a time, which would be incorrect. For this reason, the optimisation is only done when every occurrence of the function variable is an application, so it is never bound to another variable or passed between functions. The compiler then relies on copy propagation, described below, to transform cases such as  \verb|let g = f in g(1,2)| to direct uses of \verb|f| and removing \verb|g|, allowing \verb|f| to be optimised. 
 
@@ -639,8 +463,11 @@ This could also be done where a function always has more than one but not all of
 \subsection{Inlining}
 Only non-recursive function applications are inlined, allowing values to be propagated inside the function body and some expressions to be evaluated by the compiler. This is done using some simple heuristics based on those described by Bonachea for the Titanium compiler \cite{titanium}. 
 
-First, functions with bodies containing at most 5 nodes in the IR tree are always inlined, as there is little cost in doing so and this handles very simple functions, such as accessing a field of a record or loading a mutable value. Also, if a function is not exported from the program and its only use is in a single application, this is also always inlined as the function definition can then be removed, so there is no increase in code size.
- Lastly, larger functions are considered for inlining if doing so does not exceed the budget for code size. The original size of the program is stored in terms of the number of nodes in the IR tree, and larger functions may only be inlined if the resulting program is less than 50\% larger than its initial size. This limit was found to be enough that useful inlining occurred without the output code size increasing significantly once optimisations on the inlined code were performed.
+A function is always inlined if its body contains at most 5 nodes in the IR tree, as the increase in code size is negligible and this avoids making function calls for simple operations. Also, if a function is only used in one place and not exported from the program, it is inlined, since the function definition can then be removed so code size does not increase.
+Larger functions are only inlined if doing so does not exceed the budget for code size, in terms of nodes in the IR tree. The resulting program cannot be more than 50\% larger than the original program size.
+%First, functions with bodies containing at most 5 nodes in the IR tree are always inlined, as there is little cost in doing so and this handles very simple functions, such as accessing a field of a record or loading a mutable value. Also, if a function is not exported from the program and its only use is in a single application, this is also always inlined as the function definition can then be removed, so there is no increase in code size.
+% Lastly, larger functions are considered for inlining if doing so does not exceed the budget for code size. The original size of the program is stored in terms of the number of nodes in the IR tree, and larger functions may only be inlined if the resulting program is less than 50\% larger than its initial size. 
+This limit was found to be enough that useful inlining occurred, without the output code size increasing significantly once further optimisations were performed.
 
 % TODO: Better justify these heuristics
 % Also use smarter heuristics like number of function calls the function being inlined makes, or if it is being called from within a loop or not (more calls, bigger impact)
