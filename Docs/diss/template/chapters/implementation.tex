@@ -54,9 +54,7 @@ Given an expression in the Typedtree to translate to an immediate or compound te
 \section{Pattern Matching}
 The linearised intermediate representation also compiles patterns in OCaml's \verb|Typedtree| datatype to the code required to match them and bind variables within patterns. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
 
-I chose to implement the backtracking pattern-matching compiler described by Le Fessant and Maranget \cite{ocamlpatternmatch}, which is also implemented in the OCaml compiler for its intermediate representation. A backtracking compiler minimises the size of the code generated, whereas a decision tree compiler may produce larger code but ensures that each pattern is examined at most once, and is the approach taken by the Grain compiler. When optimised, each approach typically has similar performance \cite{decisiontrees}, however backtracking compilers appear to be the more common approach, and guarantee linear code size.
-
-
+I chose to implement the backtracking pattern-matching compiler described by Le Fessant and Maranget \cite{ocamlpatternmatch}, which is also implemented in the OCaml compiler for its intermediate representation. 
 The idea is to have a vector of the values being matched, and a matrix representing the different cases and the action when each matches. An example of this is:
 
 \begin{figure}[H]

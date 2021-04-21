@@ -1,29 +1,48 @@
 \chapter{Conclusion}
 
-This project met its success criteria, implementing the core OCaml language with integer, boolean, comparison and list operations, as well as all of OCaml's control flow and pattern-matching constructs, besides exceptions.
-I also implemented extensions in each of the three directions identified at the start of the project. The language supported was extended with references as well as basic array and floating point operations, and using the OCaml front-end allowed me to support other concepts such as only exporting an interface from WebAssembly specified by an accompanying .mli file.
-Several optimisations were implemented, including function inlining, uncurrying and tail-call optimisation, as well as cleanup passes at both the IR and WebAssembly level.
-I also extended the runtime system with a mark-and-sweep garbage collector, overcoming not being able to scan the WebAssembly stack by implementing a shadow stack in the linear memory. 
-Past projects compiling functional languages to WebAssembly have mentioned garbage collection as an extension that was not implemented, so this project has achieved something new in that respect.
+This project met its success criteria, supporting the core OCaml language with integer, boolean, comparison and list operations, as well as all OCaml's control-flow and pattern-matching constructs, besides exceptions.
+
+I also implemented extensions in each of the directions identified at the start of the project. The subset of OCaml supported was extended with references and basic array and floating-point operations, and the compiler supports using .mli interface files to hide parts of programs in the compiled WebAssembly.
+Several optimisations were implemented, including function inlining, uncurrying and tail-call optimisation, as well as clean-up passes on the intermediate representation and WebAssembly.
+I also extended the runtime system with a mark-and-sweep garbage collector, using a shadow stack due to the WebAssembly stack being implicit.% overcoming not being able to scan the WebAssembly stack by implementing a shadow stack in the linear memory. 
+%Past projects compiling functional languages to WebAssembly have mentioned garbage collection as an extension that was not implemented, so this project has achieved something new in that respect.
+
+With these optimisations, my compiler consistently produces smaller output files than the Js\_of\_ocaml tool, and the compiled programs consume at most one third the amount of memory. 
+This demonstrates the benefit of compiling a strongly typed language, such as OCaml, to WebAssembly, avoiding the inefficiencies of JavaScript. Execution time was also reduced, but only for benchmarks that did not make heavy use of the heap.
+
+Whilst I worked at a steady pace both during term time and in the breaks, the timetable in my project proposal should have put greater emphasis on having more time available during the breaks. I implemented benchmarks and data collection during the Christmas break, a couple weeks ahead of schedule, and mostly focused on extensions during Lent term, which could have been better anticipated in my initial plan.
+
+%Whilst I managed to work at a steady pace both during term time and in the breaks, always staying on track or ahead of schedule, my original timetable did not account for me being able to allocate much more time to the project during the breaks.
+%This led to me being about three weeks ahead of schedule at the start of Lent term, which meant I had lots of time to work on extensions, but had to come up with new goals for when I wanted to complete components by, that could have been present in my initial plan.
 
 
+% NEW BIT - LESSONS LEARNT
+% PROBABLY FAR TOO LONG WITH ALL THE STUFF ABOUT DIFFERENT LANGUAGES
+While working on this project, I learnt how to implement a range of language constructs that were more complex than those considered in the Part IB Compilers course, such as pattern matching and mutually recursive functions.
+%
+I also improved at learning new languages despite limited availability of tutorials or examples. For example, Grain is a relatively new language, so its only examples are short demonstrations of each feature on the project's website. Similarly, the Typedtree representation in the OCaml compiler, which my compiler translates from, is only briefly documented by comments in the compiler's source code. I found it easiest to learn each of these by producing examples and looking at their behaviour. For Grain, this meant adapting the available examples and running them. For the Typedtree, I instead wrote simple OCaml programs that I already knew the behaviour of, then made use of the pretty-printing in the compiler's front-end to see the IR they produced. Adopting these approaches from the beginning of the project may have helped me to gain confidence in each language faster.
+%that have limited examples or tutorials available. For example, WebAssembly has a detailed specification but few example programs online due to its low-level structure, and Grain is a relatively new language with only a few short example programs available to learn from. In both cases, I found it easiest to learn the languages by producing small programs and running them to understand their behaviour, or compiling simple C programs to WebAssembly to see how well-known operations map into that language. In particular, the Typedtree IR of the OCaml compiler has little documentation, so it was very helpful to use the pretty-printing functions in the compiler's front-end to see how simple OCaml programs are translated into the IR. Adopting these approaches from the beginning of the project would have helped me to gain confidence in each of the languages faster.
 
-Whilst I managed to work at a steady pace both during term time and in the breaks, always staying on track or ahead of schedule, my original timetable did not account for me being able to allocate much more time to the project during the breaks.
-This led to me being about three weeks ahead of schedule at the start of Lent term, which meant I had lots of time to work on extensions, but had to come up with new goals for when I wanted to complete components by, that could have been present in my initial plan.
+I initially had some difficulties debugging my garbage collection implementation, since errors, such as incorrectly freeing an object, may not affect a program's output, and if they do it is typically long after the error occurs, when that block of memory is reallocated and modified. To solve this, I ended up writing several JavaScript functions to aid debugging, such as checking the structure of the free list and that blocks were correctly marked as allocated or not, as well as logging lots of data about pointers used during a program's execution and studying the resulting trace instead. This process likely would have gone faster had I taken a more systematic view to debugging from the beginning, writing utility functions that I expected would be useful in advance.
 
 
 \section{Future work}
-First, there are still several features of OCaml not supported by my compiler. Implementing more of the standard library would allow supporting operations on additional types, such as 32 and 64-bit integers and strings.
-Similarly, although the basic array syntax is supported, not having the Array library implmented in WebAssembly severely limits what can be achieved with arrays.
+First, there are several features of OCaml not yet supported by my compiler. Implementing more of the standard library would allow supporting operations on additional types, such as 32 and 64-bit integers and strings.
+Similarly, although the basic array syntax is supported, not having the Array library implemented in WebAssembly severely limits the practical uses of arrays. This would likely require supporting the module layer of OCaml, which then creates the possibility of compiling multiple interacting OCaml programs.
 
-Another point is that my compiler currently implements the 32-bit version of OCaml, in that integers are always 31 bits. 
-Whilst WebAssembly memory is currently limited to 4GB, being able to build the compiler to work with 63-bit integers, as is the case for building the official OCaml compiler on 64-bit system, may be beneficial to some programs.
+Another point is that my compiler currently implements the 32-bit version of OCaml, where integers are always 31 bits. 
+Whilst WebAssembly memory is limited to 4GB, so only uses 32-bit pointers, being able to build the compiler to use 63-bit integers, as is the case for the official OCaml compiler on 64-bit systems, would benefit programs containing large integer arithmetic.
 
-Lastly, there are still many aspects where performance could be optimised. Evaluation revealed that the compiler performs poorly with imperative code, which could be improved by more flow-directed analysis capable of inferring properties about mutable variables stored as references.
-One optimisation made in the OCaml compiler which I did not get round to implementing is identifying references that are effectively used just as mutable local variables, and representing them as such rather than forcing them to be stored in memory.
-This requires ensuring the variable cannot leak out of the function, done by escape analysis. Control-flow analysis would also make the use of functions more precise, increasing the opportunities for inlining or tail-call optimisation.
-Additionally, the garbage collector is implemented in JavaScript rather than WebAssembly, and I suspect translating this into WebAssembly to avoid the switch between WebAssembly and JavaScript at each memory allocation would significantly reduce the overhead of garbage collection.
-It could also be improved to use more complex garbage collection techniques, such as a generational collector which divides objects into short-lived objects collected frequently, and long-lived objects collected less often. I suspect this would introduce additional challenges relating the the WebAssembly stack being inaccessible.
+There are still many aspects where performance could be improved. 
+My evaluation revealed that the optimisations implemented do not significantly affect imperative code, which could be improved by flow-directed analysis capable of inferring properties about mutable variables stored as references.
+%
+One optimisation made in the OCaml compiler, which I did not get round to implementing, is identifying references being used as mutable local variables and not accessed outside of a function. These can be replaced with local variables of the function, rather than being stored on the heap.
+Also, control-flow analysis would more precisely identify where functions are used, enabling other optimisations, rather than relying on copy propagation to replace all indirect uses of a function variable.
+%One optimisation made in the OCaml compiler which I did not get round to implementing is identifying references that are effectively used just as mutable local variables, and representing them as such rather than forcing them to be stored in memory.
+%This requires ensuring the variable cannot leak out of the function, done by escape analysis. Control-flow analysis would also make the use of functions more precise, increasing the opportunities for inlining or tail-call optimisation.
+
+Finally, the garbage collector is implemented in JavaScript rather than WebAssembly. I suspect that translating this to WebAssembly, avoiding the switch between WebAssembly and JavaScript for each memory allocation, would significantly reduce the overhead of garbage collection. More complex garbage collection techniques could also be implemented, such as a generational collector, which identifies objects as short-lived or long-lived, and collects long-lived objects less frequently since they are likely to still be in use.
+%It could also be improved to use more complex garbage collection techniques, such as a generational collector which divides objects into short-lived objects collected frequently, and long-lived objects collected less often. I suspect this would introduce additional challenges relating the the WebAssembly stack being inaccessible.
 
 
 

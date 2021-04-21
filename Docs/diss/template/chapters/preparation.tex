@@ -50,6 +50,9 @@ The first three optimisations perform relatively complex transformations, requir
 \subsection{Pattern matching}
 
 The Grain and OCaml compilers differ in the techniques used for pattern-matching.  The OCaml compiler implements a backtracking algorithm, which aims to minimise the size of the pattern-matching code produced, whereas the Grain compiler implements a decision-tree algorithm, which ensures that each pattern is examined at most once, minimising execution time. Each implementation references papers on the technique it uses \cite{ocamlpatternmatch, decisiontrees}, which were useful in choosing the approach to take and in implementing pattern-matching for my intermediate representation.
+%
+I decided to implement a backtracking pattern-matching compiler.  When optimised, each approach typically has similar performance \cite{decisiontrees}, however backtracking compilers appear to be the more common approach, and guarantee linear code size.
+
 
 \subsection{WebAssembly}
 The majority of my preparation before the start of the project was familiarising myself with the structure of WebAssembly.
