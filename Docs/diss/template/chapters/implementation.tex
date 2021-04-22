@@ -482,22 +482,21 @@ These are ``immediate" values in the linearised IR and indicate bindings that do
 
 This is also extended to values passed through immutable memory, such as tuples, constructor fields or some record fields. During translation to the IR, these expressions in OCaml's \verb|Typedtree| are translated to the \verb|Block| expression in the IR, and tagged with an \verb|ImmutableBlock l| annotation, where \verb|l| is a boolean list indicating which of the block's fields are immutable. 
 
-When the IR tree is analysed, the variables or constants stored in the immutable fields of a block are added to that node as another annotation. A table mapping variables to annotations records this when the block is bound to a variable, so this propagates to any uses of the variable too. This information is also approximated at branches, such as \verb|if| and \verb|switch| statements, by taking the intersection of the known fields when each branch returns a block. For example, \verb|let p = if cond then (x, y) else (x, z)| would annotate the \verb|if| node and hence also \verb|p| with that fact that its first field will be \verb|x|. 
-When an immutable field of a block is accessed as \verb|Field(b, i)|, if this annotation is present on \verb|b| and contains its element at index \verb|i|, the node is replaced with the known constant/variable to propagate this value through the program.
 
-% Could have done some sort of flow based analysis here but didn't, do I want to?
-%That alone is not enough to detect fixed values being propagated through memory. There are four sources of memory blocks in the OCaml Typedtree (ignoring floats, which are treated as constants until later stages, and closures, which are hidden in this representation): constructors, tuples, arrays and records. Of these, constructor and tuple fields are always immutable and record fields are unless specified as mutable. Therefore, during translation to the IR, although all of these are mapped to a single \verb|Block| structure, constructors, tuples and records are annotated with a list of booleans for which of their fields are immutable. We also annotate the nodes for these blocks with the constants or variables stored to each of those immutable fields. 
-% Describe this process in more detail? Relates to constant propagation too.
-% TODO: Could just describe by data-flow equations?
-% Doing this across function calls would require CFA, which gets complex when not talking about function values
-%While traversing the IR tree, variable bindings copy these annotations to a table mapping identifiers to annotations, which are copied back onto nodes in the tree where these variables are used. Then, when a \verb|Field(x, i)| node is encountered, if such an annotation is present on \verb|x| then we check if element \verb|i| of the list is immutable. If so, the field access is replaced with the variable or constant known to be stored there. \\
-%Where possible, this information is also preserved across branches by taking the intersection of lists present on each branch if they exist. For example, consider the program \verb|let p = if cond then (x, y) else (x, z) in p[0]|. We would annotate the nodes forming each of the pairs, then the node corresponding to the \verb|if| statement would be annotated with the list \verb|[Some x, None]| and this would be used to identify \verb|p[0]| as \verb|x|.
-% Annotations not carried across function arguments/results, would get a lot more complicated and need to make some approximations to ensure termination
+When the IR tree is analysed, \verb|Block| nodes are annotated with the variables or constants stored in the block's immutable fields.
+ A table mapping variables to annotations records this when the block is bound to a variable, so this propagates to any uses of the variable too. 
+This information is also approximated at branches, by taking the intersection of the known fields when each branch returns a block. For example, \verb|if cond then (x, y) else (x, z)| would annotate the \verb|if| node with that fact that its first field is \verb|x|. 
+When an immutable field of a block is accessed as \verb|Field(b, i)|, if the known value of that field is annotated on \verb|b|, the node is replaced with the known constant/variable, avoiding accessing it indirectly.
 
-As well as constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression that does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table of common expressions. Identifying such expressions is done by the effects analysis described below. Then, whenever such expressions are encountered in the IR tree and are present in the table, they are replaced by the identifier known to hold that value. So that variables are only reused when in scope, each entry is removed from the table after the subtree below its binding is searched.
+% this annotation is present on \verb|b| and contains its element at index \verb|i|, the node is replaced with the known constant/variable to propagate this value through the program.
 
-These passes tend to result in unused variables due to expressions being replaced with their known values. Therefore, after all of these passes have been performed,  dead assignments are identified as variable assignments that are never used. Of these, those that have no side effects can then be removed. 
-These optimisations also increase the number of cases found for tail-call optimisation. Where a function \verb|f| is assigned to another variable \verb|g| and that is used instead, tail call optimisation will not identify which function is being called by \verb|g|. These optimisations replace some such cases with using \verb|f| directly, in which case the function can now be identified and the call will be considered for tail-call optimisation.
+As well as constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression that does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table of common expressions. Identifying such expressions is done by the effects analysis described below. 
+Subsequent occurrences of that expression are then replaced by the variable known to hold its value. So that variables are only reused when in scope, each entry is removed from the table after the subtree below its binding is searched.
+
+These passes enable further optimisations, by removing redundancy or indirect accesses in the program. They also tend to result in unused variables, due to expressions being replaced with their known values.  Therefore, after all of these passes have been performed,  dead assignments are identified as variable assignments that are never used, and those that have no side effects are removed.
+
+% SOMETHING SIMILAR ALREADY MENTIONED FOR UNCURRYING
+%These optimisations also increase the number of cases found for tail-call optimisation. Where a function \verb|f| is assigned to another variable \verb|g| and that is used instead, tail call optimisation will not identify which function is being called by \verb|g|. These optimisations replace some such cases with using \verb|f| directly, in which case the function can now be identified and the call will be considered for tail-call optimisation.
 
 
 % TODO: Make side effect analysis iterative to solve functions?
@@ -506,18 +505,20 @@ OCaml is an impure language, so analysis of side effects is necessary to determi
 
 \verb"annotation ::= ... | Pure | Immutable | Latent of annotation list"
 
-\verb|Pure| identifies expressions that do not modify program state, making them safe for dead-assignment elimination to remove. Of the pure expressions, \verb|Immutable| identifies expressions that will return the same value each time they are evaluated, so common-subexpression elimination can remove repeated occurrences of such expressions.
+\verb|Pure| identifies expressions that do not modify program state, making them safe for dead-assignment elimination to remove. This includes creating a block in memory, as it could be immediately garbage collected if unused.
 
+Of the pure expressions, \verb|Immutable| identifies expressions that will return the same value each time they are evaluated, so common-subexpression elimination can remove repeated occurrences of such expressions. Creating blocks containing only immutable fields is treated as immutable, as is accessing an immutable field of a block, since it can never be overwritten so always has the same value.
 
-
-%%%%% !!! Creating a block only immutable if all fields immutable, else other bits of code trying to set/read fields would cause issues for CSE
+The \verb|Latent| annotation is used for functions, since a function definition itself is pure and immutable, but the body of the function may cause latent side effects when the function is called. Therefore, if a function body has annotations $F$, the function definition is annotated with \verb|Pure|, \verb|Immutable| and \verb|Latent|$(F)$, and $F$ is unwrapped at function applications.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+The algorithm is summarised by the inference rules and functions in figure \ref{fig:inferenceRules}, abbreviating the three annotations as $P$, $I$ and $L$. $\Gamma$ is a mapping of both variables and handler indices to analyses. 
+The algorithm safely over-approximates possible side-effects, by under-approximating the annotated properties in multiple places. 
+Nothing is assumed about the latent effects of variables that have not been analysed, which occurs for function parameters,
+ and the intersection of properties is taken at branches.
 
-The algorithm is summarised by the inference rules and functions in figure \ref{fig:inferenceRules}. $P$ and $I$ represent pure and immutable, and $L(F)$ represents a function having latent behaviour described by $F$. $\Gamma$ is a mapping of both variables and handler indices to analyses. The variable rule for \verb|x| $\not \in \Gamma$ is used when \verb|x| is a function argument or recursive function, in which case nothing is assumed about its latent effects, so side effects are safely over-approximated. Where branches may occur, the intersection of analyses is taken.
-
-The function \verb|seq| encodes that the latent effects of \verb|e; e'| are those of \verb|e'|, but the expression is only pure/immutable if both \verb|e| and \verb|e'| are. The function \verb|app| encodes the same for unwrapping the analysis of latent effects as a function is applied. 
+The function \verb|seq| encodes that the latent effects of \verb|e; e'| are those of \verb|e'|, but the expression is only pure/immutable if both \verb|e| and \verb|e'| are. The function \verb|app| encodes the same for unwrapping the analyses of latent effects as a function is applied. This is necessary, rather than just returning the latent effects, since a partial application may perform some impure computation then return another function, in which case the overall application is impure.
 
 % Cases left out: Handler jumps, unary/binary operations
 % For simplicity, ignores the propagation of 'Fields' analysis happening at the same time, as this generally isn't useful
@@ -611,12 +612,14 @@ let rec app F = function
 \label{fig:inferenceRules}
 \end{figure}
 
-For the purpose of removing dead assignments, creating a block in memory is considered pure as it could be immediately garbage collected if unused. If every field is immutable, then creating the block is also considered immutable, since two instances pointing to a shared copy is indistinguishable from having two separate blocks. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. This therefore relies on the propagation of \verb|ImmutableBlock| annotations described previously, left out here to avoid further complicating the inference rules.
+%For the purpose of removing dead assignments, creating a block in memory is considered pure, as it could be immediately garbage collected if unused. If every field is immutable, then the block itself is also marked as immutable, since its fields can never be overwritten. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. This therefore relies on the propagation of \verb|ImmutableBlock| annotations described previously, left out here to avoid further complicating the inference rules.
 
 Using a linearised IR has resulted in simpler rules in some cases. For example, the condition of an \verb|if| statement is always a variable or constant so has no side effects, hence it is ignored by that rule.
 
-The \verb|Latent| annotation is used for functions, since a function definition itself is pure and immutable, but the body of the function may cause latent side effects when the function is called. The rules for functions therefore wrap the annotations of the body in a \verb|Latent| annotation, and this is repeated for each curried argument. These annotations are unwrapped again when a function is applied. If the analysis of latent effects is unknown, for example, because the function applied is an argument to the current function (\verb|f| in \verb|map f lst|), then nothing is assumed about the result. Also, if at any point in unwrapping applications the function is not also marked as \verb|Pure| or \verb|Immutable|, then neither is the application node. This accounts for any side effects in partially evaluating the function, such as for \verb|let f x = (z := 5; (fun y -> x + y))|. Here, \verb|f 1 2| is valid as \verb|f 1| returns a function. Although the returned function is pure and will be annotated with \verb|Latent {Pure, Immutable}|, the first application is impure so the application node is not marked as being a pure expression.
-
+%If the analysis of latent effects of a function being applied are unknown, for example, because the function applied is an argument to the current function (\verb|f| in \verb|map f lst|), then nothing is assumed about the result. 
+%
+%If one of the partial applications of a function is not marked as \verb|Pure| or \verb|Immutable|, then neither is the application node. This accounts for any side effects in partially evaluating the function, such as for \verb|let f x = (z := 5; (fun y -> x + y))|. 
+%\verb|f| returns a function which is pure, but  the first application in \verb|f 1 2| evaluates the body of \verb|f|, which has side effects, so \verb|f 1 2| would not be marked as a pure expression.
 
 
 \subsection{Simplifying expressions and peephole optimisations}
@@ -627,24 +630,16 @@ At the WebAssembly level, in addition to being used for register allocation, liv
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Garbage Collection}
-One of the last extensions to my project was to implement a garbage collector as part of the runtime system. Due to its complexity compared to the other runtime functions and going through several improvements, this was written in JavaScript and imported into the WebAssembly runtime rather than writing it in WebAssembly. I initially implemented a reference-counting garbage collector, but changed to a tracing implementation to be able to collect cyclic data structures.
+One of the last extensions to my project was to implement a garbage collector as part of the runtime system. Due to its complexity compared to the other runtime functions and going through several improvements, this was written in JavaScript and imported into the WebAssembly runtime rather than writing it in WebAssembly. %I initially implemented a reference-counting garbage collector, but changed to a tracing implementation to be able to collect cyclic data structures.
 
 % TODO: Talk about Wasm proposal for reference types/garbage collection?
 
-\subsection{Shadow stack}
-A tracing collector marks all objects reachable from pointers on the call stack and global variables, then collects all allocated unmarked objects. However, the stack in WebAssembly cannot be directly inspected, so only the current function's local variables are accessible. The solution to this is to implement a shadow stack, reserving a section of WebAssembly's linear memory for storing copies of local variables from the call stack. The only bookkeeping required is a pointer to the top of the shadow stack, which moves up and down as functions are called and return.
+%\subsection{Shadow stack}
+A tracing collector marks all objects reachable from pointers on the stack and global variables, then collects all allocated unmarked objects.
+Since the stack in WebAssembly is implicit, local variables are copied to the shadow stack in linear memory, allowing them to be explored during garbage collection. This additional store on every local-variable update is one of the main overheads of implementing garbage collection. The only bookkeeping required is a pointer to the top of the shadow stack, which moves up and down as functions are called and return.
+% -- CUT OUT TO REDUCE WORD COUNT
+%Although only pointer values need to be stored on the shadow stack, identifying pointers requires propagating type information through all stages of the compiler and would still be imprecise for polymorphic functions. Instead, all local variable assignments in functions first copy the new value to the corresponding slot on the shadow stack, and checking which values are pointers is left until garbage collection runs. This additional store on every local-variable update is one of the main overheads of implementing garbage collection.
 
-Although only pointer values need to be stored on the shadow stack, identifying pointers requires propagating type information through all stages of the compiler and would still be imprecise for polymorphic functions. Instead, all local variable assignments in functions first copy the new value to the corresponding slot on the shadow stack, and checking which values are pointers is left until garbage collection runs. This additional store on every local-variable update is one of the main overheads of implementing garbage collection.
-
-
-% TODO: Move to preparation chapter!
-%\subsection{WebAssembly Stack Structure}
-%Function activation records are part of WebAssembly's implicit stack, which distinguishes stack entries as values, labels of control flow blocks, and activation records.% https://webassembly.github.io/spec/core/exec/runtime.html 
-%While most operations can only interact with the top of the stack and WebAssembly's type checking prevents a function from being able to access values on the stack below the last activation record or label, function arguments and local variables are accessed with the \verb|LocalGet|, \verb|LocalSet| and \verb|LocalTee| (equivalent to a set followed by a get) instructions. 
-%
-%I chose to implement a mark and sweep algorithm since reference counting alone is insufficient to collect unused cyclic structures. Although these features are very convenient for producing WebAssembly code, they pose an issue for garbage collection as the garbage collector has no way to directly access the local variables of all function calls currently active, which along with the global variables determine the root set of reachable objects for a mark and seep algorithm. The solution to this is to implement a shadow stack in the linear memory, reserving a region at the start of memory to store copies of stack values as they are updated in functions. Besides a pointer to the top of the shadow stack, no other bookkeeping is needed since, besides the garbage collector, values are only every written there not read. The start function of a program therefore allocates space for the global variables, then each function just increases the stack pointer on entry and decreases it on exit. 
-%
-%Although only reference values need to be written to the shadow stack, determining this usually requires testing the last bit of a value (since only pointer values have to last bit set) so instead all local variable assignments are written to the stack and this check is left for when garbage collection runs. These memory stores therefore introduces an overhead compared to compiling programs to not use garbage collection. % TODO: Optimise this for obvious cases as peephole optimisation e.g. i32.const n ; local.set i -- clearly don't need to update shadow stack
 
 
 \subsection{Simple memory allocator}
@@ -653,15 +648,16 @@ The garbage collector can be split into two components, one that provides \verb|
 I initially implemented the first part following the algorithm described in K\&R \cite{k_and_r}. A cyclic linked list, called the free list, is maintained, chaining together all of the free blocks in memory, and the runtime keeps a pointer to some block in the list. Each block has an 8-byte header containing the size of the block and a pointer to the start of the next block. % Dont bother mentioning alignment?
 As all values in compiled programs are 32-bit integers or 64-bit floats, blocks are always aligned to at least 4 bytes, so the least significant bits of each field are unused, leaving space for an allocated and marked flag. 
 
-\verb|malloc| scans the free list until the first large-enough block is found. Either the whole block is allocated if it is a perfect fit, else the size of the block is reduced and just the tail end of it is allocated. If there are no large-enough blocks, the garbage collector is called. If that frees a large-enough block then the list is scanned again, otherwise the WebAssembly memory is grown and a block allocated from the new space.
+\verb|malloc| scans the free list until the first large-enough block is found. Either the whole block is allocated if it is a perfect fit, else the size of the block is reduced and just the tail end of it is allocated. If there are no large-enough blocks, the garbage collector is called.
+If that frees a large-enough block then the list is scanned again, otherwise the WebAssembly memory is grown and a block allocated from the new space.
 %When a block is requested, the algorithm is first-fit so the list is scanned for the first block large enough for the allocation. If less than one header size larger than the size requested, the block is removed from the list, marked as allocated, and returned. Otherwise, the size of the block is reduced and just the tail end of the block is returned. 
 
 
-\verb|free| also scans the free list until the last unallocated block before the block being freed is found. The freed block is then inserted here in the list, keeping blocks in the free list in memory order. If it is adjacent to the block before or after it in the free list, the blocks are merged into one large block to reduce fragmentation.
+\verb|free| also scans the free list, until the last unallocated block before the block being freed is found. The freed block is then inserted here in the list, keeping blocks in the list in memory order. Existing free blocks adjacent to it in memory are also merged into one larger block to reduce fragmentation.
 
-The mark and sweep algorithm then determines which blocks to free. When invoked, the shadow stack is scanned and each block pointed to is marked and put onto a stack. This stack is maintained using the pointer fields in the headers of blocks, which are otherwise meaningless for allocated blocks not in the free list. A depth first search is then done, examining the fields of each object for pointers. When a pointer to an unmarked block is found, that block is marked and added to the stack. 
-
-The sweep part of the algorithm then walks over all blocks in memory using the size field in each block, clearing marked flags and freeing allocated blocks that were not marked and are therefore unreachable.
+The mark and sweep algorithm then determines which blocks to free. When invoked, the shadow stack is scanned and each block pointed to is marked and put onto a stack. This stack is maintained using the pointer fields in the headers of blocks, which are otherwise meaningless for allocated blocks not in the free list. A depth first search is then performed to mark all reachable blocks, using this stack to track which objects to explore the fields of next.
+Finally, the sweep part of the algorithm traverses all blocks in memory, % using the size field in each block, 
+clearing marked flags and freeing allocated blocks that were not marked and are therefore unreachable.
 
 % TODO: Massively cut down details, don't need such low level information, especially as it is described in K&R
 %\subsection{Basic Structure}
@@ -704,31 +700,23 @@ First, an additional 8 byte trailer is added to each block, used as shown below,
 %Allocated block: &  marked stack ptr  & size & $\dots$ & size & unused \\ \cline{2-6}
 %\end{tabular}
 
-%This is enough to be able to free a block without scanning the free list. The pointer to the block being freed is equivalently a pointer to the end of the adjacent block before it, and the size field of the block gives the position of the block immediately after it. As there is an allocated bit and size field in both the header and trailer of all blocks, the procedure checks if either of these adjacent blocks is free. If the block above is free, it is removed from its position in the free list and merged with the block being freed by updating the size fields. If the block below is free, the block being freed is merged with it, again updating the size fields and moving the trailer to the new end of the block. Otherwise, the freed block still needs to be included in the free list, which is done by inserting it onto the front of the list. 
 
-This is enough to be able to free a block without scanning the free list. From just the freed block's address, the procedure gets its size and checks the allocated flags of the blocks either side of it, which is possible since the block before has its size and allocated flag in its trailer. This determines if either block should be merged with the one being freed. Also, since the list is doubly linked, each adjacent free block has a pointer to its successor and predecessor block so can be removed from the middle of the free list without traversing the list. If neither block is merged, the newly freed block is inserted at the front of the free list, which means that the free list no longer keeps blocks in address order.
+This is enough to be able to free a block without scanning the free list. From just the freed block's address, the procedure gets its size and checks the allocated flags of the blocks either side of it. %, which is possible since the block before has its size and allocated flag in its trailer. 
+This determines if either block should be merged with the one being freed. Also, since the list is doubly linked, each adjacent free block has a pointer to its successor and predecessor block so can be removed from the middle of the free list without traversing it. If neither block is merged, the newly freed block is inserted at the front of the free list, so the free list no longer keeps blocks in address order.
 
-The cost of \verb|malloc| comes from scanning the free list for a large-enough block. The solution to this is binning blocks into separate free lists based on their size, so scanning for a free block can skip searching any lists of blocks that will all be too small. All but the last bin fit exact sizes starting from the smallest possible allocation, then the last bin holds all larger blocks. The compiler supports limited array operations, so the size of most allocations is determined by user-defined datatypes and the number of free variables in functions. Often both are relatively small hence a large proportion of freed blocks are placed in the fixed size bins.  
-There is now an array of free list pointers, and \verb|malloc| scans each list in turn searching for a block, starting from the earliest bin that could contain a large-enough block. The rest of the algorithm is mostly unchanged, except that \verb|free| must insert freed blocks into the correct free list, and shrinking blocks when allocating or merging blocks when freeing means that free blocks sometimes move between lists.
+The cost of \verb|malloc| comes from scanning the free list for a large-enough block. The solution to this is binning blocks into separate free lists based on their size, so scanning for a free block can skip searching any lists of blocks that will all be too small. All but the last bin fit exact sizes starting from the smallest possible allocation, then the last bin holds all larger blocks. 
+The compiler supports limited array operations, so the size of most allocations is determined by user-defined datatypes and the number of free variables in functions. 
+Often both are relatively small, hence a large proportion of freed blocks are placed in the fixed size bins.  
+%There is now an array of free list pointers, and \verb|malloc| scans each list in turn searching for a block, starting from the earliest bin that could contain a large-enough block. 
+%The rest of the algorithm is mostly unchanged, except that 
+\verb|free| must now insert freed blocks into the correct free list, and shrinking blocks when allocating, or merging blocks when freeing, means that free blocks sometimes move between lists.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%After implementing and testing the previously described approach, there were two inefficiencies to address. For both allocating and freeing a block of memory, the runtime first walks down the free list until it finds a block of the right size for allocating or the adjacent free block for freeing. With some additional information attached to each block, both of these traversals can be avoided to get \verb|malloc| and \verb|free| to run in constant time. 
-%
-%Rather than just a header, an extra 8 bytes is allocated as a trailer for each block and the free list is changed to be a doubly linked list. The trailer contains the size and the pointer to the next block is moved to the trailer, with the header now instead holding a pointer back to the previous trailer. This means that, when the free list is in memory order, the forwards and backwards pointers just skip over regions of allocated memory. The size is also present in the trailers of allocated blocks, although the pointers in allocated blocks are still just used to keep a stack for marking, so the pointer in the trailer is meaningless. As in the original implementation, the last bit of the pointers in the header and trailer indicate if a block is allocated, and the last bit of the header size field is used to indicate a block is marked during garbage collection.
-
-
-% Give reference for binning? And suggestion of sizes to use?
-%The expensive part of \verb|malloc| is needing to scan down the free list until a large-enough block is found. 
-%This can be avoided by splitting the free list into several lists, each for a specific range of sizes, and then having an array of pointers to the start of each list. 
-%% TODO: Be specific about sizes chosen and justification e.g. http://gee.cs.oswego.edu/dl/html/malloc.html
-%Freed blocks are therefore put into a bin based on their size. The first several bins fit blocks of exact sizes, starting from the minimum possible block size. There are then a few bins which fit ranges that double in size with each bin, then one last bin for any larger sizes. 
-%As my compiler supports very limited array operations, the size of blocks allocated by a program is primarily determined by the complexity of datatypes defined and the number of free variables in functions. In many cases, these are relatively small so the fixed size bins make up most of the allocations. \\
-%With these bins, allocation scans from the earliest bin of large-enough size until it finds a non-empty bin, and allocates the first large-enough block in that list. In cases where the block found is significantly larger than required, an extra check is introduced that the remaining block has not shrunk to a size where it needs to move bin. \\
-%The only change to the \verb|free| function for this optimisation is the determine which bin a block needs to be placed in based on its size after possibly merging with free blocks adjacent to it.
-% TODO: Include the 'list of lists' diagram!
-
-A characteristic observed from tracing the behaviour of memory-intensive test programs is that, until garbage collection fails to free a suitable block and memory has to be grown, the garbage collector typically has diminishing returns each invocation as the set of long-lived objects grows. This results in there being less memory available over time and the garbage collector being called increasingly frequently. Memory grows in multiples of WebAssembly pages, which are 64KiB. Across several test programs, once the memory being freed drops below about 1KiB, the garbage collector start being called very frequently and almost always results in memory growing eventually. Therefore, another optimisation was to grow memory whenever this threshold is crossed, even if a block large enough for the requested allocation is found. This doesn't affect the amount of memory used, as memory almost always grows anyway after this point, but all of the objects freed by several frequent calls to the garbage collector are now collected in a single pass when this large block of memory is next used up, reducing the overhead of garbage collection.
+A characteristic observed from tracing the behaviour of memory-intensive test programs is that, until garbage collection fails to free a suitable block and memory has to be grown, the garbage collector typically has diminishing returns each invocation as the set of long-lived objects grows. This results in there being less memory available over time and the garbage collector being called increasingly frequently.
+Memory grows in multiples of WebAssembly pages, which are 64KiB. 
+Once the memory being freed drops below about 1KiB, a future garbage collection almost always grows memory eventually. Therefore, another optimisation was to grow memory as soon as this threshold is crossed, rather than waiting for several inefficient collections before the available memory is fully exhausted. This reduces the overhead of garbage collection by avoiding many inefficient collections, without growing memory unnecessarily.
+%Across several test programs, once the memory being freed drops below about 1KiB, the garbage collector start being called very frequently and almost always results in memory growing eventually. Therefore, another optimisation was to grow memory whenever this threshold is crossed, even if a block large enough for the requested allocation is found. This doesn't affect the amount of memory used, as memory almost always grows anyway after this point, but all of the objects freed by several frequent calls to the garbage collector are now collected in a single pass when this large block of memory is next used up, reducing the overhead of garbage collection.
 
 
 \newpage
