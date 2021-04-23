@@ -24,7 +24,7 @@ Where available, these programs were based on code from existing benchmarking li
 \begin{itemize}
 \item \verb|alltrees|: Constructs a list of all binary trees of a given size, which is very memory intensive. % and objects that exist for varying lifetimes.
 
-\item \verb|arith|: Computes Euler's totient function for all integers from 1 to a given \verb|n|, involving a large amount of integer arithmetic. This was based on problem 34 of the 99 Problems in OCaml \cite{99-problems}, implementing Euler's totient function.
+\item \verb|arith|: Computes Euler's totient function for all integers from 1 to a given \verb|n|, involving a large amount of integer arithmetic. This was based on problem 34 of the 99 Problems in OCaml \cite{99-problems}.%, implementing Euler's totient function.
 
 \item \verb|composition|: Constructs a function which is the composition of a list of simple functions and maps it over a list, making heavy use of higher-order functions.
 
@@ -84,7 +84,7 @@ There are no bars for C for \verb|arith|, \verb|funcrec| and \verb|nbody| in fig
 There is also no data for Grain for \verb|arith_1000| as the program did not appear to terminate with tracing enabled.
 % was very slow without tracing (see figure \ref{fig:alt_timing}) and with tracing enabled did not terminate after 10 minutes.
 
-For the compiled C programs that did use the heap, my garbage-collected runtime only uses more memory for \verb|mergesort|, where my implementation uses 70\% more memory at the larger problem size. This difference is due to C being an imperative language, where it is natural to implement \verb|mergesort| to perform operations in-place. C is also not garbage-collected, so manual memory management is necessary. Although this allows more precise control over memory, it adds to the complexity of writing these program. % Say how it makes things harder or not?
+For the compiled C programs that did use the heap, my garbage-collected runtime only uses more memory for \verb|mergesort|, where my implementation uses 70\% more memory at the larger problem size. This difference is due to C being an imperative language, with manual memory management, where it is natural to implement \verb|mergesort| to perform operations in-place. Although manual memory management allows more precise control over memory, it also adds to the complexity of writing programs.
 The WebAssembly memory is initialised as 2 pages (128KiB), which is the size recorded for \verb|composition| and \verb|mergesort|$_{1000}$, indicating that these programs may need less memory than the amount initially allocated.
 
 
@@ -92,7 +92,7 @@ The WebAssembly memory is initialised as 2 pages (128KiB), which is the size rec
 My implementation uses significantly less memory than both the JavaScript and Grain alternatives. In every test, % (ignoring the Grain result for \verb|arith_1000|), 
 the garbage-collected runtime uses at most one third of the memory used by either the JavaScript or Grain version. 
 % NEW - DESCRIBING MEMORY MANAGEMENT IN EACH OF THE ALTERNATIVES
-The Grain compiler has its own runtime system for managing WebAssembly memory, whereas Js\_of\_ocaml converts OCaml programs to JavaScript, which then rely on the garbage collector of the environment the benchmarking script is executed in. I ran the tests with Node.js, so this was using Chrome's V8 JavaScript engine for memory management.
+The Grain compiler has its own runtime system for managing WebAssembly memory, whereas Js\_of\_ocaml converts OCaml programs to JavaScript, which then rely on the garbage collector of the environment the benchmarking script is executed in. I ran the tests with Node.js, so this used Chrome's V8 JavaScript engine.
 
 
 The order of the bars for my compiler, with and without garbage collection, are reversed in three of the tests. These tests have fewer opportunities for garbage collection so it saves little memory, but the implementation consumes more memory with garbage collection due to the overhead of headers and trailers on allocated blocks. In the worst case, \verb|funcrec| has no opportunities for garbage collection and almost exclusively allocates small objects of 8 bytes. Since each header and trailer is 8 bytes, garbage collection triples the amount of memory used.
@@ -109,7 +109,7 @@ The order of the bars for my compiler, with and without garbage collection, are 
  \label{fig:alt_size} 
 \end{figure}
 
-As expected, figure \ref{fig:alt_size} shows that the JavaScript output tends to be largest, as JavaScript is a text format rather than a binary format like WebAssembly. On average, it is 8 times larger than the output of my compiler with garbage collection enabled. Grain also produces much larger binary files, averaging about 3.5 times larger than my compiler's output. Inspecting the compiled output, there appear to be a few reasons for this. First, programs import a larger set of functions from Grain's runtime than used by my compiler, as Grain supports more types of numerical data, such as having both 32-bit and 64-bit integers. It also uses a reference-counting garbage collector, which adds more overhead since updating a variable requires both incrementing the new value and decrementing the old value, whereas my garbage collector just overwrites the old value on the shadow stack. Lastly, it does not appear to optimise the WebAssembly produced, compared with my compiler, which uses a register-allocation algorithm to reduce the number of local variables declared, and peephole optimises trivially useless statements such as \verb|local.get i; drop|.
+As expected, figure \ref{fig:alt_size} shows that the JavaScript output tends to be largest, as JavaScript is a text format rather than a binary format like WebAssembly. On average, it is 8 times larger than the output of my compiler with garbage collection enabled. Grain also produces much larger binary files, averaging about 3.5 times larger than my compiler's output. Inspecting the compiled output, there appear to be a few reasons for this. First, programs import a larger set of functions from Grain's runtime than used by my compiler. It also uses a reference-counting garbage collector, which adds more overhead since updating a variable requires both incrementing the new value and decrementing the old value, whereas my garbage collector just overwrites the old value on the shadow stack. Lastly, it does not appear to optimise the WebAssembly produced, compared with my compiler, which uses a register-allocation algorithm to reduce the number of local variables declared, and peephole optimises trivially useless statements such as \verb|local.get i; drop|.
 
 Compared with the output of compiling a C program, the sizes are similar except where parts of \verb|stdlib| have to be included for memory allocation, which makes those programs about 9KB larger. For comparison, my runtime without garbage collection is a 740B WebAssembly file, but the garbage collector is implemented in JavaScript, which when minified is a 4KB file.
 
@@ -146,12 +146,12 @@ The peephole optimisations done at the WebAssembly level have no impact on memor
  \label{fig:specific-opts} 
 \end{figure}
 
-Figure \ref{fig:specific-opts} shows the change when one optimisation is removed, so the magnitude of each bar can be viewed as the speed-up or size reduction an optimisation has, on top of the optimisations already present. First, inlining only increases file size in one case, \verb|funcrec|, and only by 5\%, so the optimisation does not cause significant code bloat. Instead, inlining reduces the size of the output in cases where it completely removes a function definition. Overall, it has a relatively small impact on performance, with the biggest change being a 15\% speed-up for \verb|funcrec|. This suggests that the heuristics used for inlining may be too conservative, and allowing inlining in more places could improve performance while still keeping code size reasonable. However, these are all relatively small benchmark programs, which could also limit how significant a change can be achieved by inlining. % suggesting that either the heuristics for inlining were too restrictive or that this set of microbenchmarks or other optimisations are not complex enough to see significant improvements from inlining.
+Figure \ref{fig:specific-opts} shows the change when one optimisation is removed, so the magnitude of each bar can be viewed as the speed-up or size reduction an optimisation has, on top of the optimisations already present. First, inlining only increases file size in one case, \verb|funcrec|, and only by 5\%, so the optimisation does not cause significant code bloat. Instead, inlining reduces the size of the output in cases where it completely removes a function definition. Overall, it has a relatively small impact on performance, with the biggest change being a 15\% speed-up for \verb|funcrec|. This suggests that the heuristics used for inlining may be too conservative. However, these are all relatively small benchmark programs, which could also limit how significant a change can be achieved by inlining. % suggesting that either the heuristics for inlining were too restrictive or that this set of microbenchmarks or other optimisations are not complex enough to see significant improvements from inlining.
 
 % Getting too specific? Talk in higher-level general details?
-Tail-call optimisation does not affect most of the programs, but improves the execution speed of \verb|funcrec| and the speed and file size for \verb|arith|. A more important factor, not shown by figure \ref{fig:specific-opts}, is that tail-call optimisation allows some programs to execute that would otherwise give an error: \\
+Tail-call optimisation does not affect most of the programs, but improves the execution speed of \verb|funcrec| and the speed and file size for \verb|arith|. A more important factor, not shown by figure \ref{fig:specific-opts}, is that tail-call optimisation allows some programs to execute that would otherwise give an error, for example: \\
 \verb|let rec f x = if x = 0 then 0 else f (x-1)| \\
-Despite this being a very simple function, without tail-call optimisation, calling \verb|f(30000)| exceeds the maximum call-stack size and the program fails. With tail-call optimisation, the function no longer makes recursive calls so can handle any input size.
+Despite being a very simple function, without tail-call optimisation, \verb|f(30000)| exceeds the maximum call-stack size and the program fails. With tail-call optimisation, the function no longer makes recursive calls so can handle any input size.
 
 Lastly, uncurrying fully applied functions has the most significant impact on performance. None of the benchmarks are negatively impacted by it and most speed up, by up to 50\%. Additionally, not having to construct a closure for each separate argument reduces the amount of space used on the heap, and the number of functions defined in the code. In the case of \verb|arith|, this removes the need to recursively construct any closures, so heap usage no longer increases with problem size. Once again, \verb|nbody| is not improved, as it lacks opportunities for this optimisation to be applied.
 
@@ -163,7 +163,7 @@ Lastly, uncurrying fully applied functions has the most significant impact on pe
  \label{fig:patterns} 
 \end{figure}
 
-For evaluating the optimisations to pattern matching, I consider an additional microbenchmark, \verb|pattern|, which repeatedly calls each case of the following function:
+For evaluating the optimisations to pattern matching, I consider an additional microbenchmark, \verb|pattern|, which repeatedly calls each case of the function below, and benefits from the context information described in section 3.2.1.
 \begin{verbatim}
 type lst = Nil | One of int | Cons of int * lst
 
@@ -173,10 +173,13 @@ let f l1 l2 = match (l1, l2) with
   | ((One _, _)|(_, One _)) -> 2
   | Cons _, Cons _ -> 3
 \end{verbatim}
-This set of patterns benefits significantly from the reordering of cases  and use of context information described in the implementation chapter. 
+%This set of patterns benefits significantly from the reordering of cases  and use of context information described in section 3.2.1.
 
 
-As figure \ref{fig:patterns} shows, the optimisations have little or no impact on most of the benchmarks, but reduce output size for \verb|mergesort| and \verb|pattern|, which both involve more complex pattern matching. Execution time is also reduced slightly for \verb|pattern|. This shows that, although the difference will often only be small, the changes to pattern matching can improve performance for programs with complex patterns, without reducing performance in simpler cases.
+As figure \ref{fig:patterns} shows, the optimisations have little or no impact on benchmarks with only simple patterns, but reduce output size for \verb|mergesort| and \verb|pattern|, which both involve more complex pattern matching. Execution time is also reduced slightly for \verb|pattern|.
+This shows that the optimisations provide a slight benefit for complex pattern matching, without having a negative impact in simpler cases.
+
+% This shows that, although the difference will often only be small, the changes to pattern matching can improve performance for programs with complex patterns, without reducing performance in simpler cases.
 
 \subsection{Impact of number of iterations}
 %Only one instance of each benchmark is shown, as the pattern is identical for other problem sizes.
@@ -189,7 +192,7 @@ As figure \ref{fig:patterns} shows, the optimisations have little or no impact o
  \label{fig:iterations} 
 \end{figure}
 
-Figure \ref{fig:iterations} demonstrates that, in almost all cases, there is no further improvement after each optimisation pass has been performed three times, so this was chosen as the default number of iterations for all other tests. This ensures that every optimisation happens both before and after every other one, so the effects of phase ordering are reduced. This is helpful since there are several passes being performed at the IR level, so much more data and analysis would be necessary to select the best permutation of them with any confidence.
+Figure \ref{fig:iterations} demonstrates that, in almost all cases, there is no further improvement after each optimisation pass has been performed three times, so this was chosen as the default number of iterations for all other tests. This ensures that every optimisation happens both before and after every other one, so the effects of phase ordering are reduced. % This is helpful since there are several passes being performed at the IR level, so much more data and analysis would be necessary to select the best permutation of them with any confidence.
 Multiple iterations can also benefit one optimisation in isolation e.g. \verb|let y = x in let z = y in f(z)|. The first pass of propagating variables would replace \verb|f(z)| with \verb|f(y)|, but another pass is needed to replace this with \verb|f(x)|, allowing both \verb|y| and \verb|z| to be removed.
 
 % TODO: Phase ordering or not?
@@ -257,7 +260,7 @@ Figure \ref{fig:speedup} demonstrates the benefit of having a threshold for garb
 
 Figure \ref{fig:traces} reveals why this is the case, by examining a trace of the number of objects freed each time the garbage collector runs, and the total number of garbage collections performed before the program terminates. There is a trend in the number of objects being freed to decrease over time, as the number of long-lived objects grows, until eventually memory has to grow and a large number of allocations occur before the next garbage collection, hence the spikes in the traces. 
 
-We see an identical pattern both with and without the threshold, but this pattern is compressed when the threshold is used, in which case the program performs about 25\% fewer garbage collections in total.  The threshold shortens the tails of garbage collections that each only find a small number of objects to free, ultimately growing memory soon after anyway. Instead, the objects freed in each of these inefficient collections are all freed in one pass the next time garbage collection runs, after the newly-requested memory is used up many allocations later. This threshold results in the garbage collector being invoked fewer times in total, without requesting memory in cases where it would otherwise not be necessary. The value of 1KiB was selected based on the height of these tails of inefficient collections.
+We see an identical pattern both with and without the threshold, but this pattern is compressed when the threshold is used, in which case the program performs about 25\% fewer garbage collections in total.  The threshold shortens the tails of garbage collections that each only find a small number of objects to free. Instead, the objects freed in each of these inefficient collections are all freed in one pass the next time garbage collection runs, after the newly-requested memory is used up many allocations later. This threshold results in the garbage collector being invoked fewer times in total, without requesting memory in cases where it would otherwise not be necessary. The value of 1KiB was selected based on the amount freed by these tails of inefficient collections.
 
 \section{Summary}
 I have shown how my compiler compares to existing methods of running code on the web, outperforming Grain and Js\_of\_ocaml in many instances. I have also demonstrated the cases where my optimisations improve performance, and given possible explanations for the behaviour observed.

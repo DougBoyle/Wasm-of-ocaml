@@ -199,24 +199,26 @@ match l1, l2 with
 \caption{Example of reordering patterns not changing a program's semantics}
 \end{figure}
 
-Another improvement is made by passing a boolean for exhaustiveness to the procedure. The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive.% Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. 
+Another improvement is made by passing a boolean for exhaustiveness to the procedure, which is computed using existing utility functions in the OCaml front-end. %The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive. % Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. 
 When a matrix is known to be exhaustive, switch statements can leave out default cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
 
 
 
 Next, several other data structures are added to the procedure. They are all related so I describe each of them before explaining their benefit. 
 
-The procedure is extended with a context, a pair of matrices of just patterns with no actions or guards. The first is called the prefix, remembering already matched structure, and the second is the fringe, the matrix of patterns used above to indicate patterns left to be matched. Together, these describe the possible values that may reach the point in the pattern-matching code currently being produced. Initially there is just one row, where the prefix is empty and the fringe is \verb|_|, as nothing is known about the value being matched. The specialisation operations on matrices extend to contexts in the obvious way, for example with constructors ($\bullet$ separates the prefix and fringe):
+The procedure is extended with a context, a pair of matrices of just patterns with no actions or guards. The first is called the prefix, remembering already matched structure, and the second is the fringe, describing the known structure of the values left to be matched. Together, these describe the possible values that may reach the point in the pattern-matching code currently being produced. Initially there is just one row, where the prefix is empty and the fringe is \verb|_|, as nothing is known about the value being matched. The specialisation operations on matrices extend to contexts in the obvious way, for example with constructors ($\bullet$ separates the prefix and fringe):
 
 \begin{figure}[H]
 $
 \begin{pmatrix}
  p^1_1 \dots  p^1_k & \bullet & c(q_1, \dots, q_k) & \dots & q^1_n \\
- p^2_1 \dots  p^2_k &\bullet & c'(\dots)  & \dots & q^2_n  \\
+ p^2_1 \dots  p^2_k & \bullet & \_ & \dots & q^2_n \\
+ p^3_1 \dots  p^3_k &\bullet & c'(\dots)  & \dots & q^3_n  \\
 \end{pmatrix}
 \xrightarrow{\text{specialise } c}
 \begin{pmatrix}
-p^1_1 \dots  p^1_k  & c(\_, \dots, \_) & \bullet &  q_1 & \dots & q_k & \dots &  q^1_n 
+p^1_1 \dots  p^1_k  & c(\_, \dots, \_) & \bullet &  q_1 & \dots & q_k & \dots &  q^1_n \\
+ p^2_1 \dots  p^2_k & c(\_, \dots, \_) & \bullet & \_ & \dots & \_ & \dots & q^2_n
 \end{pmatrix}
 $
 \caption{Constructor specialisation on a context}
@@ -230,9 +232,9 @@ If compiling the upper matrix in the mixture rule returns jump summary $\rho$, t
 
 The reachable handler list remembers which patterns each handler will try to match if exited to, and the contexts obtained from the jump summary provide some information on the structure of values which will trigger that handler. 
 
-The first improvement is that, rather than always backtracking to the nearest handler, handlers guaranteed to fail can be skipped over. Since the matrices matched by reachable handlers are specialised as more specific cases are matched recursively, at a point where backtracking occurs some of those matrices may be empty. This indicates that the patterns matched by that handler are incompatible with the known structure of the value causing backtracking, so the procedure instead inserts a \verb|fail i| to the first handler \verb|i| with a non-empty matrix. Note that, where the mixture rule is needed multiple times to split up a matrix, it now makes sense to nest the handlers so that they are all available to jump to, maximising the opportunities to skip handlers.  
+The first improvement is that, rather than always backtracking to the nearest handler, handlers guaranteed to fail can be skipped over. Since the matrices matched by reachable handlers are specialised as more specific cases are matched recursively, at a point where backtracking occurs some of those matrices may be empty, indicating that backtracking to that handler will just cause further backtracking, due to the known structure of values at this point. The procedure instead inserts a \verb|fail i| to the first handler \verb|i| with a non-empty matrix. %Note that, where the mixture rule is needed multiple times to split up a matrix, it now makes sense to nest the handlers so that they are all available to jump to, maximising the opportunities to skip handlers.  
 
-Second, the lower matrix for a handler may not cover all constructor cases if some are covered by the upper matrix matched before backtracking. Naively, this would result in additional backtracking cases for the missing constructors, which we know will never occur. This is the purpose of taking the context from the jump summary. If some constructor is incompatible with the first column of the fringe for each row of the context, the value being matched will never be that constructor when the handler executes, so cases can be safely discarded to reduce code size. In some cases, switch statements may be reduced to a single case by this approach, in which case the test can be removed entirely.
+Second, the lower matrix for a handler may not cover all constructor cases if some are covered by the upper matrix matched before backtracking. Naively, this would result in additional cases for the missing constructors, which we know will never occur. This is the purpose of taking the context from the jump summary, representing the set of values that can actually reach the handler. If some constructor is incompatible with every pattern in the first column of the fringe of the context, the value being matched will never be that constructor when the handler executes, so cases can be safely discarded to reduce code size. In some cases, switch statements may be reduced to a single case, then the test can be removed entirely.
 
 
 
@@ -241,28 +243,24 @@ Second, the lower matrix for a handler may not cover all constructor cases if so
 After any optimisations on the IR are done, the linearised tree is lowered to WebAssembly in two stages. The first of these pulls function definitions out to the top level of the program, making closures and free variables explicit. It also converts the IR tree to lists of instructions (with nesting still present for \verb|if|, \verb|for| and \verb|while| statements as WebAssembly supports nested blocks) and replaces string identifiers.
 
 
-Identifiers are replaced with a datatype indicating the kind of variable being accessed, with free variables being stored in the closure of a function:\\
-\verb"binding = Global of int | Arg of int | Local of int | Closure of int"\\
+Identifiers are replaced with a datatype indicating the kind of variable being accessed, with free variables being stored in the closure of a function:
+
+\verb"binding = Global of int | Arg of int | Local of int | Closure of int"
+
 %whether that variable is accessed as a global variable, a function argument, a local variable of the function, or a free variable in the function's closure, with an integer index into the corresponding set of variables. \\
-Each let binding in a function's body generates a new local variable for that identifier. This results in a large number of local variables that is reduced after peephole optimisations on the generated WebAssembly are performed. The WebAssembly representation is stored with a flowgraph between instructions, a graph indicating which instructions may execute immediately before or after each instruction in a function. Live-variable analysis is performed on this, identifying the points in a function where each local variable's current value could be used later. These points indicate regions where a variable cannot be overwritten. From this, a clash graph is constructed with edges between every pair of variables that are ever simultaneously live, so cannot be allocated to the same local variable. A graph-colouring heuristic then maps these local variables to a hopefully much smaller set of local variables, and unused local variables are removed from the function.
-%Initially, assignment of local variables was done following the scoping of the program, so each nested let binding would use one more local variable and a \verb|for| loop would use two, one for the loop variable and another to remember the upper limit of the loop the first time it is evaluated. \\
-%This was replaced with generating a new local variable for each identifier in the function, and keeping these distinct even when generating WebAssembly. Then, after performing peephole optimisations on the WebAssembly, I perform live variable analysis, which determines the points in the program where each local variable's value could be used later so cannot be overwritten. From this, I construct a clash graph with edges between every pair of variables that are ever simultaneously live so cannot be allocated to the same local variable. A graph colouring heuristic then maps these local variables to a hopefully much smaller set of local variables and unused local variables are removed from the function. % TODO: Better to describe register allocation and LVA somewhere else? Maybe even in preparation chapter?
+Each let binding in a function's body generates a new local variable for that identifier. This results in a large number of local variables that is reduced after peephole optimisations on the generated WebAssembly are performed. 
+The WebAssembly representation is stored with a flowgraph between instructions, a graph indicating which instructions may execute immediately before or after each instruction in a function. 
+Live-variable analysis is performed on this, identifying the points in a function where each local variable's current value could be used later. These points indicate regions where a variable cannot be overwritten. From this, a clash graph is constructed with edges between every pair of variables that are ever simultaneously live, so must be stored separately. A graph-colouring heuristic then maps these local variables to a hopefully much smaller set of local variables, and unused local variables are removed from the function.
 
-This register-allocation process is necessary for lower-level target languages where there is only a finite set of registers available. Although a WebAssembly function can be defined with arbitrarily many local variables, it is likely that a platform's WebAssembly implementation will use less memory by using fewer locals \cite{v8, searchfox}. Also, when garbage collection is described later, this directly affects the height of the shadow stack used to track local variables. Therefore, it is a useful optimisation over allocating local variables according to scoping, which will generally be much less efficient.
+Using fewer local variables reduces code size, as a WebAssembly function must declare the type of each local variable.
+%This register-allocation process is necessary for lower-level target languages where there is only a finite set of registers available. Although a WebAssembly function can be defined with arbitrarily many local variables, it is likely that a platform's WebAssembly implementation will use less memory by using fewer locals \cite{v8, searchfox}. 
+Also, the number of local variables used by a function directly affects the space it occupies on the shadow stack, needed for garbage collection. Therefore, this is a useful optimisation over allocating local variables according to scoping, which will generally be much less efficient.
 
-%After any optimisations are performed, the linearised tree is then compiled to a lower intermediate form. The tree is replaced with a list of instructions, and identifiers are resolved into integer indexes for argument, local, global or closure bound variables. 
-% Give more detail about blocks in WebAssembly
-%Conversion to a list of instructions is straightforward since WebAssembly contains nested blocks. \verb|Block| constructs in WebAssembly contain a list of instructions and introduce a label at the end of the block, which can be jumped to from within the block. \verb|If| blocks are similar but contain two lists of instructions, and \verb|Loop| blocks have the label at the start of the block, allowing code to be repeated. 
-%Rather than map to these straight away, programs are still described using \verb|if| and \verb|while| constructs, which are easily mapped to WebAssembly at the code generation stage. % Put examples when we get there, not here
-
-%This stage also lifts any function declarations to the top level of the program, since closures and environments are now explicit, so the result is a list of functions. The complexity here is in determining the free variables of a function and the number of local stack variables needed by the function body, both of which are done by simple recursive algorithms. The number of locals needed is the maximum needed at any point in the function body. This increases by one after each let binding is evaluated, and for loops also require two to remember the current and end values for the loop (for loops in OCaml have a very constrained \verb"for var = i [up|down]to j do ... done" syntax). 
-
-% Currying removed at this point. Wasn't being used anyway so why do I allow it at all? Does it actually provide any benefit to me?
 
 \section{Code Generation}
 
 Finally, the program is translated to WebAssembly code, with most operations mapping directly to fixed blocks of code that are concatenated together. Variable accesses need to be mapped to \verb|LocalGet| and \verb|GlobalGet| operations, and equivalent \verb|Set| instructions. \verb|Global i| maps directly to \verb|GlobalGet i|, and \verb|Arg i| maps to \verb|LocalGet i|, as function arguments are the first local variables in WebAssembly. Two additional ``swap" local variables are introduced in each function, needed to compile some operations to WebAssembly. 
-For example, if \verb|ar| evaluates to an array object and \verb|index| evaluates to the index being accessed, checking the index is within the bounds of the array and loading the value from that index emits the code below. Some steps have been omitted for brevity, such as removing tags from values, or multiplying the index by 4 to be a byte offset rather than a word offset.
+For example, if \verb|ar| evaluates to an array object and \verb|index| evaluates to the index being accessed, checking the index is within the bounds of the array and loading that value emits the code below. Some steps have been omitted for brevity, such as removing tags from values, or multiplying the index by 4 to be a byte offset rather than a word offset.
 
 % TODO: Check this is aligned nicely with pages
 \begin{figure}[H]
@@ -291,11 +289,12 @@ Here locals 0 and 1 are the swap variables. The expressions \verb|ar| and \verb|
 
 
 I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append. These, along with the memory controlled by the memory allocator, are declared as imports into the compiled WebAssembly module. The module then exports each top-level global variable as its name from the OCaml program, and each of the user defined functions. 
-As explained below, integers and pointers are tagged to distinguish them, so I wrote a short JavaScript wrapper that interprets values accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
+I also wrote a short JavaScript wrapper to interpret integers and pointers accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
+%As explained below, integers and pointers are tagged to distinguish them, so I wrote a short JavaScript wrapper that interprets values accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
 
-Even before implementing a garbage collector, data still needed to be tagged to identify its type so that OCaml's \verb|compare| function, which is defined on all types, would work correctly. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are unused. I therefore distinguish the types of values by these last two bits. Closure pointers are tagged with 11, pointers to other objects in memory such as constructors are tagged with 01, and integers are tagged with 10 or 00 by shifting them left one, so odd  values now end in 10 and even values end in 00. 
+Data must be tagged to identify its type, so that OCaml's \verb|compare| function can be implemented correctly, which is defined on all types. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are unused. I therefore distinguish the types of values by these last two bits. Closure pointers are tagged with 11, pointers to other objects in memory such as constructors are tagged with 01, and integers are tagged with 10 or 00 by shifting them left one, so odd values now end in 10 and even values end in 00. 
 
-The layout of objects stored in memory is given by figure \ref{fig:memlayout}, where the column headers are byte offsets and the ``arity" field specifies the number of 32-bit values in ``elements"/``free variables". Since arguments and return values in WebAssembly are strongly typed, and polymorphic OCaml functions need supporting, all values are 32-bit integers that are decoded as pointers to data or functions, as just described. In particular, floating-point values need to be ``boxed'' in memory and represented as pointers to data blocks storing their value. The variant tag on data blocks goes from 0 to the number of variants of that type, so -1 is used as a special value to distinguish blocks storing a float value.\\
+The layout of objects stored in memory is given by figure \ref{fig:memlayout}, where the ``arity" field specifies the number of 32-bit values in ``elements"/``free variables". Since arguments and return values in WebAssembly are strongly typed, and polymorphic OCaml functions need supporting, all values are 32-bit integers that are decoded as pointers to data or functions, as just described. In particular, floating-point values are ``boxed'' in memory and represented as pointers to data blocks storing their value. The variant tag on data blocks is non-negative, so -1 is used as a special value to distinguish blocks containing a float value.\\
 
 %  \begin{tabular}{c|c|c|c|c|c|m{2cm}|} \cline{2-7}
 %Constructor block &   variant tag  & arity &   \multicolumn{3}{c}{\hspace{2cm}{elements} } &  \\ \cline{2-7} \multicolumn{1}{c}{}  \\ \cline{2-7}
@@ -322,13 +321,13 @@ The layout of objects stored in memory is given by figure \ref{fig:memlayout}, w
 \bitbox{4}{function index} & \bitbox{4}{arity} & \bitbox{14}{free variables}  \end{leftwordgroup}  \\
     \end{bytefield}
 \vspace{-1cm}
-\caption{Memory layout of objects}
+\caption{Memory layout of objects, column headers are byte offsets}
 \label{fig:memlayout}
 \end{figure}
 
 
 
-The arity field in closures indicates the number of free variables. \verb|compare| is undefined on function values, but the arity is still needed for garbage collection so that pointers stored as free variables in closures can be searched. This field is unnecessary for floating-point values, which are distinguished by having a tag of -1, but is included and set to 0 so that garbage collection can search each of these blocks for pointers in the same way, by first looking at the arity field then checking that many subsequent fields. A float contains no pointers, hence the field is set to 0 so that the following 64 bits are not misinterpreted.
+The arity field in closures indicates the number of free variables. \verb|compare| is undefined on function values, but the arity is still needed for garbage collection so that pointers stored as free variables in closures can be searched. The field is unnecessary for floating-point values, but is included and set to 0 so that garbage collection can search each of these blocks for pointers in the same way, by first looking at the arity field then checking that many subsequent fields. %A float contains no pointers, hence the field is set to 0 so that the following 64 bits are not misinterpreted.
 
 %As OCaml limits the number of different constructors supported% Reference required
 %, the variant tag is guaranteed to be a non-negative integer. Therefore, as floats need to be``boxed'' and stored in memory as a data block, -1 was used to identify floats, which are stored similarly to . This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
