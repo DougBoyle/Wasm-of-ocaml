@@ -174,9 +174,7 @@ The above process is made more efficient by including auxiliary information. %, 
 % Mention OR pattern change or not?
 
 
-First, the mixture rule can swap incompatible rows. Patterns must be matched in top-to-bottom order, but this does not matter for two rows which do not overlap in the set of values they may match. Therefore, the mixture rule lifts up rows where safe to do so, trying to increase the size of the first matrix that can be handled by a single use of the constructor or variable rule. This decreases the number of splits from the mixture rule that are needed. 
-
-As an example, these programs are equivalent, however the constructor rule can only be applied to the first row on the left, but to the first two rows in the right:
+First, the mixture rule can reduce the number of splits needed by maximising the size of the first matrix, which is then handled by a single use of another rule. This is done by swapping incompatible rows. Patterns must be matched in top-to-bottom order, but this does not matter for two rows that match disjoint sets of value, allowing them to be swapped. For example, the two programs in figure \ref{fig:rowswap} are equivalent, however the constructor rule can only be applied to the first row on the left, but to the first two rows on the right:
 
 \begin{figure}[H]
 \hfill
@@ -197,14 +195,16 @@ match l1, l2 with
 \end{verbatim}
 \end{minipage}\hfill
 \caption{Example of reordering patterns not changing a program's semantics}
+\label{fig:rowswap}
 \end{figure}
 
-Another improvement is made by passing a boolean for exhaustiveness to the procedure, which is computed using existing utility functions in the OCaml front-end. %The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive. % Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. 
-When a matrix is known to be exhaustive, switch statements can leave out default cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
+%%% TO INCLUDE OR NOT? NOT THAT INTERESTING, NOR IS IT REALLY SOMETHING DONE BY ME, ANYTHING BETTER TO REMOVE?
+%Another improvement is made by passing a boolean for exhaustiveness to the procedure, which is computed using existing utility functions in the OCaml front-end. %The OCaml front-end already has utility functions for estimating both when patterns are incompatible and when a set of patterns is exhaustive. % Exhaustiveness is unchanged by recursive calls, except for the mixture rule, where the top matrix is never considered exhaustive. 
+%When a matrix is known to be exhaustive, switch statements can leave out default cases for missing constructors, as they must have been matched by an earlier stage of pattern matching. 
 
 
 
-Next, several other data structures are added to the procedure. They are all related so I describe each of them before explaining their benefit. 
+Next, several data structures are added to the procedure. They are all related so I describe each of them before explaining their benefit. 
 
 The procedure is extended with a context, a pair of matrices of just patterns with no actions or guards. The first is called the prefix, remembering already matched structure, and the second is the fringe, describing the known structure of the values left to be matched. Together, these describe the possible values that may reach the point in the pattern-matching code currently being produced. Initially there is just one row, where the prefix is empty and the fringe is \verb|_|, as nothing is known about the value being matched. The specialisation operations on matrices extend to contexts in the obvious way, for example with constructors ($\bullet$ separates the prefix and fringe):
 
