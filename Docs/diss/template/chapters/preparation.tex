@@ -19,14 +19,17 @@ Many languages can now be compiled to WebAssembly, although lots of tools are st
 
 \section{Research undertaken}
 For implementing my compiler, I first looked at the approach taken with the OCaml compiler's Lambda intermediate language, and the structure of the Grain compiler. Looking at how translation is done in the OCaml compiler helped to verify that I understood the semantics of the layer I was translating from, and identify the best way to handle specific elements, such as the primitive operations OCaml provides. Grain uses a very different intermediate representation, where operations are linearised so that the arguments to operations are always constants or variables, rather than nested expressions. 
-I decided that my intermediate representation should have a linearised structure similar to Grain, since this makes the evaluation order explicit and simplifies implementing analysis and optimisation passes on the representation.
+I decided that my intermediate representation should have a linearised structure similar to Grain, since this makes the evaluation order explicit and simplifies implementing optimisation passes. %analysis and optimisation passes on the representation.
 
 %Comparing the two representations helped me to decide on my own intermediate representation for the subset of OCaml I was supporting.
 
 %Grain is a much newer language and is still quickly growing. It supports a subset of OCaml's features but with its own syntax. As it is a much simpler langauge, this was easier to study for working out how to structure translation as a whole, in particular the collections of utility functions I might need for working with my intermediate representation. 
 
 \subsection{Optimisations}
-For selecting optimisations to implement, I looked at both the Part IB Compiler Construction \cite{IB-compilers} and Part II Optimising Compilers \cite{optimising-compilers} courses for explanations of a range of optimisations. Additionally, the Grain compiler implements several optimisation passes, which were helpful to study. It also became apparent that certain optimisations would be beneficial, after inspecting the intermediate code and WebAssembly produced for sample programs that I wrote, highlighting inefficiencies in the translation stages of the compiler.
+For selecting optimisations to implement, I looked at both the Part IB Compiler Construction \cite{IB-compilers} and Part II Optimising Compilers \cite{optimising-compilers} courses for explanations of a range of optimisations. %Additionally, the Grain compiler implements several optimisation passes, which were helpful to study. 
+I also inspected the intermediate code and WebAssembly produced for sample programs, highlighting inefficiencies in translation and identifying where certain optimisations would be beneficial.
+%It also became apparent that certain optimisations would be beneficial, after inspecting the intermediate code and WebAssembly produced for sample programs that I wrote, highlighting inefficiencies in the translation stages of the compiler.
+
 The optimisations I chose to implement were:
 \begin{itemize}
 \item \textbf{Tail-call optimisation}: Rewriting tail-recursive functions to use a \verb|while| loop, rather than making recursive calls, avoids activation frames building up on the call stack, resulting in an error if the available stack space is exceeded.
@@ -35,11 +38,12 @@ The optimisations I chose to implement were:
 
 \item \textbf{Uncurrying}: Where a function is always applied with several curried arguments, these can be passed as a tuple rather than constructing a closure for each argument in turn, as described by Bloss, Hudak and Young \cite{uncurry}. 
 
-\item \textbf{Constant/Copy propagation}: When a constant or another variable is bound to a variable that will not be overwritten, subsequent uses of that variable can be replaced with its known value. This can result in the binding being unused if all uses of the variable are replaced, and propagates values through the program to identify further optimisations.
+\item \textbf{Constant/Copy propagation}: When a constant or another variable is bound to a variable that will not be overwritten, subsequent uses of that variable can be replaced with its known value, propagating values through the program to identify further optimisations.% This can result in the binding being unused if all uses of the variable are replaced, and propagates values through the program to identify further optimisations.
 
 \item \textbf{Dead-code elimination}: Where a variable is unused (possible due to the previous optimisation) and the value bound to it does not contain side-effects, that binding can be safely removed to reduce code size and execution time.
 
-\item \textbf{Constant folding}: Constant expressions in the program, such as \verb|1+2|, can be evaluated at compile time. Branching statements with constant conditions, such as \verb|if false then e else e'|, can also be replaced with the branch that is guaranteed to execute.
+\item \textbf{Constant folding}: Constant expressions can be evaluated at compile time, such as \verb|1+2|. Branches with constant conditions can also simplified, such as  replacing \verb|if false then e else e'| with \verb|e'|.
+%Constant expressions in the program, such as \verb|1+2|, can be evaluated at compile time. Branching statements with constant conditions, such as \verb|if false then e else e'|, can also be replaced with the branch that is guaranteed to execute.
 
 \end{itemize}
 
@@ -49,7 +53,7 @@ The first three optimisations perform relatively complex transformations, requir
 
 \subsection{Pattern matching}
 
-The Grain and OCaml compilers differ in the techniques used for pattern-matching.  The OCaml compiler implements a backtracking algorithm, which aims to minimise the size of the pattern-matching code produced, whereas the Grain compiler implements a decision-tree algorithm, which ensures that each pattern is examined at most once, minimising execution time. Each implementation references papers on the technique it uses \cite{ocamlpatternmatch, decisiontrees}, which were useful in choosing the approach to take and in implementing pattern-matching for my intermediate representation.
+The Grain and OCaml compilers differ in the techniques used for pattern-matching.  The OCaml compiler implements a backtracking algorithm, which aims to minimise the size of the pattern-matching code produced, whereas the Grain compiler implements a decision-tree algorithm, which ensures that each pattern is examined at most once, minimising execution time. Each implementation references papers on the technique it uses \cite{ocamlpatternmatch, decisiontrees}, which were useful in choosing the approach to take and in understanding how to implement pattern-matching for my intermediate representation.
 %
 I decided to implement a backtracking pattern-matching compiler.  When optimised, each approach typically has similar performance \cite{decisiontrees}, however backtracking compilers appear to be the more common approach, and guarantee linear code size.
 
@@ -58,29 +62,35 @@ I decided to implement a backtracking pattern-matching compiler.  When optimised
 The majority of my preparation before the start of the project was familiarising myself with the structure of WebAssembly.
 This was done by reading the WebAssembly specification \cite{wasm}, as well as some useful articles on how the different components of a WebAssembly module interact in practice \cite{wasm-article}.
 
-WebAssembly is a strongly typed stack-based language, where each module additionally has a linear memory, a heap that can be grown in multiples of 64KiB pages and accessed by 32-bit pointers. As shown by the example in my introduction (section 1.1), WebAssembly supports nested blocks of instructions, in the form of \verb|Block|, \verb|If| and \verb|Loop| constructs. 
+WebAssembly is a strongly typed stack-based language. %, where each module additionally has a linear memory, a heap that can be grown in multiples of 64KiB pages and accessed by 32-bit pointers. 
+As shown by the example in the introduction (section 1.1), WebAssembly supports nested blocks of instructions, in the form of \verb|Block|, \verb|If| and \verb|Loop| constructs. 
 
-WebAssembly's control flow is very restrictive, only allowing branches out of enclosing blocks rather than arbitrary jumps. A \verb|Br i| instruction branches
-out of the \verb|i|$^{\text{th}}$ enclosing block. For \verb|Block| and \verb|If| blocks, this branches to the end of the nested instructions. For a \verb|Loop| block, this instead branches to just before the nested instructions, allowing loops in the control flow. % Additionally, a branch to the outermost level of a function acts as a return statement.  -- never actually made use of
-As well as \verb|Br i|, WebAssembly has a conditional \verb|Br_if i| instruction, and branch tables that are indexed by an argument on the stack. Exceptions were left out of the subset of OCaml to support, since these restrictions in WebAssembly control flow significantly complicate their implementation, to the extent that exception handling is also disabled by default when compiling C++ to WebAssembly using Clang \cite{wasm-exceptions}.
+WebAssembly's control flow is very restrictive, only allowing branches out of enclosing blocks rather than arbitrary jumps. A \verb|Br i| or \verb|Br_if i| instruction (conditionally) branches out of the \verb|i|$^{\text{th}}$ enclosing block. For \verb|Block| and \verb|If| blocks, this branches to the end of the nested instructions. For a \verb|Loop| block, this instead branches to just before the nested instructions, allowing loops in the control flow. % Additionally, a branch to the outermost level of a function acts as a return statement.  -- never actually made use of
+%As well as \verb|Br i|, WebAssembly has a conditional \verb|Br_if i| instruction, and branch tables that are indexed by an argument on the stack. 
+Exceptions were left out of the subset of OCaml to support, since these restrictions in WebAssembly control flow significantly complicate their implementation, to the extent that exception handling is also disabled by default when compiling C++ to WebAssembly using Clang \cite{wasm-exceptions}.
 
 %WebAssembly is strongly typed, and has four primitive types for 32 and 64-bit integers and floats. Blocks therefore have types, and instructions within a block are unable to access values put on the stack before the start of the block, except for however many .
 
-A WebAssembly module is initialised with a linear memory of a specified number of pages, and the size of memory can be queried and expanded during execution.
-The memory layout of a native-code program typically has the heap starting at a low address, growing upwards, and the stack starting at a high address and growing down. However, as the stack is managed implicitly in WebAssembly, the linear memory contains just the heap so looks closer to the diagram below:
+A WebAssembly module is initialised with a linear memory of a specified number of 64KiB pages, and the size of memory can be queried and expanded during execution.
+The memory layout of a native-code program typically has the heap starting at a low address, growing upwards, and the stack starting at a high address and growing down. However, as the stack is managed implicitly in WebAssembly, the linear memory contains just the heap so looks more like figure \ref{fig:wasm-heap}:
 
 % The stack is managed implicitly, so cannot be inspected directly. Whereas a C program compiled to an instruction set such as x86 has the heap start at a low address and grow upwards, with the stack starting at a high address and growing down, WebAssembly memory contains just the first of these components, so memory has the layout shown below:
 
+\begin{figure}[H]
 \includegraphics[scale=0.5]{regular_heap}
+\caption{Typical WebAssembly memory layout}
+\label{fig:wasm-heap}
+\end{figure}
+
 
 \subsection{Garbage collection}
 OCaml is a garbage-collected language, so memory is managed automatically. However, memory is managed manually in WebAssembly, so a garbage collector must be implemented in the runtime system to manage objects allocated by compiled OCaml programs.
 
-The two broad categories of garbage collectors are reference-counting and tracing collectors. Reference-counting collectors keep a counter on each object for the number of pointers to that object that exist, freeing the object when the counter falls to zero. This has a high overhead, since a counter needs to be updated whenever a pointer is created or modified, and reference counting is unable to collect cyclic structures. Tracing collectors instead periodically scan a set of root objects that can be accessed directly, and use these to discover all objects indirectly reachable from them. Any object not marked as reachable is then safe to free. 
+The two broad categories of garbage collectors are reference-counting and tracing collectors. Reference-counting collectors keep a counter on each object for the number of pointers to that object that exist, freeing the object when the counter falls to zero. This has a high overhead, since a counter needs to be updated whenever a pointer is created or modified, and cyclic structures are never collected. Tracing collectors instead periodically scan a set of root objects that can be accessed directly, and use these to discover all objects indirectly reachable from them. Any object not marked as reachable is then safe to free. 
 
 WebAssembly's implicit stack cannot be accessed directly, which complicates garbage collection as the values on the stack are part of the root set and need to be scanned during garbage collection. Therefore, garbage collection was left as an extension due to the challenges surrounding it. One solution is to implement a shadow stack in the linear memory, which stores a copy of each local variable saved on the implicit stack, allowing these to be traversed during garbage collection. Shadow stacks are more common in the context of security, where a function's return address is copied elsewhere in memory and compared when the function returns, detecting attempts to overwrite the return address on the stack \cite{shadow-stack}. % For performing garbage collection, a copy of each local variable is saved to the shadow stack, and garbage collection scans this region of memory to identify reachable pointers. 
 
-The shadow stack must extend upwards from the start of the linear memory, since WebAssembly memory grows over time so the top of the address space is not initially valid. Therefore, the top of the stack is limited by the starting position of the heap. This is not a significant issue, as it was already possible to generate a stack-overflow error, by exhausting the available space in the underlying platform's implementation of the implicit stack. Using a shadow stack, the layout of linear memory is therefore as shown below:
+The shadow stack must extend upwards from the start of the linear memory, since WebAssembly memory grows over time so the top of the address space is not initially valid. Therefore, the top of the stack is limited by the starting position of the heap, and the layout of memory is as shown in figure \ref{fig:wasm-shadow}. %This is not a significant issue, as it was already possible to generate a stack-overflow error, by exhausting the available space in the underlying platform's implementation of the implicit stack. Using a shadow stack, the layout of linear memory is therefore as shown below:
 
 
 %The WebAssembly memory now starts with the shadow stack, which can extend up to a fixed limit, after which the heap begins. This creates the possibility of a stack overflow error occurring, but such errors were already possible from the platform's implementation of the implicit stack, before garbage collection was added. It is not possible to have the stack and heap grow from opposite ends of memory, as typically happens in C, since the WebAssembly memory is initially small, so large blocks of memory would have to be copied to new locations when the memory grows. With garbage collection, memory therefore has the layout shown below:
@@ -91,7 +101,11 @@ The shadow stack must extend upwards from the start of the linear memory, since 
 
 
 \hspace{-0.18cm}
+\begin{figure}[H]
 \includegraphics[scale=0.5]{gc_heap}
+\caption{WebAssembly memory layout with a shadow stack}
+\label{fig:wasm-shadow}
+\end{figure}
 
 % INCLUDE DIAGRAM OF HOW SHADOW STACKS WORK
 
@@ -107,7 +121,7 @@ I had to collect data measuring the performance of the code output by my compile
 
 %allowing it to be compared with alternative methods for running code on the web.  Hopefully, this will demonstrate an advantage compared to Js\_of\_ocaml, since WebAssembly is a strongly typed binary format, so is expected to execute faster than the equivalent JavaScript when compiling a strongly typed language, such as OCaml.
 
-Implementing optimisations in the compiler was chosen as an extension, to help achieve this improvement. This required a set of analysis and optimisation passes on both the intermediate representation and WebAssembly stages of the compiler. I also aimed to extend the range of OCaml programs supported by my compiler, as floating-point and reference operations increase the range of benchmarks that could be considered, and would make writing them easier. 
+Implementing optimisations in the compiler was chosen as an extension, to help achieve this improvement. This required a set of analysis and optimisation passes on both the intermediate representation and WebAssembly stages of the compiler. I also aimed to extend the range of OCaml programs supported by my compiler, as floating-point and reference operations increase the range of benchmarks that could be considered. %, and would make writing them easier. 
 
 Another extension was to implement a garbage collector, using a shadow stack to make local variables accessible during garbage collection. This would allow more memory intensive benchmarks to be considered and make the comparison of my compiler against the alternatives more realistic, by not ignoring the overhead of memory management. %, which is not a part of my core requirements due to the challenges anticipated with garbage collection in WebAssembly.
 
@@ -122,7 +136,8 @@ This structure of mostly independent translation/optimisation passes lends itsel
 
 %\subsection{Backups}
 
-Both the project and dissertation were version-controlled using Git, backed up to GitHub daily and continually synced with OneDrive. Commits were given meaningful commit messages, including the identifier of the ticket they were associated with, making it easier to navigate back to past changes if necessary. At the start of the project, I also checked that I could run the tools required, such as the OCaml and Grain compilers, on the MCS machines as a backup. 
+Both the project and dissertation were version-controlled using Git, backed up to GitHub daily and continually synced with OneDrive. %Commits were given meaningful commit messages, including the identifier of the ticket they were associated with, making it easier to navigate back to past changes if necessary. 
+At the start of the project, I also checked that I could run the tools required, such as the OCaml and Grain compilers, on the MCS machines as a backup. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -138,8 +153,8 @@ Both the project and dissertation were version-controlled using Git, backed up t
 % Primarily test-driven development with Ocaml unit test samples for each feature. Sort of an integration test
 % TODO: Specific unit tests for mock IR programs to check specific components e.g. free vars, number of locals needed
 % More specific tests to check that optimisations handle complex cases correctly.
-Language features were added to the compiler following test-driven development. Before adding a new primitive, language construct or optimisation, one or more OCaml programs would be written using that feature, and the output of the OCaml interpreter on that file would be recorded. 
-I wrote a script to compile and run each of these programs with my compiler, comparing their output with the expected values obtained when the test was written. This ensured that each new feature was implemented correctly, and that a change or new optimisation did not break any of the previous tests. % Additional tests were also added as I considered edge cases while implementing features, ensuring that they were not overlooked by future modifications.
+Language features were added to the compiler following test-driven development. Before adding a new primitive, language construct or optimisation, OCaml programs would be written using that feature, and the output of the OCaml interpreter on those files would be recorded. 
+I wrote a script to compile and run each of these programs with my compiler, comparing their output with the expected values. This ensured that each new feature was implemented correctly, and that a change or new optimisation did not break any of the previous tests. % Additional tests were also added as I considered edge cases while implementing features, ensuring that they were not overlooked by future modifications.
 Additionally, for tests added to verify that optimisations were performed safely, inspecting the output WebAssembly ensured that optimisations were being performed in the correct places. 
 
 % The same process was helpful for ensuring optimisations were only performed where safe to do so, adding cases where incorrectly applying a transformation would break the program. This was most often where expressions in the program had side-effects that must be preserved, preventing some optimisations being applied.
@@ -149,7 +164,8 @@ Additionally, for tests added to verify that optimisations were performed safely
 Unit tests were written with OUnit \cite{ounit} for several of the utility functions involved in translation and optimisation. For example, checking that the free variables in IR programs  were computed correctly, or that removing an instruction from the flowgraph representation of a WebAssembly program correctly preserved the edges linking that node's successors and predecessors.
 
 
-Testing whole translation passes was challenging, since translation often introduces several inefficiencies whilst still being correct, and the translation cannot be verified without running the full compiler pipeline and executing the output. Therefore, until the core stages of the compiler and runtime were built, I relied on pretty-printing code to display the intermediate representations for some sample programs. This allowed identifying any obvious errors by inspection. Although this was unlikely to detect subtle errors, it was only relied on at the start of the project, when even a minimal pipeline did not yet exist.
+Testing whole translation passes was challenging, since translation often introduces several inefficiencies whilst still being correct, and the translation cannot be verified without running the full compiler pipeline and executing the output. Therefore, until the core stages of the compiler and runtime were built, I relied on pretty-printing code to display the intermediate representations for some sample programs. This allowed identifying any obvious errors by inspection, and was only relied on at the start of the project, before even a minimal pipeline had been written.
+ %. Although this was unlikely to detect subtle errors, it was only relied on at the start of the project, when even a minimal pipeline did not yet exist.
 
 
 % Should go at the top as this was the first form of testing?
@@ -165,7 +181,8 @@ Testing whole translation passes was challenging, since translation often introd
 
 \subsection{Tools used} % REFERENCES TO EVERYTHING
 I worked on the project on my Windows laptop, using Windows Subsystem for Linux to run OCaml. Opam, the OCaml package manager, was used to manage the 
-OCaml compiler and packages needed for the project. I used the OUnit package for writing unit tests, the Wasm package for some of the back-end functionality, such as a data structure representing WebAssembly modules and utility functions to output this to a binary file, and the Js\_of\_ocaml package as an alternative to my compiler. The project used the front-end of version 4.11.1 of the OCaml compiler, which was the latest version at the start of the project, although version 4.12.0 has since been released. 
+OCaml compiler and packages needed for the project. I used the OUnit package for writing unit tests, the Wasm package for some of the back-end functionality, such as %a data structure representing WebAssembly modules and 
+utility functions to output WebAssembly to a binary file, and the Js\_of\_ocaml package as an alternative to my compiler. The project used the front-end of version 4.11.1 of the OCaml compiler, which was the latest version at the start of the project, although version 4.12.0 has since been released. 
 
 % Unnecessary to mention Grain/Clang? Already brought up a few times as alternatives
 

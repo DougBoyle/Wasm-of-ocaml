@@ -57,12 +57,14 @@ WebAssembly has both a text format for \verb|.wast| files and a binary format fo
 \label{fig:wasm}
 \end{figure}
 
-The text format is very flexible, offering many forms of syntactic sugar for writing expressions. Although WebAssembly is a stack-based language, primarily made up of linear sequences of instructions, the text format allows nesting where it is clearer how arguments are supplied and consumed on the stack. Unlike most assembly languages, control-flow is expressed by nesting (that is not just syntactic sugar), such as the two cases of the \verb|If| statement above, rather than jumps in linear code.
+WebAssembly is a stack-based language, with control-flow expressed by nested blocks, such as the two cases of the \verb|If| statement above, rather than jumps in linear code as in most assembly languages. The other nesting in figure \ref{fig:wasm} is syntactic sugar allowed by the text format, which makes it clearer how arguments are supplied and consumed on the stack.
+
+%The text format is very flexible, offering many forms of syntactic sugar for writing expressions. Although WebAssembly is a stack-based language, primarily made up of linear sequences of instructions, the text format allows nesting where it is clearer how arguments are supplied and consumed on the stack. Unlike most assembly languages, control-flow is expressed by nesting (that is not just syntactic sugar), such as the two cases of the \verb|If| statement above, rather than jumps in linear code.
 
 \section{Related work}
 As already mentioned, the Js\_of\_ocaml tool translates OCaml to JavaScript for running on the web. There is now a wide range of languages with compilers to WebAssembly \cite{langauges-to-wasm}. This includes Grain \cite{grain}, a functional language based on OCaml, designed for running on the web with a compiler that outputs WebAssembly. C can also be compiled to WebAssembly using Clang/LLVM \cite{clang-llvm}, and I compare my compiler against all three of these approaches in my evaluation.
-
-Two projects from last year implemented compilers from functional languages to WebAssembly. One was from Standard ML and the other was from OCaml. I take a different approach to the previous OCaml to WebAssembly compiler, making use of the standard OCaml compiler's type checker in order to support a larger subset of the language.
+The only compiler I could find from OCaml to WebAssembly was another Part II project from last year, which targeted a smaller subset of the language than my project.
+%Two projects from last year implemented compilers from functional languages to WebAssembly. One was from Standard ML and the other was from OCaml. I take a different approach to the previous OCaml to WebAssembly compiler, making use of the standard OCaml compiler's type checker in order to support a larger subset of the language.
 
 
 % PUT IN INTRODUCTION OR PREPARATION??
