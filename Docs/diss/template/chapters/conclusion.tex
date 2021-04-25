@@ -44,10 +44,10 @@ Had I taken a more systematic view to debugging from the beginning, writing util
 First, there are several features of OCaml not yet supported by my compiler. Implementing more of the standard library would allow supporting operations on additional types, such as 32 and 64-bit integers and strings.
 Similarly, although the basic array syntax is supported, not having the Array library implemented in WebAssembly severely limits the practical uses of arrays. This would likely require supporting the module layer of OCaml, which then creates the possibility of compiling multiple interacting OCaml programs.
 
-Another point is that my compiler currently implements the 32-bit version of OCaml, where integers are always 31 bits. 
-Whilst WebAssembly memory is limited to 4GB, so only uses 32-bit pointers, being able to build the compiler to use 63-bit integers, as is the case for the official OCaml compiler on 64-bit systems, would benefit programs containing large integer arithmetic.
+%Another point is that my compiler currently implements the 32-bit version of OCaml, where integers are always 31 bits. 
+%Whilst WebAssembly memory is limited to 4GB, so only uses 32-bit pointers, being able to build the compiler to use 63-bit integers, as is the case for the official OCaml compiler on 64-bit systems, would benefit programs containing large integer arithmetic.
 
-There are still many aspects where performance could be improved. 
+Also, there are still many aspects where performance could be improved. 
 My evaluation revealed that the optimisations implemented do not significantly affect imperative code, which could be improved by flow-directed analysis capable of inferring properties about mutable variables stored as references.
 %
 One optimisation made in the OCaml compiler, which I did not get round to implementing, is identifying references being used as mutable local variables and not accessed outside of a function. These can be replaced with local variables of the function, rather than being stored on the heap.

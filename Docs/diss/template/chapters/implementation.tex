@@ -51,7 +51,7 @@ Given an expression in the Typedtree to translate to an immediate or compound te
 
 % TODO: Describe 3-level structure of immediate, compounds and linast terms
 
-\section{Pattern Matching}
+\section{Pattern matching}
 Translation to the linearised IR also compiles patterns in the Typedtree to code that matches them. This includes combining the cases of a match expression or function into a single expression, making use of switch statements on integers where possible. 
 
 I chose to implement the backtracking pattern-matching compiler described by Le Fessant and Maranget \cite{ocamlpatternmatch}, which is also implemented in the OCaml compiler for its intermediate representation. 
@@ -83,7 +83,10 @@ $\begin{pmatrix}
 The algorithm given in the paper is made more complex by the range of syntax OCaml supports. %, and to a lesser extent by the fact the IR is linearised. 
 First, OCaml patterns can have guard statements, which must be tested to see whether a pattern matches. Some of the compilation steps prefix additional variable bindings onto the actions, and the guard statement needs to be evaluated after these, but before any of the original action is evaluated. Therefore, each action $\to a$ is replaced with $\to a \ g \ b$ where $g$ is the optional guard expression and $b$ is the other bindings introduced.
 
-The base cases of this algorithm occur when we reach a matrix with either no rows or no columns of patterns. If there are no rows, we have run out of possibilities so pattern matching fails and backtracks. If there are no columns, we have successfully matched the whole pattern. We then output code testing the guard for each action from top to bottom of the matrix, executing the corresponding action if the guard succeeds. Either some row is not guarded, in which case it runs unconditionally if that is reached, or every row is guarded, in which case we similarly backtrack if all guards are false.
+
+The base case of this algorithm occurs when we reach a matrix with no rows. This indicates that we have run out of possibilities, so pattern matching fails and backtracks. If instead there are no columns, we have successfully matched the whole pattern. If the first row has no guard, we output the action of that row, otherwise the guard is tested and the action forms the \verb|then| case of an if statement, with the remaining rows of the matrix considered in the \verb|else| case.
+
+%The base cases of this algorithm occur when we reach a matrix with either no rows or no columns of patterns. If there are no rows, we have run out of possibilities so pattern matching fails and backtracks. If there are no columns, we have successfully matched the whole pattern. We then output code testing the guard for each action from top to bottom of the matrix, executing the corresponding action if the guard succeeds. Either some row is not guarded, in which case it runs unconditionally if that is reached, or every row is guarded, in which case we similarly backtrack if all guards are false.
 
 There are four broad cases for when the matrix is non-empty:
 \begin{itemize}
@@ -113,17 +116,22 @@ The output is the result of compiling this matrix, sequenced with the result of 
 
 The explanation above is how the paper describes the algorithm. In practice, OCaml has several different types that all fall under the ``constructor" rule and must be handled separately:
 \begin{itemize}
-\item \textbf{Constants}: Constants can be viewed as a datatype with infinitely many 0-arity constructors. Integers compile to a switch statement on the integer value, always including a default case that backtracks. For floating-point constants, a switch statement cannot be used, so these instead compile to a sequence of if-then-else tests.
+\item \textbf{Constants}: Constants can be viewed as a datatype with infinitely many 0-arity constructors, so compile to a switch statement on the constant's value. A default case that backtracks is always included, for all of the constant values not handled.
+
+% This always includes a default case that backtracks, as every constant value cannot be listed exhaustively. 
+% Integers compile to a switch statement on the integer value, always including a default case that backtracks. 
+%For floating-point constants, a switch statement cannot be used, so these instead compile to a sequence of if-then-else tests.
 % and this switch statement will always have a default case that backtracks, since it can never be exhaustive. The decision to implement this switch statement as a branch table or nested if-then-else statements is made at the WebAssembly generation stage based on how sparse the set of values is. \\
 %For floating point values, we must always use a chain of if-then-else tests so these are compiled as such at the IR level.
 % TODO: Talk about branch tables or not?
 
-\item \textbf{Tuples}: Tuples are just constructors with a single variant of a particular size. Therefore, the matrix is specialised by extracting the nested patterns and no rows need to be discarded. There is also no need for a switch statement, since there is only one case.
-
 \item \textbf{Arrays}: In OCaml, array patterns look like \verb"[|p1, p2, ..., pk|]", matching a specific length. 
-The length is the tag of the object, so a switch statement on the tag is generated, extracting the corresponding number of fields in each case. As there are infinitely many possibilities, a default case is always included.
+The length is the tag of the object, so a switch statement on the tag is generated, extracting the corresponding number of fields in each case. 
+A default case is always included for the array lengths not handled.
 
-\item \textbf{Records}: These are again treated as a constructor with one variant, and each pattern specifies some subset of fields to match. To allow all rows of the matrix to be processed,  the union of the fields mentioned in each row is extracted from the record, inserting the wildcard pattern \verb|_| where a row does not match a field, allowing the value extracted for that field to be ignored. In the example below, any unmentioned fields are ignored entirely.
+%As all possible lengths cannot be specified exhaustively, a default case is always included.
+
+\item \textbf{Records}: A record type is just a constructor with a single variant, and each pattern specifies a subset of the fields to match.  To allow all rows of the matrix to be processed,  the union of the fields mentioned in each row is extracted from the record, inserting the wildcard pattern \verb|_| where a row does not match a field, so that the extracted value is ignored. In the example below, any unmentioned fields are ignored entirely.
 \begin{figure}[H]
 \hfill
 $
@@ -142,28 +150,32 @@ $
 \hfill
 \caption{Handling of record fields in pattern matrices}
 \end{figure}
+
+\item \textbf{Tuples}: Tuples are constructors with a single variant,  just like records, except that a tuple pattern always specifies patterns to match against each element of the tuple.
+% Tuples are just constructors with a single variant of a particular size. Therefore, the matrix is specialised by extracting the nested patterns and no rows need to be discarded. There is also no need for a switch statement, since there is only one case.
 \end{itemize}
 
+%% ALIASES AREN'T THAT INTERESTING
 
-Finally, OCaml has alias patterns such as \verb|((x::xs) as lst)| which must be supported. These are handled by preprocessing the first column of the matrix at each step, replacing aliases in each row with a binding of the first value to the corresponding aliased variable. %Redundant OR patterns are also removed, replacing \verb"(_|p)" with just \verb|_|.
+%Finally, OCaml has alias patterns such as \verb|((x::xs) as lst)| which must be supported. These are handled by preprocessing the first column of the matrix at each step, replacing aliases in each row with a binding of the first value to the corresponding aliased variable. %Redundant OR patterns are also removed, replacing \verb"(_|p)" with just \verb|_|.
 %The last feature of the OCaml language that needs supporting is aliases, for example \verb"match v with ((x::xs) as lst) -> ...". These are handled by always preprocessing the first column of the matrix to replace aliases in each row with a binding of the first value to the aliased variable. Preprocessing also simplifies any or patterns in the first column, replacing \verb"(_|p)" with just \verb|_| since the second part of the or pattern would never be considered.
 
-\begin{figure}[H]
-$
-\begin{pmatrix}
-(p^1_1\ \mathrm{as}\ q) & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
-%(\_ | p^2_1) & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
-p^2_1 & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2
-\end{pmatrix}
-\to
-\begin{pmatrix}
- p^1_1 & p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, q=v) \\
-%\_ & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2 \\
-p^2_1 & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2
-\end{pmatrix}
-$
-\caption{Handling of aliases in pattern matrices}
-\end{figure}
+%\begin{figure}[H]
+%$
+%\begin{pmatrix}
+%(p^1_1\ \mathrm{as}\ q) & p^1_2 & \dots & p^1_n & \to & a^1 & g^1 & b^1 \\
+%%(\_ | p^2_1) & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2 \\
+%p^2_1 & p^2_2 & \dots & p^2_n & \to & a^2 & g^2 & b^2
+%\end{pmatrix}
+%\to
+%\begin{pmatrix}
+% p^1_1 & p^1_2 & \dots & p^1_n  & \to & a^1 & g^1 & (b^1, q=v) \\
+%%\_ & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2 \\
+%p^2_1 & p^2_2 & \dots & p^2_n  & \to & a^2 & g^2 & b^2
+%\end{pmatrix}
+%$
+%\caption{Handling of aliases in pattern matrices}
+%\end{figure}
 
 % MENTION ISSUE WITH OR PATTERNS?
 %There is a complication with OR patterns which I handle differently to the paper. 
