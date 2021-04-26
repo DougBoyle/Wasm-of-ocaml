@@ -6,7 +6,7 @@
 \def\dissertationtitle{Optimising compiler from OCaml to WebAssembly}
 
 
-\def\wordcount{13386} %%% OVER LIMIT! MUST GET BELOW 12k
+\def\wordcount{11989} %%% OVER LIMIT! MUST GET BELOW 12k
 
 
 \usepackage{epsfig,parskip,setspace,tabularx,xspace}
@@ -48,6 +48,7 @@
 \addbibresource{diss.bib}
 \DeclareFieldFormat[misc]{title}{#1}
 
+\newcommand{\jsofocaml}{Js\_of\_ocaml} 
 
 %% START OF DOCUMENT
 \begin{document}
@@ -134,11 +135,11 @@ Supervisor:         &  Dr T.~Jones                   \\
 
 \section*{Original Aims of the Project}
 
-To produce a compiler from a subset of OCaml to WebAssembly and measure its performance against a set of alternatives for running code in browsers. The core subset of OCaml would support programs operating on integers, without the class/module layer of OCaml. Extensions were to extend the subset supported, such as including floating point operations, implement optimisations and measure their impact, and add a garbage collector to the runtime.
+The original aims were to produce a compiler from a subset of OCaml to WebAssembly and measure its performance against several alternatives for running code in browsers. Only the core OCaml language was to be considered, leaving out the class and module layers. Extensions were to extend the subset supported,  implement and evaluate optimisations, and add a garbage collector to the runtime.
 
 
 \section*{Work Completed} % Of course update this as the project develops
-I implemented the compiler, using the parser and type-checker of the official OCaml compiler, supporting both integer and floating point programs with almost all of the language constructs of OCaml. I wrote tests and benchmark programs and evaluated my compiler against equivalent programs compiled with Js\_of\_ocaml, Grain and clang/LLVM. I also implemented several optimisations and measured their impact on the benchmark programs.
+I implemented a compiler to WebAssembly, using the parser and type-checker of the official OCaml compiler, supporting all of the core OCaml language and several standard library operations. I wrote tests and benchmark programs and evaluated my compiler against equivalent programs compiled with Js\_of\_ocaml, Grain and Clang/LLVM. I also implemented several optimisations and a garbage collector, and measured their impact on the benchmark programs.
 
 \section*{Special Difficulties}
 None.
@@ -240,7 +241,7 @@ None.
 \printbibliography[title={Bibliography}]
 
 \clearpage
-\include{chapters/appendix-wasm}
+%\include{chapters/appendix-wasm}
 
 \chapter{Project Proposal}
 \clearpage

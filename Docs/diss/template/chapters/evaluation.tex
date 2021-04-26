@@ -1,15 +1,15 @@
 \chapter{Evaluation}
-This chapter compares the performance of my compiler with three existing alternatives for running code on the web: Compiling C to WebAssembly with Clang/LLVM, compiling Grain (a functional language based on OCaml that compiles to WebAssembly), and translating OCaml programs to JavaScript with the Js\_of\_ocaml tool.
+This chapter compares the performance of my compiler with three existing alternatives for running code on the web: Compiling C to WebAssembly with Clang/LLVM, compiling Grain to WebAssembly, and translating OCaml programs to JavaScript with the \jsofocaml{} tool.
 I also measure the impact of the optimisations implemented in my compiler. Performance is based on three metrics: 
 
 \begin{itemize}
-\item \textbf{Execution time}: This is measured by a JavaScript program, run using Node.js, for each of the alternatives. Timing information is obtained from the \verb|performance| interface, which has up to microsecond precision and is not affected by system time changes, so is guaranteed to be monotonic \cite{timing}. This is sampled over 20 runs of the program and the mean and 95\% confidence interval are recorded. 
+\item \textbf{Execution time}: This is measured by a JavaScript program, run using Node.js, for each of the alternatives. Timing information is obtained from the \verb|performance| interface, which has up to microsecond precision and is not affected by system time changes, so is guaranteed to be monotonic \cite{timing}. This is sampled over 20 runs and the mean and 95\% confidence interval are recorded. 
 
 \item \textbf{Heap usage}: The heap memory used is also collected by these scripts. Without garbage collection, my runtime allocates memory linearly so a call to allocate 0 bytes returns the total memory used. For the garbage-collected allocator, I created a separate version that tracks the peak memory allocated, updating this on each allocation. 
 
 The Grain runtime's development build outputs similar memory-tracing statistics, including the amount of heap memory used. 
 The overhead of tracing is significant so this is done separately to collecting timing information. For C, where parts of \verb|stdlib| are included in the WebAssembly output for memory allocation, \verb|sbrk(0)| returns the size of the WebAssembly linear memory used. % Mention 64KiB resolution?
-Lastly, for programs translated to JavaScript, the benchmarking script is run with the \verb|--expose-gc| option. This allows calling the garbage collector before the program is executed, and obtaining the memory used by calling \verb|process.memoryUsage().heapUsed| before and after the program runs. This is an approximate value, so it is also averaged over 20 iterations.
+Lastly, for programs translated to JavaScript, the benchmarking script is run with the \verb|--expose-gc| option. This allows calling the garbage collector before the program is executed, and obtaining the memory used from \verb|process.memoryUsage().heapUsed| before and after the program runs. This is an approximate value, so is also averaged over 20 iterations.
 
 \item \textbf{Output file size}: This is easily obtained from the file system.
 
@@ -41,7 +41,7 @@ Where available, these programs were based on code from existing benchmarking li
 \section{Comparison against alternatives}
 Although most of the runtime for my compiler is written in WebAssembly, the garbage-collected memory allocator is written in JavaScript due to its complexity and wanting to make several improvements to it. Therefore, the performance of my compiler is indicated with and without garbage collection (labelled as `OCaml' and `OCaml GC'), to distinguish the overhead of calling between WebAssembly and JavaScript for each memory allocation. The data given is also for the optimised version of the compiler.
 
-In the following graphs, the output of compiling equivalent C programs to WebAssembly with Clang/LLVM is labelled as `C', and the output of compiling Grain to WebAssembly is labelled as `Grain'. Lastly, the JavaScript programs produced by translating the OCaml benchmarks with Js\_of\_ocaml are labelled as `JS'. The subscript value on the names of benchmarks indicates the problem size, where multiple instances of the same benchmark were included.
+In the following graphs, the output of compiling equivalent C programs to WebAssembly with Clang/LLVM is labelled as `C', and the output of compiling Grain to WebAssembly is labelled as `Grain'. Lastly, the JavaScript programs produced by translating the OCaml benchmarks with \jsofocaml{} are labelled as `JS'. The subscript value on the names of benchmarks indicates the problem size, where multiple instances of the same benchmark were included.
 
 \subsection{Execution Time}
 
@@ -53,18 +53,26 @@ In the following graphs, the output of compiling equivalent C programs to WebAss
  \label{fig:alt_timing} 
 \end{figure}
 
-In figure \ref{fig:alt_timing}, we see that the execution speed can vary by a couple orders of magnitude between the least and most efficient method. Unsurprisingly, the programs translated to C by hand and compiled to WebAssembly are the fastest. At the opposite end, Grain is always significantly slower than the other methods. My compiler is always faster than the equivalent JavaScript when run without garbage collection, however the overhead of garbage collection results in the two being more balanced, as shown further in figure \ref{fig:js_oc_timing}.% performing better on some programs and worse on others. This is shown in more detail below:
+In figure \ref{fig:alt_timing}, we see that the execution speed can vary by a couple orders of magnitude between the least and most efficient method. Unsurprisingly, the programs translated to C by hand and compiled to WebAssembly are the fastest. At the opposite end, Grain is always significantly slower than the other methods. My compiler is always faster than the equivalent JavaScript when run without garbage collection, 
+however the overhead of garbage collection results in the two being more balanced, as shown further in figure \ref{fig:js_oc_timing}.
+
+%however the overhead of garbage collection means that execution time grows faster with problem size, and my compiler then performs worse on more memory intensive benchmarks, as shown further in figure \ref{fig:js_oc_timing}. Considering my garbage-collected runtime is the fairer comparison here, since \jsofocaml{} converts OCaml programs to JavaScript, which then use the garbage collector of the environment the benchmark script is executed in. I ran the tests with Node.js, so this used the garbage collector implemented in Chrome's V8 JavaScript engine. 
+
+
+%however the overhead of garbage collection results in the two being more balanced, as shown further in figure \ref{fig:js_oc_timing}.  % performing better on some programs and worse on others. This is shown in more detail below:
 
 
 \begin{figure}[H]
 \hspace{-1.6cm}
 \includegraphics[scale=0.52]{figures/js_ocaml_timing}
 \vspace{-0.5cm}
-\caption{Comparison between my compiler and Js\_of\_ocaml}
+\caption{Comparison between my compiler and \jsofocaml{}}
  \label{fig:js_oc_timing} 
 \end{figure}
 
-Without garbage collection, my compiler's output	executes between 0.33 and 20 times faster than the JavaScript program produced by  Js\_of\_ocaml. With garbage collection, execution time grows much faster with problem size and my compiler performs worse for programs making a large number of memory allocations.
+With garbage collection, execution time grows faster with problem size, so my garbage-collected implementation performs worse on the memory intensive benchmarks. Considering the garbage-collected runtime is the fairer comparison here, since \jsofocaml{} converts OCaml programs to JavaScript, which then use the garbage collector of the environment the benchmark script is executed in. I ran the tests with Node.js, so this used the garbage collector implemented in Chrome's V8 JavaScript engine. 
+
+%Without garbage collection, my compiler's output	executes between 0.33 and 20 times faster than the JavaScript program produced by  \jsofocaml{}. With garbage collection, execution time grows much faster with problem size and my compiler performs worse for programs making a large number of memory allocations.
 
 %it still outperforms the JavaScript alternative in most cases, except for programs making a very large number of memory allocations such as \verb|alltrees| with a large problem size.
 
@@ -85,14 +93,16 @@ There is also no data for Grain for \verb|arith_1000| as the program did not app
 % was very slow without tracing (see figure \ref{fig:alt_timing}) and with tracing enabled did not terminate after 10 minutes.
 
 For the compiled C programs that did use the heap, my garbage-collected runtime only uses more memory for \verb|mergesort|, where my implementation uses 70\% more memory at the larger problem size. This difference is due to C being an imperative language, with manual memory management, where it is natural to implement \verb|mergesort| to perform operations in-place. Although manual memory management allows more precise control over memory, it also adds to the complexity of writing programs.
-The WebAssembly memory is initialised as 2 pages (128KiB), which is the size recorded for \verb|composition| and \verb|mergesort|$_{1000}$, indicating that these programs may need less memory than the amount initially allocated.
+Also, the WebAssembly memory is initialised as 2 pages (128KiB), which is the size recorded for \verb|composition| and \verb|mergesort|$_{1000}$ compiled from C, indicating that these programs may be using less memory than the WebAssembly module is initialised with. %need less memory than the amount initially allocated.
+
+Compared against JavaScript and Grain, my implementation uses significantly less memory than both alternatives. In every test, the garbage-collected runtime uses at most one third of the memory used by either the JavaScript or Grain version. 
 
 
 %Where the compiled C programs did use the heap, my garbage-collected runtime uses at worst 35\% more memory. However, C is not a garbage-collected language, so additional effort is required when writing the programs, to perform manual memory management. 
-My implementation uses significantly less memory than both the JavaScript and Grain alternatives. In every test, % (ignoring the Grain result for \verb|arith_1000|), 
-the garbage-collected runtime uses at most one third of the memory used by either the JavaScript or Grain version. 
+%My implementation uses significantly less memory than both the JavaScript and Grain alternatives. In every test, % (ignoring the Grain result for \verb|arith_1000|), 
+%the garbage-collected runtime uses at most one third of the memory used by either the JavaScript or Grain version. 
 % NEW - DESCRIBING MEMORY MANAGEMENT IN EACH OF THE ALTERNATIVES
-The Grain compiler has its own runtime system for managing WebAssembly memory, whereas Js\_of\_ocaml converts OCaml programs to JavaScript, which then rely on the garbage collector of the environment the benchmarking script is executed in. I ran the tests with Node.js, so this used Chrome's V8 JavaScript engine.
+%The Grain compiler has its own runtime system for managing WebAssembly memory, whereas \jsofocaml{} converts OCaml programs to JavaScript, which then rely on the garbage collector of the environment the benchmarking script is executed in. I ran the tests with Node.js, so this used Chrome's V8 JavaScript engine.
 
 
 For my compiler, the garbage-collected runtime uses more memory for \verb|arith| and \verb|funcrec| than the version without garbage collection.
@@ -254,7 +264,7 @@ Figure \ref{fig:speedup} demonstrates the benefit of having a threshold for garb
 
 
 \begin{figure}[H]
-\hfill \includegraphics[scale=0.88]{figures/traces2} \hfill
+\hfill \includegraphics[scale=0.87]{figures/traces2} \hfill
 \vspace{-0.8cm}
 \caption{Objects freed during execution of \texttt{alltrees}}
  \label{fig:traces} 
@@ -266,7 +276,7 @@ We see an identical pattern both with and without the threshold, but this patter
 Rather than having tails of inefficient garbage collections, the threshold results in many objects all begin freed in one pass the next time garbage collection runs, after the newly-requested memory is used up many allocations later. This results in the garbage collector being invoked fewer times in total, without requesting memory in cases where it would otherwise not be necessary. The value of 1KiB was selected based on the amount freed by these tails of inefficient collections.
 
 \section{Summary}
-I have shown how my compiler compares to existing methods of running code on the web, outperforming Grain and Js\_of\_ocaml in many instances. I have also demonstrated the cases where my optimisations improve performance, and given possible explanations for the behaviour observed.
+I have shown how my compiler compares to existing methods of running code on the web, outperforming Grain and \jsofocaml{} in many instances. I have also demonstrated the cases where my optimisations improve performance, and given possible explanations for the behaviour observed.
 
 
 

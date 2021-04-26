@@ -247,9 +247,14 @@ If compiling the upper matrix in the mixture rule returns jump summary $\rho$, t
 
 The reachable handler list remembers which patterns each handler will try to match if exited to, and the contexts obtained from the jump summary provide some information on the structure of values which will trigger that handler. 
 
-The first improvement is that, rather than always backtracking to the nearest handler, handlers guaranteed to fail can be skipped over. Since the matrices matched by reachable handlers are specialised as more specific cases are matched recursively, at a point where backtracking occurs some of those matrices may be empty, indicating that backtracking to that handler will just cause further backtracking, due to the known structure of values at this point. The procedure instead inserts a \verb|fail i| to the first handler \verb|i| with a non-empty matrix. %Note that, where the mixture rule is needed multiple times to split up a matrix, it now makes sense to nest the handlers so that they are all available to jump to, maximising the opportunities to skip handlers.  
+The first improvement is that, rather than always backtracking to the nearest handler, handlers guaranteed to fail can be skipped over. Since the matrices matched by reachable handlers are specialised as more specific patterns are matched recursively, at a point where backtracking occurs some of those matrices may be empty, indicating that no values that reach this point in the code would be matched by those handers either.
+% indicating that backtracking to that handler will just cause further backtracking, due to the known structure of values at this point. 
+The procedure instead inserts a \verb|fail i| to the first handler \verb|i| with a non-empty matrix. %Note that, where the mixture rule is needed multiple times to split up a matrix, it now makes sense to nest the handlers so that they are all available to jump to, maximising the opportunities to skip handlers.  
 
-Second, the lower matrix for a handler may not cover all constructor cases if some are covered by the upper matrix matched before backtracking. Naively, this would result in additional cases for the missing constructors, which we know will never occur. This is the purpose of taking the context from the jump summary, representing the set of values that can actually reach the handler. If some constructor is incompatible with every pattern in the first column of the fringe of the context, the value being matched will never be that constructor when the handler executes, so cases can be safely discarded to reduce code size. In some cases, switch statements may be reduced to a single case, then the test can be removed entirely.
+Second, the lower matrix for a handler may not cover all constructor cases if some are covered by the upper matrix matched before backtracking. Naively, this would result in additional cases for the missing constructors, which we know will never occur. 
+By taking the context from the jump summary, we know the set of values that can actually reach the handler. If some constructor is incompatible with every pattern in the first column of the fringe of the context, the value being matched in the handler will never be that constructor, hence such cases can be discarded to reduce code size. In instances where this reduces the switch statement to a single case, the test can be removed entirely.
+
+%This is the purpose of taking the context from the jump summary, representing the set of values that can actually reach the handler. If some constructor is incompatible with every pattern in the first column of the fringe of the context, the value being matched will never be that constructor when the handler executes, so cases can be safely discarded to reduce code size. In some cases, switch statements may be reduced to a single case, then the test can be removed entirely.
 
 
 
@@ -274,17 +279,21 @@ Also, the number of local variables used by a function directly affects the spac
 
 \section{Code Generation}
 
-Finally, the program is translated to WebAssembly code, with most operations mapping directly to fixed blocks of code that are concatenated together. Variable accesses need to be mapped to \verb|LocalGet| and \verb|GlobalGet| operations, and equivalent \verb|Set| instructions. \verb|Global i| maps directly to \verb|GlobalGet i|, and \verb|Arg i| maps to \verb|LocalGet i|, as function arguments are the first local variables in WebAssembly. Two additional ``swap" local variables are introduced in each function, needed to compile some operations to WebAssembly. 
-For example, if \verb|ar| evaluates to an array object and \verb|index| evaluates to the index being accessed, checking the index is within the bounds of the array and loading that value emits the code below. Some steps have been omitted for brevity, such as removing tags from values, or multiplying the index by 4 to be a byte offset rather than a word offset.
+Finally, the program is translated to WebAssembly code, with most operations mapping directly to fixed blocks of code that are concatenated together. 
+%Variable accesses need to be mapped to \verb|LocalGet| and \verb|GlobalGet| operations, and equivalent \verb|Set| instructions.
+%
+% \verb|Global i| maps directly to \verb|GlobalGet i|, and \verb|Arg i| maps to \verb|LocalGet i|, as function arguments are the first local variables in WebAssembly. 
+Two additional ``swap" local variables are introduced in each function, needed to compile some operations to WebAssembly. 
+For example, if \verb|ar| evaluates to an array pointer and \verb|index| evaluates to the index being accessed, checking the array bounds and performing the load emits the code below. Some steps have been omitted for brevity, such as removing tags from values, or shifting the index to be a byte offset rather than a word offset.
 
 % TODO: Check this is aligned nicely with pages
 \begin{figure}[H]
 \begin{verbatim}
 ar; 
-LocalTee 0;
+LocalTee 0;      // swap variable 0
 Load;            // the size of the array is stored at its base address
 index; 
-LocalTee 1; 
+LocalTee 1;      // swap variable 1
 Compare GtU;     // size > index, unsigned comparison catches index < 0
 if
   LocalGet 0;
@@ -298,13 +307,14 @@ end
 \caption{Code generated for accessing an array element}
 \end{figure}
 
-Here locals 0 and 1 are the swap variables. The expressions \verb|ar| and \verb|index| could be free variables being loaded from a closure, in which case storing their values in local variables avoids repeated loads from memory. 
- For a function with \verb|n| arguments, we therefore compile \verb|Swap i| as \verb|LocalGet (n + i)| and \verb|Local i| as \verb|LocalGet (n + 2 + i)|. Lastly,  a free variable \verb|Closure i| compiles to a \verb|LocalGet 0| to get the closure pointer, then a \verb|Load| with an offset to that variable.
+The expressions \verb|ar| and \verb|index| could be free variables being loaded from a closure, in which case storing their values in local variables avoids repeated loads from memory. 
+The first local variables of a WebAssembly function are its arguments, so a free variable binding \verb|Closure i| compiles to a  \verb|LocalGet 0| to get the closure pointer, then a \verb|Load| with an offset to that variable.
+% For a function with \verb|n| arguments, we therefore compile \verb|Swap i| as \verb|LocalGet (n + i)| and \verb|Local i| as \verb|LocalGet (n + 2 + i)|. Lastly,  a free variable \verb|Closure i| compiles to a \verb|LocalGet 0| to get the closure pointer, then a \verb|Load| with an offset to that variable.
 
 
 
-I also wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append. These, along with the memory controlled by the memory allocator, are declared as imports into the compiled WebAssembly module. The module then exports each top-level global variable as its name from the OCaml program, and each of the user defined functions. 
-I also wrote a short JavaScript wrapper to interpret integers and pointers accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
+I wrote a runtime in WebAssembly providing functions for memory allocation, polymorphic comparison, boxing of floats in memory, and list append, which are declared as imports into compiled WebAssembly modules. %The module then exports each top-level global variable as its name from the OCaml program, and each of the user defined functions. 
+I also wrote a short JavaScript wrapper to interpret integers and pointers to data or closures. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
 %As explained below, integers and pointers are tagged to distinguish them, so I wrote a short JavaScript wrapper that interprets values accordingly. This means that JavaScript code can interact with the WebAssembly values without needing to understand the runtime representation, and can call functions using returned closure pointers.
 
 Data must be tagged to identify its type, so that OCaml's \verb|compare| function can be implemented correctly, which is defined on all types. As every operation is on either 32-bit integers or 64-bit floats, pointers are always aligned on 4-byte boundaries so the last 2 bits are unused. I therefore distinguish the types of values by these last two bits. Closure pointers are tagged with 11, pointers to other objects in memory such as constructors are tagged with 01, and integers are tagged with 10 or 00 by shifting them left one, so odd values now end in 10 and even values end in 00. 
@@ -504,10 +514,12 @@ When an immutable field of a block is accessed as \verb|Field(b, i)|, if the kno
 
 % this annotation is present on \verb|b| and contains its element at index \verb|i|, the node is replaced with the known constant/variable to propagate this value through the program.
 
-As well as constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression that does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table of common expressions. Identifying such expressions is done by the effects analysis described below. 
-Subsequent occurrences of that expression are then replaced by the variable known to hold its value. So that variables are only reused when in scope, each entry is removed from the table after the subtree below its binding is searched.
+Common subexpressions are optimised similarly to constant and identifier assignments. First, side-effect free expressions are identified by the effects analysis described below. When such an expression is bound to a variable \verb|x|, subsequent occurrences of that expression are replaced with \verb|x|, as it holds the same value and avoids recomputing the expression. 
+%As well as constant and identifier assignments, common subexpressions are optimised too. When a binding is found of an expression that does not modify program state and has the same value whenever it is evaluated, that binding is stored in a table of common expressions. Identifying such expressions is done by the effects analysis described below. 
+%Subsequent occurrences of that expression are then replaced by the variable known to hold its value. So that variables are only reused when in scope, each entry is removed from the table after the subtree below its binding is searched.
 
-These passes enable further optimisations, by removing redundancy or indirect accesses in the program. They also tend to result in unused variables, due to expressions being replaced with their known values.  Therefore, after all of these passes have been performed,  dead assignments are identified as variable assignments that are never used, and those that have no side effects are removed.
+
+These passes enable further optimisations, by removing redundancy or indirect accesses in the program. They also tend to result in unused variables, due to expressions being replaced with their known values.  Therefore, after these passes have been performed,  dead assignments are identified as variable assignments that are never used, and those that have no side effects are removed.
 
 % SOMETHING SIMILAR ALREADY MENTIONED FOR UNCURRYING
 %These optimisations also increase the number of cases found for tail-call optimisation. Where a function \verb|f| is assigned to another variable \verb|g| and that is used instead, tail call optimisation will not identify which function is being called by \verb|g|. These optimisations replace some such cases with using \verb|f| directly, in which case the function can now be identified and the call will be considered for tail-call optimisation.
@@ -515,15 +527,15 @@ These passes enable further optimisations, by removing redundancy or indirect ac
 
 % TODO: Make side effect analysis iterative to solve functions?
 \subsection{Effects analysis}
-OCaml is an impure language, so analysis of side effects is necessary to determine when expressions can be safely replaced or removed as above. This is done using the following annotations on nodes in the IR tree:
+OCaml is an impure language, so analysis of side effects is necessary to determine when expressions can be safely removed as above. This is done using the following annotations on nodes in the IR tree:
 
-\verb"annotation ::= ... | Pure | Immutable | Latent of annotation list"
+\verb"annotation = ... | Pure | Immutable | Latent of annotation list"
 
 \verb|Pure| identifies expressions that do not modify program state, making them safe for dead-assignment elimination to remove. This includes creating a block in memory, as it could be immediately garbage collected if unused.
 
 Of the pure expressions, \verb|Immutable| identifies expressions that will return the same value each time they are evaluated, so common-subexpression elimination can remove repeated occurrences of such expressions. Creating blocks containing only immutable fields is treated as immutable, as is accessing an immutable field of a block, since it can never be overwritten so always has the same value.
 
-The \verb|Latent| annotation is used for functions, since a function definition itself is pure and immutable, but the body of the function may cause latent side effects when the function is called. Therefore, if a function body has annotations $F$, the function definition is annotated with \verb|Pure|, \verb|Immutable| and \verb|Latent|$(F)$, and $F$ is unwrapped at function applications.
+The \verb|Latent| annotation is used for functions, since a function definition itself is pure and immutable, but the body of the function may cause latent side effects when the function is called. Therefore, if a function body has annotations $F$, the function definition is annotated with $\{$\verb|Pure|, \verb|Immutable|,  \verb|Latent|$(F) \}$, and $F$ is unwrapped at function applications.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -599,9 +611,9 @@ The function \verb|seq| encodes that the latent effects of \verb|e; e'| are thos
 
 \vspace{0.2cm}
 \begin{prooftree}
-\hypo{ \Gamma, i:F' \vdash  \ $\lstinline{e}$\ : F}
 \hypo{ \Gamma \vdash\  $\lstinline{e'}$\ : F'}
-\infer2{\Gamma \vdash \  $\lstinline{try e with (i) -> e'}$\ :  F \cap F'}
+\hypo{ \Gamma, i:F' \vdash  \ $\lstinline{e}$\ : F}
+\infer2{\Gamma \vdash \  $\lstinline{try e with (i) -> e'}$\ :  F}
 \end{prooftree}\hfill
 \begin{prooftree}
 \hypo{i : F \in \Gamma}
@@ -622,13 +634,13 @@ let rec app F = function
     else: $\{\}$
 \end{lstlisting}
 
-\caption{Summary of the inference rules used for effects analysis}
+\caption{Summary of the inference rules for effects analysis}
 \label{fig:inferenceRules}
 \end{figure}
 
 %For the purpose of removing dead assignments, creating a block in memory is considered pure, as it could be immediately garbage collected if unused. If every field is immutable, then the block itself is also marked as immutable, since its fields can never be overwritten. Accessing a field of a block is pure, and is immutable if that field of the block is immutable. This therefore relies on the propagation of \verb|ImmutableBlock| annotations described previously, left out here to avoid further complicating the inference rules.
 
-Using a linearised IR has resulted in simpler rules in some cases. For example, the condition of an \verb|if| statement is always a variable or constant so has no side effects, hence it is ignored by that rule.
+Using a linearised IR has resulted in simpler rules in some cases. For example, the condition of an \verb|if| statement is always a variable or constant so has no side effects, hence it is ignored.
 
 %If the analysis of latent effects of a function being applied are unknown, for example, because the function applied is an argument to the current function (\verb|f| in \verb|map f lst|), then nothing is assumed about the result. 
 %
@@ -636,11 +648,10 @@ Using a linearised IR has resulted in simpler rules in some cases. For example, 
 %\verb|f| returns a function which is pure, but  the first application in \verb|f 1 2| evaluates the body of \verb|f|, which has side effects, so \verb|f 1 2| would not be marked as a pure expression.
 
 
-\subsection{Simplifying expressions and peephole optimisations}
-Lastly, several simple optimisations are made at the IR and WebAssembly level. Integer or floating-point operations in the IR tree involving constants are evaluated during compilation. Similarly, a \verb|switch| or \verb|if| statement switching on a constant is replaced with the branch that would be taken. Both of these help simplify function applications after they are inlined, reducing code size and execution time. 
+\subsection{WebAssembly peephole optimisations}
+%Lastly, several simple optimisations are made at the IR and WebAssembly level. Integer or floating-point operations in the IR tree involving constants are evaluated during compilation. Similarly, a \verb|switch| or \verb|if| statement switching on a constant is replaced with the branch that would be taken. Both of these help simplify function applications after they are inlined, reducing code size and execution time. 
 
-At the WebAssembly level, in addition to being used for register allocation, live-variable analysis identifies assignments to variables that are unused so can be removed. Peephole optimisations also simplify several common cases resulting from compiling each operation independently. For example, \verb|LocalSet i; LocalGet i| is replaced with \verb|LocalTee i|, and \verb|i32.const n; drop| is removed (\verb|i32.const 0; drop| is commonly seen where a unit valued expression is the first part of a sequence of expressions \verb|e1; e2|). These changes lead to a more precise analysis of which values are actually used by a program, allowing further assignments to be removed by identifying them as assigning to dead variables.
-
+At the WebAssembly level, in addition to being used for register allocation, live-variable analysis identifies assignments to variables that are unused so can be removed. Peephole optimisations also simplify several common cases resulting from compiling each operation independently. For example, \verb|LocalSet i; LocalGet i| is replaced with \verb|LocalTee i|, and \verb|i32.const n; drop| is removed (\verb|i32.const 0; drop| often occurs where a unit-valued expression is the first part of a sequence \verb|e1; e2|). These changes enable a more precise analysis of which variables are actually used by a program, allowing further dead assignments to be removed.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Garbage Collection}
