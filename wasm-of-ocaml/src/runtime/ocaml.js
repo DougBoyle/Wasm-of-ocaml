@@ -1,6 +1,7 @@
 const util = require('util');
 const fs = require("fs");
 const readFile = util.promisify(fs.readFile);
+const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory.js");
 
 // Doesn't provide methods to create values to pass to OCaml,
 // and assumes values read out once returned, hence doesn't interact with GC
@@ -49,9 +50,18 @@ function wrap_ptr(i, instance){
 // TODO: Encode location of runtime wasm file better
 // TODO: Use JavaScript runtime system
 async function instantiate(file){
-	var buffer = await readFile(__dirname + '/../samples/runtime.wasm');
+	// Uses garbage collected runtime system
+	const memory = new WebAssembly.Memory({ initial: 2 });
+	var memoryManager = new ManagedMemory(memory);
+	var rtimports = {jsRuntime: {malloc : memoryManager.malloc,
+			stackOverflow : memoryManager.stackLimitExceeded,
+			mem : memory}};
+
+	var buffer = await readFile(process.env.OCAML_TO_WASM_RT + '/runtime.wasm');
 	var module = await WebAssembly.compile(buffer);
-	var runtime_instance = await WebAssembly.instantiate(module);
+	var runtime_instance = await WebAssembly.instantiate(module, rtimports);
+	memoryManager.setRuntime(runtime_instance);
+
 	var imports = {ocamlRuntime: runtime_instance.exports};
 
 	buffer = await readFile(file);
