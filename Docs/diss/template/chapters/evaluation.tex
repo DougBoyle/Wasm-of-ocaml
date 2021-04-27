@@ -130,7 +130,7 @@ On average, this adds about 30\% to the size of the output WebAssembly. % Tim sa
 
 \section{Optimisations}
 
-I first compare the impact of the IR and WebAssembly optimisations described in section 3.5, and their combined effect on performance. After that, I look at the impact of specific optimisations at the IR level by seeing how performance changes when one is removed, and the benefit of optimising pattern matching. Finally, I show the benefit of repeating the optimisation passes multiple times. %, as well as looking at how the phase ordering at the IR level impacts performance.  -- LEAVE THIS FOR IF SECTION TOO SHORT
+I first compare the impact of the IR and WebAssembly optimisations described in section \ref{opts}, and their combined effect on performance. After that, I look at the impact of specific optimisations at the IR level by seeing how performance changes when one is removed, and the benefit of optimising pattern matching. Finally, I show the benefit of repeating the optimisation passes multiple times. %, as well as looking at how the phase ordering at the IR level impacts performance.  -- LEAVE THIS FOR IF SECTION TOO SHORT
 
 Data is collected with garbage collection disabled to exclude the overhead it introduces, which depends primarily on the garbage collection implementation used by the runtime system, rather than how programs are optimised.
 

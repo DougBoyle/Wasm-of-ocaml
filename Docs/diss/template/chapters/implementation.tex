@@ -357,7 +357,7 @@ The arity field in closures indicates the number of free variables. \verb|compar
 %As OCaml limits the number of different constructors supported% Reference required
 %, the variant tag is guaranteed to be a non-negative integer. Therefore, as floats need to be``boxed'' and stored in memory as a data block, -1 was used to identify floats, which are stored similarly to . This is necessary since the arguments and return values of WebAssembly functions are strongly typed. Therefore, all functions take a 32-bit integer which is decoded as an integer or pointer to data or a float as required by the body of the function.
 
-\section{Optimisations}
+\section{Optimisations} \label{opts}
 
 One of the extensions for my project was to implement optimisations once I had a working compiler. Three main optimisation passes were added: Function inlining, uncurrying and tail-call optimisation. Several cleanup passes were also implemented, propagating values to reveal further optimisations, and removing inefficiencies at both the IR and WebAssembly level by detecting dead code.
 
@@ -541,7 +541,7 @@ The \verb|Latent| annotation is used for functions, since a function definition 
 
 The algorithm is summarised by the inference rules and functions in figure \ref{fig:inferenceRules}, abbreviating the three annotations as $P$, $I$ and $L$. $\Gamma$ is a mapping of both variables and handler indices to analyses. 
 The algorithm safely over-approximates possible side-effects, by under-approximating the annotated properties in multiple places. 
-Nothing is assumed about the latent effects of variables that have not been analysed, which occurs for function parameters,
+Nothing is assumed about the latent effects of variables that have not been analysed, which occurs for function parameters or recursive function variables,
  and the intersection of properties is taken at branches.
 
 The function \verb|seq| encodes that the latent effects of \verb|e; e'| are those of \verb|e'|, but the expression is only pure/immutable if both \verb|e| and \verb|e'| are. The function \verb|app| encodes the same for unwrapping the analyses of latent effects as a function is applied. This is necessary, rather than just returning the latent effects, since a partial application may perform some impure computation then return another function, in which case the overall application is impure.
@@ -620,7 +620,7 @@ The function \verb|seq| encodes that the latent effects of \verb|e; e'| are thos
 \infer1{\Gamma \vdash\   $\lstinline{fail i}$ \ :  F }
 \end{prooftree}\hfill 
 \begin{prooftree}
-\infer0{\Gamma \vdash \  $\lstinline{c}$\   : \{P, I\}}
+\infer0{\Gamma \vdash \  $\lstinline{Const c}$\   : \{P, I\}}
 \end{prooftree} \\
 
 \begin{lstlisting}
