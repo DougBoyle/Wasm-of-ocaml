@@ -11,11 +11,13 @@ function js_fact(num) {
     let instance = await rt.instantiate("fact.wasm"); // load/instantiate WebAssembly module
     instance.setup(); // equivalent to 'Open Fact' or '#use "fact.ml"'
 
+    console.log("x =", instance.x.value);
+
     let n = 7; // max 12 - only 31-bit integers in OCaml
 
     // call OCaml function with tagged representation of n
     let result = instance.fact(rt.ocaml_int(n));
 
-    console.log(result.value);
-    console.log(js_fact(n))
+    console.log(n + "! =", result.value);
+    //console.log(n + "! =", js_fact(n))
 })();

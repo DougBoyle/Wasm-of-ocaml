@@ -84,9 +84,9 @@ let wrap_function types {ftype; locals; num_swaps} wasm_body =
   (* Number of slots that need allocating on the shadow stack *)
   let num_stack_spaces = arity + (List.length locals) - num_swaps in
 
-
+  (if num_stack_spaces = 0 then [] else
   (List.map add_dummy_loc [Ast.Const(Compilewasm.const_int32 (num_stack_spaces * 4));
-   Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.create_fun_ident)]) @
+   Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.create_fun_ident)])) @
     (* Because intermediate closures of curried function calls (function applied many times in one place)
        aren't stored anywhere other than a swap variable, the closure needs to be put on the stack
        at the start of a function. (Check args > 0 to avoid case of MAIN, which has no args/closures) *)
@@ -95,8 +95,10 @@ let wrap_function types {ftype; locals; num_swaps} wasm_body =
         Ast.Const(Compilewasm.const_int32 (Bindstree.tag_of_type Bindstree.Closure));
         Ast.Binary(Values.I32 Ast.IntOp.Xor);]
        @ (update_local 0l) @ [Ast.Drop] )) @
-    wasm_body @ (List.map add_dummy_loc [Ast.Const(Compilewasm.const_int32 (num_stack_spaces * 4));
-        Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.exit_fun_ident)])
+    wasm_body @
+    (if num_stack_spaces = 0 then [] else
+      (List.map add_dummy_loc [Ast.Const(Compilewasm.const_int32 (num_stack_spaces * 4));
+        Ast.Call(Compilewasm.var_of_runtime_func Compilewasm.exit_fun_ident)]))
 
 let translate_funcs types globals funcs =
   let other_funcs, main = Utils.split_last [] funcs in
