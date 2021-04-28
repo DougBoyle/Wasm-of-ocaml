@@ -1,4 +1,3 @@
-
 const rt = require(process.env.OCAML_TO_WASM_RT + "/ocaml.js");
 
 function js_fact(num) {
@@ -10,13 +9,13 @@ function js_fact(num) {
 
 (async () => {
     let instance = await rt.instantiate("fact.wasm"); // load/instantiate WebAssembly module
-    instance.setup(); // run the OCaml program
+    instance.setup(); // equivalent to 'Open Fact' or '#use "fact.ml"'
 
-    let n = 12; // max 12 - only 31-bit integers in OCaml, so result must be less than 2^30
+    let n = 7; // max 12 - only 31-bit integers in OCaml
 
-    // call the OCaml function, after converting n to its tagged representation in WebAssembly
-    let wasm_result = instance.fact(rt.ocaml_int(n));
+    // call OCaml function with tagged representation of n
+    let result = instance.fact(rt.ocaml_int(n));
 
-    console.log(wasm_result()); // function call untags the WebAssembly value
+    console.log(result.value);
     console.log(js_fact(n))
 })();

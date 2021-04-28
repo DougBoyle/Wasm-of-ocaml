@@ -6,6 +6,8 @@ const {ManagedMemory} = require(process.env.OCAML_TO_WASM_RT +  "/memory.js");
 // Doesn't provide methods to create values to pass to OCaml,
 // and assumes values read out once returned, hence doesn't interact with GC
 
+// Functions treated as JS functions, as are data blocks since values could be mutable so may need updating
+// ints and floats are just stored in .value field
 function wrap_ptr(i, instance){
 	// 'View' (Int32Array) gets cleared whenever memory grows, so build a new view each time this is used
 	var mem = new Int32Array(instance.exports["$mem"].buffer);
@@ -19,7 +21,7 @@ function wrap_ptr(i, instance){
 				// get just the float
 				// +7 due to tag of 1, DataView to allow reading in Little Endian
 				const f = new DataView(instance.exports["$mem"].buffer).getFloat64(i+7, true /* littleEndian */);
-				result = () => f;
+				result = {value: f};
 				break;
 			}
 			const arity = mem[(i/4>>0) + 1];
@@ -28,7 +30,7 @@ function wrap_ptr(i, instance){
 				var ar = new Array(arity+1);
 				ar[0] = wrap_ptr(mem[(i/4>>0)], instance);
 				for (var j = 0; j < arity; j++){
-					ar[j+1] = 	wrap_ptr(mem[(i/4>>0) + j + 2], instance); // don't both copying arity in
+					ar[j+1] = 	wrap_ptr(mem[(i/4>>0) + j + 2], instance); // don't copy arity in
 				}
 				return ar;
 			}
@@ -39,7 +41,7 @@ function wrap_ptr(i, instance){
 		    break;
 		default:
 		  // just an int, use as is for wasm, halve when returning
-			result = () => (i/2>>0);
+			result = {value: i/2>>0};
 	}
 	result._wasm = i;
 	return result;
@@ -89,5 +91,7 @@ function ocaml_int(n){
 	result._wasm = 2*n;
 	return result
 }
+
+
 
 module.exports = {instantiate, ocaml_int};
