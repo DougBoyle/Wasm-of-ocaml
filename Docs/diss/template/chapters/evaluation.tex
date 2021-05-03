@@ -1,5 +1,5 @@
 \chapter{Evaluation}
-This chapter compares the performance of my compiler with three existing alternatives for running code on the web: Compiling C to WebAssembly with Clang/LLVM, compiling Grain to WebAssembly, and translating OCaml programs to JavaScript with the \jsofocaml{} tool.
+This chapter compares the performance of my compiler with three existing alternatives for running code on the web: compiling C to WebAssembly with Clang/LLVM, compiling Grain to WebAssembly, and translating OCaml programs to JavaScript with the \jsofocaml{} tool.
 I also measure the impact of the optimisations implemented in my compiler. Performance is based on three metrics: 
 
 \begin{itemize}
@@ -8,7 +8,7 @@ I also measure the impact of the optimisations implemented in my compiler. Perfo
 \item \textbf{Heap usage}: The heap memory used is also collected by these scripts. Without garbage collection, my runtime allocates memory linearly so a call to allocate 0 bytes returns the total memory used. For the garbage-collected allocator, I created a separate version that tracks the peak memory allocated, updating this on each allocation. 
 
 The Grain runtime's development build outputs similar memory-tracing statistics, including the amount of heap memory used. 
-The overhead of tracing is significant so this is done separately to collecting timing information. For C, where parts of \verb|stdlib| are included in the WebAssembly output for memory allocation, \verb|sbrk(0)| returns the size of the WebAssembly linear memory used. % Mention 64KiB resolution?
+The overhead of tracing is significant so this is performed separately to collecting timing information. For C, where parts of \verb|stdlib| are included in the WebAssembly output for memory allocation, \verb|sbrk(0)| returns the size of the WebAssembly linear memory used. % Mention 64KiB resolution?
 Lastly, for programs translated to JavaScript, the benchmarking script is run with the \verb|--expose-gc| option. This allows calling the garbage collector before the program is executed, and obtaining the memory used from \verb|process.memoryUsage().heapUsed| before and after the program runs. This is an approximate value, so is also averaged over 20 iterations.
 
 \item \textbf{Output file size}: This is easily obtained from the file system.
@@ -26,9 +26,9 @@ Where available, these programs were based on code from existing benchmarking li
 
 \item \verb|arith|: Computes Euler's totient function for all integers from 1 to a given \verb|n|, involving a large amount of integer arithmetic. This was based on problem 34 of the 99 Problems in OCaml \cite{99-problems}.%, implementing Euler's totient function.
 
-\item \verb|composition|: Constructs a function which is the composition of a list of simple functions and maps it over a list, making heavy use of higher-order functions.
+\item \verb|composition|: Constructs a function that is the composition of a list of simple functions and maps it over a list, making heavy use of higher-order functions.
 
-\item \verb|funcrec| (functions, records): Compares three forms of parameterisation: Using functions defined at the top-level of a program, passing those functions as arguments, and passing those functions as fields of a record argument. This was based on an existing repository of OCaml benchmarks available on GitHub \cite{chris00}.
+\item \verb|funcrec| (functions, records): Compares three forms of parameterisation: using functions defined at the top-level of a program, passing those functions as arguments, and passing those functions as fields of a record argument. This was based on an existing repository of OCaml benchmarks available on GitHub \cite{chris00}.
 
 \item \verb|mergesort|: Implements mergesort, making heavy use of lists and pattern matching.
 
@@ -39,11 +39,11 @@ Where available, these programs were based on code from existing benchmarking li
 
 
 \section{Comparison against alternatives}
-Although most of the runtime for my compiler is written in WebAssembly, the garbage-collected memory allocator is written in JavaScript due to its complexity and wanting to make several improvements to it. Therefore, the performance of my compiler is indicated with and without garbage collection (labelled as `OCaml' and `OCaml GC'), to distinguish the overhead of calling between WebAssembly and JavaScript for each memory allocation. The data given is also for the optimised version of the compiler.
+Although most of the runtime for my compiler is written in WebAssembly, the garbage-collected memory allocator is written in JavaScript due to its complexity and wanting to make several improvements to it. Therefore, the performance of my compiler is indicated with and without garbage collection (labelled as `OCaml GC' and `OCaml'), to distinguish the overhead of calling between WebAssembly and JavaScript for each memory allocation. The data given is also for the optimised version of the compiler.
 
 In the following graphs, the output of compiling equivalent C programs to WebAssembly with Clang/LLVM is labelled as `C', and the output of compiling Grain to WebAssembly is labelled as `Grain'. Lastly, the JavaScript programs produced by translating the OCaml benchmarks with \jsofocaml{} are labelled as `JS'. The subscript value on the names of benchmarks indicates the problem size, where multiple instances of the same benchmark were included.
 
-\subsection{Execution Time}
+\subsection{Execution time}
 
 \begin{figure}[H]
 \hspace{-0.7cm}
@@ -70,7 +70,7 @@ however the overhead of garbage collection results in the two being more balance
  \label{fig:js_oc_timing} 
 \end{figure}
 
-With garbage collection, execution time grows faster with problem size, so my garbage-collected implementation performs worse on the memory intensive benchmarks. Considering the garbage-collected runtime is the fairer comparison here, since \jsofocaml{} converts OCaml programs to JavaScript, which then use the garbage collector of the environment the benchmark script is executed in. I ran the tests with Node.js, so this used the garbage collector implemented in Chrome's V8 JavaScript engine. 
+With garbage collection, execution time grows faster with problem size, so my garbage-collected implementation performs worse on the memory-intensive benchmarks. Considering the garbage-collected runtime is the fairer comparison here, since \jsofocaml{} converts OCaml programs to JavaScript, which then use the garbage collector of the environment the benchmark script is executed in. I ran the tests with Node.js, so this used the garbage collector implemented in Chrome's V8 JavaScript engine. 
 
 %Without garbage collection, my compiler's output	executes between 0.33 and 20 times faster than the JavaScript program produced by  \jsofocaml{}. With garbage collection, execution time grows much faster with problem size and my compiler performs worse for programs making a large number of memory allocations.
 
@@ -110,7 +110,7 @@ These tests have fewer opportunities for garbage collection so it saves little m
 
 
 
-\subsection{Output File Size}
+\subsection{Output file size}
 
 \begin{figure}[H]
 \hspace{-1.2cm}
@@ -122,7 +122,7 @@ These tests have fewer opportunities for garbage collection so it saves little m
 
 As expected, figure \ref{fig:alt_size} shows that the JavaScript output tends to be largest, as JavaScript is a text format rather than a binary format like WebAssembly. On average, it is 8 times larger than the output of my compiler with garbage collection enabled. Grain also produces much larger binary files, averaging about 3.5 times larger than my compiler's output. Inspecting the compiled output, there appear to be a few reasons for this. First, programs import a larger set of functions from Grain's runtime than used by my compiler. It also uses a reference-counting garbage collector, which adds more overhead since updating a variable requires both incrementing the new value and decrementing the old value, whereas my garbage collector just overwrites the old value on the shadow stack. Lastly, it does not appear to optimise the WebAssembly produced, compared with my compiler, which uses a register-allocation algorithm to reduce the number of local variables declared, and peephole optimises trivially useless statements such as \verb|local.get i; drop|.
 
-Compared with the output of compiling a C program, the sizes are similar except where parts of \verb|stdlib| have to be included for memory allocation, which makes those programs about 9KB larger. For comparison, my runtime without garbage collection is a 740B WebAssembly file, but the garbage collector is implemented in JavaScript, which when minified is a 4KB file.
+Compared with the output of compiling a C program, the sizes are similar except where parts of \verb|stdlib| have to be included for memory allocation, which makes those programs about 9KiB larger. For comparison, my runtime without garbage collection is a 740B WebAssembly file, but the garbage collector is implemented in JavaScript, which when minified is a 4KiB file.
 
 % CAREFUL! MANUALLY SET REFERENCES! MAY CHANGE IF CHAPTERS REORDERED/REMOVED!
 Figure \ref{fig:alt_size} also demonstrates the overhead of garbage collection in terms of the extra bookkeeping operations added to maintain the shadow stack. %described in section 3.6.1.
@@ -132,26 +132,26 @@ On average, this adds about 30\% to the size of the output WebAssembly. % Tim sa
 
 I first compare the impact of the IR and WebAssembly optimisations described in section \ref{opts}, and their combined effect on performance. After that, I look at the impact of specific optimisations at the IR level by seeing how performance changes when one is removed, and the benefit of optimising pattern matching. Finally, I show the benefit of repeating the optimisation passes multiple times. %, as well as looking at how the phase ordering at the IR level impacts performance.  -- LEAVE THIS FOR IF SECTION TOO SHORT
 
-Data is collected with garbage collection disabled to exclude the overhead it introduces, which depends primarily on the garbage collection implementation used by the runtime system, rather than how programs are optimised.
+Data is collected with garbage collection disabled to exclude the overhead it introduces, which depends primarily on the garbage-collection implementation used by the runtime system, rather than how programs are optimised.
 
 \subsection{IR and WebAssembly optimisations}
 \vspace{-0.4cm}
 \begin{figure}[H]
 \vspace{-0.05cm}
-\hspace{-0.8cm}
-\includegraphics[scale=0.47]{figures/opts_threeplots2}
+\hspace{-2.3cm}
+\includegraphics[scale=0.51]{figures/opts_threeplots2}
 \vspace{-0.7cm}
 \caption{Performance with IR and WebAssembly optimisations}
  \label{fig:opts} 
 \end{figure}
-The peephole optimisations done at the WebAssembly level have no impact on memory usage or execution time, but consistently reduce output size by about 10\%, as shown in figure \ref{fig:opts}. The IR optimisations reduce execution time and heap usage by at least 30\% for all microbenchmarks, except \verb|nbody|. \verb|nbody| is the only program which does not improve in all metrics, most likely because it is an imperative-style program and the optimisations implemented are unable to optimise uses of mutable variables.
+The peephole optimisations performed at the WebAssembly level have no impact on memory usage or execution time, but consistently reduce output size by about 10\%, as shown in figure \ref{fig:opts}. The IR optimisations reduce execution time and heap usage by at least 30\% for all microbenchmarks, except \verb|nbody|. \verb|nbody| is the only program that does not improve in all metrics, most likely because it is an imperative-style program and the optimisations implemented are unable to optimise uses of mutable variables.
 % and instead executes 3\% slower. It is an imperative-style program, which may explain why the optimisations perform well on the other programs but not on it, since they are unable to optimise uses of mutable variables and \verb|nbody| has no recursion to optimise either. 
  For \verb|arith| and \verb|funcrec|, inlining or rewriting functions has completely removed the need to construct closures recursively, resulting in near zero heap usage. %The execution time of \verb|nbody| is the only case where optimisations decrease performance, but only by 3\%.  \verb|nbody| is an imperative style program, which may explain why the optimisations perform well on the other programs but not on it, since they are unable to optimise uses of mutable values and \verb|nbody| has no recursion to optimise.
 
 \subsection{Impact of inlining, uncurrying and tail calls}
 \vspace{-0.4cm}
 \begin{figure}[H]
-\hspace{-1.5cm}
+\hspace{-1.8cm}
 \includegraphics[scale=0.5]{figures/specific_opts2}
 \vspace{-0.8cm}
 \caption{Impact of individual optimisations}
@@ -167,9 +167,10 @@ Despite being a very simple function, without tail-call optimisation, \verb|f(30
 
 Lastly, uncurrying fully applied functions has the most significant impact on performance. None of the benchmarks are negatively impacted by it and most speed up, by up to 50\%. Additionally, not having to construct a closure for each separate argument reduces the amount of space used on the heap, and the number of functions defined in the code. In the case of \verb|arith|, this removes the need to recursively construct any closures, so heap usage no longer increases with problem size. Once again, \verb|nbody| is not improved, as it lacks opportunities for this optimisation to be applied.
 
-\subsection{Pattern Matching}
+\subsection{Pattern matching}
 \begin{figure}[H]
-\includegraphics[scale=0.7]{figures/patterns}
+\hspace{-0.5cm}
+\includegraphics[scale=0.74]{figures/patterns}
 \vspace{-0.8cm}
 \caption{Impact of optimised pattern matching}
  \label{fig:patterns} 
@@ -198,7 +199,7 @@ This shows that the optimisations provide a slight benefit for complex pattern m
 \vspace{-0.5cm}
 \begin{figure}[H]
 \hfill
-\includegraphics[scale=0.62]{figures/iterations} \hfill
+\includegraphics[scale=0.64]{figures/iterations} \hfill
 \vspace{-0.3cm}
 \caption{Effect of repeating optimisation passes}
  \label{fig:iterations} 
@@ -210,11 +211,11 @@ Multiple iterations can also benefit one optimisation in isolation e.g. \verb|le
 % TODO: Phase ordering or not?
 
 
-\section{Garbage Collection}
+\section{Garbage collection}
 \vspace{-0.5cm}
 \begin{figure}[H]
-\hspace{-2.8cm}
-\includegraphics[scale=0.53]{figures/three_gcs}
+\hspace{-2.5cm}
+\includegraphics[scale=0.55]{figures/three_gcs}
 \vspace{-0.6cm}
 \caption{Effect of changes to garbage collection}
  \label{fig:three_gcs} 
@@ -223,7 +224,7 @@ Multiple iterations can also benefit one optimisation in isolation e.g. \verb|le
 Figure \ref{fig:three_gcs} shows that, due to adding a trailer to every memory allocation (described in section 3.6.3), the modifications to garbage collection increase both execution time and memory usage for most of the microbenchmarks, since these are small programs that generally only require simple memory management. 
 
 \begin{figure}[H]
-\hfill \includegraphics[scale=0.75]{figures/mal} \hfill
+\hfill \includegraphics[scale=0.8]{figures/mal} \hfill
 \caption{Performance on fragmented memory}
  \label{fig:mal} 
 \end{figure}
@@ -251,12 +252,13 @@ The problem size in figure \ref{fig:mal} refers to how many times those larger b
 
 Memory is initially one large free block, and fragmentation is only an issue once this large block is nearly all allocated, otherwise allocations continue to be taken from the large block rather than scanning the free list. The modified version adds a trailer to each block, so fragmentation is often an issue at different points for each version, since they consume a page of WebAssembly memory after a different number of allocations. Therefore, it was necessary to construct this artificial example of fragmentation, demonstrating the effect it has for both versions.
 
+
 \subsection{Threshold to not grow memory}
 
 Figure \ref{fig:speedup} demonstrates the benefit of having a threshold for garbage collection, increasing memory whenever garbage collection fails to free more than 1KiB of memory, not just when it fails to free a block of the required size. As problem size grows, \verb|alltrees| gets more memory intensive and the modified version begins to narrowly outperform the original. However, the improvement with the threshold is much more significant, surpassing 40\% at the largest problem size.
 
 \begin{figure}[H]
-\hfill \includegraphics[scale=0.75]{figures/speedup} \hfill
+\hfill \includegraphics[scale=0.84]{figures/speedup} \hfill
 \vspace{-0.2cm}
 \cprotect\caption{Performance on \verb|alltrees|}
  \label{fig:speedup} 
@@ -264,7 +266,7 @@ Figure \ref{fig:speedup} demonstrates the benefit of having a threshold for garb
 
 
 \begin{figure}[H]
-\hfill \includegraphics[scale=0.87]{figures/traces2} \hfill
+\hfill \hspace{-0.2cm} \includegraphics[scale=0.87]{figures/traces2} \hfill
 \vspace{-0.8cm}
 \caption{Objects freed during execution of \texttt{alltrees}}
  \label{fig:traces} 

@@ -34,7 +34,7 @@ I was able to work much faster during the breaks than in term time, due to not h
 
 %I also improved at learning new languages despite limited availability of tutorials or examples. For example, Grain is a relatively new language, so its only examples are short demonstrations of each feature on the project's website. Similarly, the Typedtree representation in the OCaml compiler, which my compiler translates from, is only briefly documented by comments in the compiler's source code. I found it easiest to learn each of these by producing examples and looking at their behaviour. For Grain, this meant adapting the available examples and running them. For the Typedtree, I instead wrote simple OCaml programs that I already knew the behaviour of, then made use of the pretty-printing in the compiler's front-end to see the IR they produced. Adopting these approaches from the beginning of the project may have helped me to gain confidence in each language faster.
 
-One challenge I faced was efficiently debugging my garbage collection implementation.
+One challenge I faced was efficiently debugging my garbage-collection implementation.
 %Debugging my garbage collection implementation was challenging at first.
 Errors, such as incorrectly freeing an object, may only affect a program's output long after the error occurs, when that block of memory is reallocated and modified. To solve this, I eventually wrote several JavaScript functions to aid debugging, such as checking the structure of the free list% and that blocks were correctly marked as allocated or free
 , as well as logging data about pointers used during a program's execution and studying the resulting trace. 

@@ -31,7 +31,7 @@ Perhaps surprisingly, both statements above will be printed (the issue here is t
 % So both get converted to 0 and 0 == 0 
 % See: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#Loose_equality_using
 
-An advantage of programming in a functional language, such as OCaml, is that it is statically typed, so compile-time type checking detects many potential errors. However, compiling OCaml to JavaScript, as done by the \jsofocaml{} tool \cite{jsofocaml}, results in these checks being unnecessarily repeated at runtime. It would be better to avoid these inefficiencies.
+An advantage of programming in a functional language, such as OCaml, is that it is statically typed, so compile-time type checking detects many potential errors. However, compiling OCaml to JavaScript, as performed by the \jsofocaml{} tool \cite{jsofocaml}, results in these checks being unnecessarily repeated at runtime. It would be better to avoid these inefficiencies.
 Targeting WebAssembly is one possible choice, since it is strongly typed, so these checks are not needed at runtime, providing a more efficient way to run functional code on the web. In addition, WebAssembly is now supported by major browsers, such as Chrome, Firefox and Safari.
 
 
@@ -57,7 +57,7 @@ WebAssembly has both a text format for \verb|.wast| files and a binary format fo
 \label{fig:wasm}
 \end{figure}
 
-WebAssembly is a stack-based language, with control-flow expressed by nested blocks, such as the two cases of the \verb|If| statement above, rather than jumps in linear code as in most assembly languages. The other nesting in figure \ref{fig:wasm} is syntactic sugar allowed by the text format, which makes it clearer how arguments are supplied and consumed on the stack.
+WebAssembly is a stack-based language, with control flow expressed by nested blocks, such as the two cases of the \verb|If| statement above, rather than jumps in linear code as in most assembly languages. The other nesting in figure \ref{fig:wasm} is syntactic sugar allowed by the text format, which makes it clearer how arguments are supplied and consumed on the stack.
 
 %The text format is very flexible, offering many forms of syntactic sugar for writing expressions. Although WebAssembly is a stack-based language, primarily made up of linear sequences of instructions, the text format allows nesting where it is clearer how arguments are supplied and consumed on the stack. Unlike most assembly languages, control-flow is expressed by nesting (that is not just syntactic sugar), such as the two cases of the \verb|If| statement above, rather than jumps in linear code.
 
